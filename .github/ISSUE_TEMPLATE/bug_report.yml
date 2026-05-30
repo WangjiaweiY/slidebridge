@@ -1,0 +1,80 @@
+name: Bug report
+description: Report a reproducible problem in SlideBridge Core.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      description: Operating system and version.
+      placeholder: Windows 11, Ubuntu 22.04
+    validations:
+      required: true
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version
+      placeholder: "3.11"
+    validations:
+      required: true
+  - type: input
+    id: slidebridge_version
+    attributes:
+      label: SlideBridge version
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: install_method
+    attributes:
+      label: Installation method
+      placeholder: pip install -e . or pip install git+https://...
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Full error message
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: reader
+    attributes:
+      label: Reader used
+      placeholder: tiffslide, openslide, image, or auto
+  - type: dropdown
+    id: data_source
+    attributes:
+      label: Data source
+      options:
+        - Synthetic demo
+        - Own WSI
+        - Both
+  - type: dropdown
+    id: synthetic_repro
+    attributes:
+      label: Does it reproduce with the synthetic demo?
+      options:
+        - "Yes"
+        - "No"
+        - Not tested
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checklist
+      options:
+        - label: I have not attached patient-identifiable data.
+          required: true
+        - label: I have not attached proprietary SDKs, vendor binaries, or private format documentation.
+          required: true
+        - label: I understand SlideBridge Core is for research/debugging only.
+          required: true

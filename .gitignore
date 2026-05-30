@@ -5,6 +5,7 @@ __pycache__/
 .env
 .venv
 .venv-wheel-test/
+.venv-github-test/
 *.egg-info/
 dist/
 build/

@@ -47,7 +47,10 @@ Recognized score datasets:
 - `logits`
 - `probs`
 
-SlideBridge also reads useful attributes such as `patch_size`, `patch_level`, `downsample`, and `mpp` when present. This covers common H5 coordinate layouts used in research pipelines, but it is not a promise of universal compatibility with every project.
+SlideBridge also reads useful attributes such as `patch_size`, `patch_level`,
+`downsample`, and `mpp` when present. This covers common H5 coordinate layouts
+used in research pipelines, but it is not a promise of universal compatibility
+with every project.
 
 ## JSON
 
@@ -69,5 +72,6 @@ or:
 
 ## PT/PTH
 
-`.pt` and `.pth` files are optional and require PyTorch. Supported payloads include tensors with shape `(N, 2)` or `(N, 4)`, and dictionaries with coordinate and score keys.
-
+`.pt` and `.pth` files are optional and require PyTorch. Supported payloads
+include tensors with shape `(N, 2)` or `(N, 4)`, and dictionaries with
+coordinate and score keys.

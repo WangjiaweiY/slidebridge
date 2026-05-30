@@ -36,4 +36,3 @@ index,x,y,width,height,score,label,image_path
 slidebridge export-patches C:\path\to\your\slide.svs --patches outputs\coords.csv --out outputs\patches --format jpg
 slidebridge export-patches C:\path\to\your\slide.svs --patches outputs\coords.csv --out outputs\patches_png --format png
 ```
-

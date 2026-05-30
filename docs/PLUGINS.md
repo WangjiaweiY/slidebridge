@@ -1,6 +1,7 @@
 # Plugins
 
-SlideBridge Core exposes a public reader interface and registry. The public core includes only public open-source reader wrappers and a normal image reader.
+SlideBridge Core exposes a public reader interface and registry. The public core
+includes only public open-source reader wrappers and a normal image reader.
 
 Private readers should be implemented in separately licensed private packages.
 
@@ -24,5 +25,5 @@ class FakeReader:
 register_reader(FakeReader())
 ```
 
-The reader object should implement the `SlideReader` protocol and return a `Slide` object with normalized metadata and `read_region` behavior.
-
+The reader object should implement the `SlideReader` protocol and return a
+`Slide` object with normalized metadata and `read_region` behavior.

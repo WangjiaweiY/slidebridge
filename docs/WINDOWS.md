@@ -5,7 +5,8 @@
 ```powershell
 conda create -n slidebridge python=3.11 -y
 conda activate slidebridge
-pip install tiffslide openslide-python openslide-bin pillow numpy pandas fastapi uvicorn typer rich jinja2 pytest h5py
+pip install tiffslide openslide-python openslide-bin pillow numpy pandas `
+  fastapi uvicorn typer rich jinja2 pytest h5py
 pip install -e .
 ```
 
@@ -47,5 +48,6 @@ Check that the file exists and that at least one reader is available.
 
 ### CDN viewer not loading
 
-The v0.1.1 viewer loads OpenSeadragon from a CDN. If the browser cannot load the CDN asset, the page shows a warning. Metadata, thumbnail export, patch sampling, and doctor reports do not require that browser asset.
-
+The viewer loads OpenSeadragon from a CDN. If the browser cannot load the CDN
+asset, the page shows a warning. Metadata, thumbnail export, patch sampling,
+and doctor reports do not require that browser asset.

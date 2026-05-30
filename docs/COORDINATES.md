@@ -19,4 +19,3 @@ Required columns: `x`, `y`.
 Optional columns: `width`, `height`, `score`.
 
 If `width` or `height` is missing, SlideBridge uses `256`.
-
