@@ -175,6 +175,12 @@ localhost over SSH.
 slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
 ```
 
+You can also pass a remote directory and choose slides in the browser:
+
+```powershell
+slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
+```
+
 With remote patch coordinates and annotations:
 
 ```powershell
@@ -222,7 +228,7 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 - `slidebridge remote-check REMOTE`: check remote SSH and SlideBridge availability.
 - `slidebridge remote-ls REMOTE_DIR`: list likely slide files on a remote server.
 - `slidebridge remote-inspect REMOTE_SLIDE`: inspect a remote slide over SSH.
-- `slidebridge remote-view REMOTE_SLIDE`: view a remote slide through an SSH localhost tunnel.
+- `slidebridge remote-view REMOTE_SLIDE_OR_DIR`: view a remote slide or slide directory through an SSH localhost tunnel.
 - `slidebridge view PATH --patches COORDS.csv --heatmap SCORES.npy`: start the
   local pan/zoom viewer with optional model/debug score and annotation overlays.
 - `slidebridge readers`: list registered readers and dependency availability.
@@ -295,6 +301,7 @@ v0.2.2:
 - remote WSI viewing over SSH tunnel
 - remote-check, remote-ls, remote-inspect, and remote-view
 - dry-run remote command diagnostics
+- local and remote directory viewer mode
 
 v0.3:
 

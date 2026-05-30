@@ -379,6 +379,8 @@ def view(
     annotation_opacity: float = typer.Option(0.35, "--annotation-opacity", min=0.0, max=1.0, help="Annotation overlay opacity."),
     max_annotations: int = typer.Option(10_000, "--max-annotations", help="Maximum annotations returned to the browser."),
     annotation_labels: Optional[str] = typer.Option(None, "--annotation-labels", help="Comma-separated annotation label filter."),
+    recursive: bool = typer.Option(False, "--recursive/--no-recursive", help="When PATH is a directory, include nested slide files."),
+    max_slides: int = typer.Option(500, "--max-slides", help="Maximum slide files listed in directory viewer mode."),
 ) -> None:
     try:
         viewer_app = create_app(
@@ -397,6 +399,8 @@ def view(
             annotation_opacity=annotation_opacity,
             max_annotations=max_annotations,
             annotation_labels=_split_labels(annotation_labels),
+            recursive=recursive,
+            max_slides=max_slides,
         )
         url = f"http://{host}:{port}"
         console.print(f"Starting SlideBridge viewer: {url}")
@@ -621,7 +625,7 @@ def remote_inspect(
 
 @app.command("remote-view")
 def remote_view(
-    remote_slide: str = typer.Argument(..., help="Remote slide as user@host:/server/path or host:/server/path. The slide remains remote."),
+    remote_slide: str = typer.Argument(..., help="Remote slide or directory as user@host:/server/path or host:/server/path. Files remain remote."),
     ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
     identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
     ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option, e.g. '-J bastion'. May be repeated."),
@@ -644,8 +648,10 @@ def remote_view(
     annotation_opacity: float = typer.Option(0.35, "--annotation-opacity", min=0.0, max=1.0, help="Annotation opacity."),
     max_overlay_patches: int = typer.Option(50_000, "--max-overlay-patches", help="Maximum patch overlays returned by remote viewer."),
     max_annotations: int = typer.Option(10_000, "--max-annotations", help="Maximum annotations returned by remote viewer."),
+    recursive: bool = typer.Option(False, "--recursive/--no-recursive", help="When REMOTE_SLIDE is a directory, include nested slide files."),
+    max_slides: int = typer.Option(500, "--max-slides", help="Maximum slide files listed by the remote directory viewer."),
 ) -> None:
-    """View a remote server-side WSI through an SSH localhost tunnel."""
+    """View a remote server-side WSI or slide directory through an SSH localhost tunnel."""
 
     try:
         remote_path = parse_remote_path(remote_slide)
@@ -664,6 +670,8 @@ def remote_view(
                 annotation_opacity=annotation_opacity,
                 max_overlay_patches=max_overlay_patches,
                 max_annotations=max_annotations,
+                recursive=recursive,
+                max_slides=max_slides,
             ),
             remote_workdir=remote_workdir,
         )
@@ -817,6 +825,8 @@ def _remote_view_args(
     annotation_opacity: float = 0.35,
     max_overlay_patches: int = 50_000,
     max_annotations: int = 10_000,
+    recursive: bool = False,
+    max_slides: int = 500,
 ) -> list[str]:
     args = [
         "view",
@@ -836,7 +846,11 @@ def _remote_view_args(
         str(int(max_overlay_patches)),
         "--max-annotations",
         str(int(max_annotations)),
+        "--max-slides",
+        str(int(max_slides)),
     ]
+    if recursive:
+        args.append("--recursive")
     if patches:
         args.extend(["--patches", patches])
     if heatmap:

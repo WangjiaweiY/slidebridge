@@ -130,6 +130,12 @@ tunnel 访问 viewer。
 slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
 ```
 
+也可以传远端目录，在浏览器左侧选择要看的切片：
+
+```powershell
+slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
+```
+
 带远端 patch 和 annotation：
 
 ```powershell
@@ -175,6 +181,7 @@ v0.2.2:
 
 - remote WSI viewing over SSH tunnel
 - remote-check / remote-ls / remote-inspect / remote-view
+- 本地和远端目录阅片模式
 
 v0.3:
 

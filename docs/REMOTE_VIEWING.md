@@ -77,6 +77,12 @@ Start a remote viewer and open it locally:
 slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge" --local-port 7860 --remote-port 7860
 ```
 
+To browse a remote folder and select slides in the browser:
+
+```powershell
+slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
+```
+
 With remote patch coordinates and annotations:
 
 ```powershell
@@ -99,6 +105,7 @@ slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda
 - `remote slidebridge not found`: install SlideBridge remotely or pass `--remote-runner`.
 - `remote port already in use`: choose another `--remote-port`.
 - `local port already in use`: choose another `--local-port`.
+- Empty slide library: add `--recursive` or check that the directory contains supported slide/image suffixes.
 - Viewer opens but tiles fail: check the remote terminal output and slide read permissions.
 - Remote server cannot read slide: confirm the server-side slide path and file permissions.
 - `conda` not found in non-interactive shell: use an absolute runner or `conda run -n ...`.

@@ -5,78 +5,227 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SlideBridge Viewer - {{ filename }}</title>
   <style>
+    :root {
+      color-scheme: light;
+      --bg: #0f1419;
+      --panel: #fbfcfe;
+      --panel-2: #f2f5f8;
+      --line: #d8e0e8;
+      --text: #17202a;
+      --muted: #5c6875;
+      --accent: #1f7a8c;
+      --accent-2: #c2415d;
+      --warning: #8a5a00;
+    }
+    * {
+      box-sizing: border-box;
+    }
     html, body {
       height: 100%;
       margin: 0;
       font-family: Arial, sans-serif;
-      color: #20242a;
-      background: #101820;
+      color: var(--text);
+      background: var(--bg);
     }
     body {
+      overflow: hidden;
+    }
+    .app-shell {
       display: grid;
-      grid-template-rows: auto 1fr;
+      grid-template-columns: minmax(300px, 360px) 1fr;
+      height: 100vh;
+      width: 100vw;
     }
-    header {
+    aside {
       display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-      padding: 12px 16px;
-      background: #ffffff;
-      border-bottom: 1px solid #d6dde7;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-width: 0;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      box-shadow: 1px 0 14px rgba(0, 0, 0, 0.12);
+      z-index: 3;
     }
-    h1 {
-      margin: 0 0 6px;
-      font-size: 18px;
-      overflow-wrap: anywhere;
+    .brand {
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
     }
-    .meta {
+    .brand-row {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px 14px;
-      font-size: 13px;
-      color: #4e5a66;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
     }
-    .pill {
-      align-self: start;
-      padding: 6px 10px;
-      border: 1px solid #cbd3df;
-      border-radius: 8px;
-      background: #f8fafc;
-      font-size: 13px;
+    .brand-name {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .mode-badge {
+      padding: 4px 8px;
+      border: 1px solid #b9cad5;
+      border-radius: 999px;
+      background: #edf6f8;
+      color: #24515b;
+      font-size: 12px;
       white-space: nowrap;
     }
-    .right-panel {
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+    .scroll {
+      overflow: auto;
+      min-height: 0;
+    }
+    section {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0;
+      color: #2b3a45;
+      text-transform: uppercase;
+    }
+    .meta-grid {
       display: grid;
-      gap: 8px;
-      justify-items: end;
+      grid-template-columns: 96px 1fr;
+      gap: 7px 10px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .meta-grid .key {
+      color: var(--muted);
+    }
+    .meta-grid .value {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .search {
+      width: 100%;
+      height: 34px;
+      padding: 6px 9px;
+      margin-bottom: 10px;
+      border: 1px solid #cbd5df;
+      border-radius: 6px;
+      color: var(--text);
+      background: #fff;
+      font-size: 13px;
+    }
+    .slide-list {
+      display: grid;
+      gap: 6px;
+      max-height: 280px;
+      overflow: auto;
+    }
+    .slide-item {
+      width: 100%;
+      padding: 8px 9px;
+      border: 1px solid #d3dce5;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .slide-item:hover {
+      border-color: #7fb1be;
+      background: #f2fafb;
+    }
+    .slide-item.active {
+      border-color: var(--accent);
+      background: #e8f5f7;
+    }
+    .slide-item strong {
+      display: block;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    .slide-item span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
     }
     .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-      justify-content: flex-end;
+      display: grid;
+      gap: 12px;
       font-size: 13px;
-      color: #4e5a66;
     }
-    .controls input[type="range"] {
-      width: 120px;
-    }
-    .legend {
-      display: flex;
-      align-items: center;
+    .control-row {
+      display: grid;
       gap: 6px;
     }
+    .control-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .control-label span {
+      color: var(--muted);
+    }
+    input[type="range"] {
+      width: 100%;
+    }
+    .count-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .pill {
+      padding: 5px 8px;
+      border: 1px solid #cbd5df;
+      border-radius: 999px;
+      background: var(--panel-2);
+      color: #2d3a46;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .legend {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
     .legend-bar {
-      width: 92px;
       height: 10px;
       border: 1px solid #cbd3df;
       background: linear-gradient(90deg, rgba(48, 112, 210, 0.25), rgba(245, 211, 84, 0.75), rgba(220, 48, 48, 0.95));
     }
     .warning {
       margin-top: 8px;
-      color: #8a5a00;
+      color: var(--warning);
       font-size: 13px;
+      line-height: 1.35;
+    }
+    .footer {
+      padding: 10px 16px;
+      border-top: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    main {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      background: #111820;
     }
     #viewer {
       width: 100%;
@@ -87,9 +236,8 @@
     #viewer-error {
       display: none;
       position: absolute;
-      inset: 24px;
+      inset: 24px auto auto 24px;
       max-width: 620px;
-      height: max-content;
       padding: 16px;
       background: #ffffff;
       color: #9d1c1c;
@@ -119,45 +267,106 @@
       background: currentColor;
       box-sizing: border-box;
     }
+    .hidden {
+      display: none !important;
+    }
+    @media (max-width: 860px) {
+      body {
+        overflow: auto;
+      }
+      .app-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 70vh;
+        height: auto;
+        min-height: 100vh;
+      }
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .slide-list {
+        max-height: 180px;
+      }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>{{ filename }}</h1>
-      <div class="meta">
-        <span>reader: {{ reader }}</span>
-        <span>dimensions: {{ width }} x {{ height }}</span>
-        <span>mpp: {{ mpp_x or "unknown" }} x {{ mpp_y or "unknown" }}</span>
-        <span>objective: {{ objective_power or "unknown" }}</span>
-        <span>vendor: {{ vendor or "unknown" }}</span>
-        <span>warnings: {{ warnings|join(", ") if warnings else "none" }}</span>
+  <div class="app-shell">
+    <aside>
+      <div class="brand">
+        <div class="brand-row">
+          <div class="brand-name">SlideBridge</div>
+          <div class="mode-badge">{{ "Library" if library_mode else "Single slide" }}</div>
+        </div>
+        <h1 id="slide-title">{{ filename }}</h1>
       </div>
-      {% if patch_warning %}
-      <div class="warning">{{ patch_warning }}</div>
-      {% endif %}
-      {% if annotation_warning %}
-      <div class="warning">{{ annotation_warning }}</div>
-      {% endif %}
-    </div>
-    <div class="right-panel">
-      <div class="pill" id="patch-count">{{ patch_count }} patches</div>
-      <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
-      <div class="controls">
-        <label><input id="overlay-toggle" type="checkbox" checked> model/debug overlay</label>
-        <label>opacity <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}"></label>
-        <div class="legend" id="score-legend" hidden><span>low</span><span class="legend-bar"></span><span>high</span></div>
+      <div class="scroll">
+        <section id="library-panel" class="{{ '' if library_mode else 'hidden' }}">
+          <div class="section-title">
+            <span>Slide Library</span>
+            <span id="slide-count">{{ slide_count }}</span>
+          </div>
+          <input id="slide-search" class="search" type="search" placeholder="Filter slides">
+          <div id="slide-list" class="slide-list"></div>
+          {% if library_warning %}
+          <div class="warning">{{ library_warning }}</div>
+          {% endif %}
+        </section>
+        <section>
+          <div class="section-title">Slide Metadata</div>
+          <div class="meta-grid">
+            <div class="key">reader</div><div class="value" id="meta-reader">{{ reader }}</div>
+            <div class="key">dimensions</div><div class="value" id="meta-dimensions">{{ width }} x {{ height }}</div>
+            <div class="key">mpp</div><div class="value" id="meta-mpp">{{ mpp_x or "unknown" }} x {{ mpp_y or "unknown" }}</div>
+            <div class="key">objective</div><div class="value" id="meta-objective">{{ objective_power or "unknown" }}</div>
+            <div class="key">vendor</div><div class="value" id="meta-vendor">{{ vendor or "unknown" }}</div>
+            <div class="key">warnings</div><div class="value" id="meta-warnings">{{ warnings|join(", ") if warnings else "none" }}</div>
+          </div>
+        </section>
+        <section>
+          <div class="section-title">Overlays</div>
+          <div class="count-row">
+            <div class="pill" id="patch-count">{{ patch_count }} patches</div>
+            <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
+          </div>
+          {% if patch_warning %}
+          <div class="warning">{{ patch_warning }}</div>
+          {% endif %}
+          {% if annotation_warning %}
+          <div class="warning">{{ annotation_warning }}</div>
+          {% endif %}
+          <div id="dynamic-warnings"></div>
+          <div class="controls">
+            <div class="control-row">
+              <label class="control-label">
+                <span>model/debug overlay</span>
+                <input id="overlay-toggle" type="checkbox" checked>
+              </label>
+              <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}">
+              <div class="legend" id="score-legend" hidden><span>low</span><span class="legend-bar"></span><span>high</span></div>
+            </div>
+            <div class="control-row">
+              <label class="control-label">
+                <span>annotation overlay for research/debugging</span>
+                <input id="annotation-toggle" type="checkbox" checked>
+              </label>
+              <input id="annotation-opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ annotation_opacity }}">
+            </div>
+          </div>
+        </section>
       </div>
-      <div class="controls">
-        <label><input id="annotation-toggle" type="checkbox" checked> annotation overlay for research/debugging</label>
-        <label>opacity <input id="annotation-opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ annotation_opacity }}"></label>
+      <div class="footer">Coordinates are level-0 pixels. Viewer is for research/debugging only.</div>
+    </aside>
+    <main>
+      <div id="viewer">
+        <div id="viewer-error">OpenSeadragon failed to load. Please check the bundled viewer asset or your network connection.</div>
       </div>
-    </div>
-  </header>
-  <div id="viewer">
-    <div id="viewer-error">OpenSeadragon failed to load. Please check the bundled viewer asset or your network connection.</div>
+    </main>
   </div>
   <script>
+    const slideEntries = {{ slides_json | safe }};
+    let selectedSlideId = slideEntries.length ? slideEntries[0].id : 0;
+
     function showViewerLoadError() {
       const element = document.getElementById("viewer-error");
       if (element) {
@@ -209,7 +418,6 @@
       const viewer = OpenSeadragon({
         id: "viewer",
         prefixUrl: osdPrefixUrl,
-        tileSources: "/dzi.dzi",
         showNavigator: true,
         animationTime: 0.15,
         blendTime: 0.05,
@@ -228,23 +436,84 @@
         renderAnnotations();
       });
 
-      fetch("/api/patches")
-        .then((response) => response.json())
-        .then((payload) => {
-          patchPayload = payload;
-          updatePatchHeader(payload);
-          renderPatches();
-        })
-        .catch((error) => console.error("Failed to load patches", error));
+      renderSlideList();
+      const search = document.getElementById("slide-search");
+      if (search) {
+        search.addEventListener("input", renderSlideList);
+      }
+      await selectSlide(selectedSlideId);
 
-      fetch("/api/annotations")
-        .then((response) => response.json())
-        .then((payload) => {
-          annotationPayload = payload;
-          updateAnnotationHeader(payload);
-          renderAnnotations();
-        })
-        .catch((error) => console.error("Failed to load annotations", error));
+      async function selectSlide(slideId) {
+        selectedSlideId = Number(slideId);
+        isOpen = false;
+        patchPayload = null;
+        annotationPayload = null;
+        clearOverlays();
+        setActiveSlideButton();
+        document.getElementById("dynamic-warnings").innerHTML = "";
+        viewer.open(`/slides/${selectedSlideId}/dzi.dzi`);
+        await Promise.all([loadInfo(), loadPatches(), loadAnnotations()]);
+      }
+
+      function renderSlideList() {
+        const list = document.getElementById("slide-list");
+        if (!list) {
+          return;
+        }
+        const query = (document.getElementById("slide-search")?.value || "").toLowerCase();
+        list.innerHTML = "";
+        slideEntries
+          .filter((entry) => !query || entry.relative_path.toLowerCase().includes(query) || entry.filename.toLowerCase().includes(query))
+          .forEach((entry) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "slide-item";
+            button.dataset.slideId = String(entry.id);
+            button.innerHTML = `<strong>${escapeHtml(entry.filename)}</strong><span>${escapeHtml(entry.relative_path)}</span>`;
+            button.addEventListener("click", () => selectSlide(entry.id));
+            list.appendChild(button);
+          });
+        setActiveSlideButton();
+      }
+
+      function setActiveSlideButton() {
+        document.querySelectorAll(".slide-item").forEach((button) => {
+          button.classList.toggle("active", Number(button.dataset.slideId) === selectedSlideId);
+        });
+      }
+
+      async function loadInfo() {
+        const response = await fetch(`/api/info?slide_id=${selectedSlideId}`);
+        const info = await response.json();
+        updateInfo(info);
+      }
+
+      async function loadPatches() {
+        const response = await fetch(`/api/patches?slide_id=${selectedSlideId}`);
+        const payload = await response.json();
+        patchPayload = payload;
+        updatePatchHeader(payload);
+        renderPatches();
+      }
+
+      async function loadAnnotations() {
+        const response = await fetch(`/api/annotations?slide_id=${selectedSlideId}`);
+        const payload = await response.json();
+        annotationPayload = payload;
+        updateAnnotationHeader(payload);
+        renderAnnotations();
+      }
+
+      function updateInfo(info) {
+        document.getElementById("slide-title").textContent = info.filename || "";
+        document.title = `SlideBridge Viewer - ${info.filename || ""}`;
+        document.getElementById("meta-reader").textContent = info.reader || "unknown";
+        document.getElementById("meta-dimensions").textContent = `${info.width} x ${info.height}`;
+        document.getElementById("meta-mpp").textContent = `${info.mpp_x ?? "unknown"} x ${info.mpp_y ?? "unknown"}`;
+        document.getElementById("meta-objective").textContent = info.objective_power ?? "unknown";
+        document.getElementById("meta-vendor").textContent = info.vendor ?? "unknown";
+        document.getElementById("meta-warnings").textContent = info.warnings && info.warnings.length ? info.warnings.join(", ") : "none";
+      }
 
       function updatePatchHeader(payload) {
         document.getElementById("patch-count").textContent =
@@ -261,13 +530,23 @@
       }
 
       function appendWarnings(warnings) {
-        if (!warnings.length) {
-          return;
-        }
-        const warning = document.createElement("div");
-        warning.className = "warning";
-        warning.textContent = warnings.join("; ");
-        document.querySelector("header > div").appendChild(warning);
+        const target = document.getElementById("dynamic-warnings");
+        warnings.forEach((message) => {
+          if (!message) {
+            return;
+          }
+          const warning = document.createElement("div");
+          warning.className = "warning";
+          warning.textContent = message;
+          target.appendChild(warning);
+        });
+      }
+
+      function clearOverlays() {
+        patchElements.forEach((element) => viewer.removeOverlay(element));
+        annotationElements.forEach((element) => viewer.removeOverlay(element));
+        patchElements = [];
+        annotationElements = [];
       }
 
       function renderPatches() {
@@ -352,7 +631,7 @@
         let y = Number(bbox[1]);
         let width = Math.max(1, Number(bbox[2]) - x);
         let height = Math.max(1, Number(bbox[3]) - y);
-        const color = annotation.color || "#e41a1c";
+        const color = annotation.color || "#c2415d";
         if (annotation.type === "point") {
           const px = Number(annotation.coordinates.x);
           const py = Number(annotation.coordinates.y);
@@ -467,6 +746,15 @@
             element.style.opacity = String(opacity);
           }
         });
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
       }
 
       document.getElementById("overlay-toggle").addEventListener("change", updatePatchOverlayStyle);

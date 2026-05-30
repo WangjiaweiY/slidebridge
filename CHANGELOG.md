@@ -10,6 +10,8 @@ Added:
 - remote-ls command
 - remote-inspect command
 - remote command builder utilities
+- directory viewer mode for local and remote slide folders
+- redesigned browser viewer shell with slide library selection
 - docs for remote viewing from Windows to Linux servers
 
 Security/Compliance:

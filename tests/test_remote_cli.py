@@ -88,6 +88,25 @@ def test_remote_view_dry_run_with_overlays():
     assert "--annotations /data/annotations/case.geojson" in result.stdout
 
 
+def test_remote_view_dry_run_directory_mode():
+    result = runner.invoke(
+        app,
+        [
+            "remote-view",
+            "user@example.org:/data/slides",
+            "--recursive",
+            "--max-slides",
+            "25",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "slidebridge view /data/slides" in result.stdout
+    assert "--recursive" in result.stdout
+    assert "--max-slides 25" in result.stdout
+
+
 def test_remote_inspect_mocked_execution(monkeypatch):
     def fake_require_ssh_available() -> None:
         return None
