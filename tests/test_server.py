@@ -76,6 +76,8 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     assert "sidebar-tabs" in page.text
     assert "language-toggle" in page.text
     assert "data-i18n=\"slideMetadata\"" in page.text
+    assert "syncLibraryListHeight" in page.text
+    assert "setupSlideListScroll" in page.text
 
     info = client.get("/api/info?slide_id=1")
     assert info.status_code == 200

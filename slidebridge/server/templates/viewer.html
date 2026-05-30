@@ -129,6 +129,7 @@
     .scroll {
       overflow: hidden;
       display: grid;
+      height: 100%;
       min-height: 0;
     }
     .sidebar-tabs {
@@ -163,6 +164,7 @@
       display: none;
       min-height: 0;
       height: 100%;
+      max-height: 100%;
       overflow-x: hidden;
       overflow-y: auto;
       scrollbar-gutter: stable;
@@ -242,9 +244,11 @@
       align-content: start;
       gap: 6px;
       min-height: 0;
+      height: 100%;
       max-height: none;
       overflow-x: hidden;
       overflow-y: scroll;
+      overscroll-behavior: contain;
       padding-right: 8px;
       scrollbar-gutter: stable;
       scrollbar-width: thin;
@@ -704,6 +708,7 @@
           const target = button.dataset.tabTarget;
           buttons.forEach((item) => item.classList.toggle("active", item === button));
           panels.forEach((panel) => panel.classList.toggle("active", panel.id === target));
+          syncLibraryListHeight();
           if (onChange) {
             onChange();
           }
@@ -805,6 +810,8 @@
       if (search) {
         search.addEventListener("input", renderSlideList);
       }
+      setupSlideListScroll();
+      window.addEventListener("resize", syncLibraryListHeight);
       await selectSlide(selectedSlideId);
 
       async function selectSlide(slideId) {
@@ -851,6 +858,37 @@
             list.appendChild(button);
           });
         setActiveSlideButton();
+        syncLibraryListHeight();
+      }
+
+      function setupSlideListScroll() {
+        const list = document.getElementById("slide-list");
+        if (!list) {
+          return;
+        }
+        list.addEventListener("wheel", function (event) {
+          if (list.scrollHeight <= list.clientHeight) {
+            return;
+          }
+          list.scrollTop += event.deltaY;
+          event.preventDefault();
+          event.stopPropagation();
+        }, {passive: false});
+      }
+
+      function syncLibraryListHeight() {
+        const panel = document.getElementById("library-tab");
+        const list = document.getElementById("slide-list");
+        if (!panel || !list || !panel.classList.contains("active")) {
+          return;
+        }
+        window.requestAnimationFrame(function () {
+          const listRect = list.getBoundingClientRect();
+          const panelRect = panel.getBoundingClientRect();
+          const available = Math.max(160, Math.floor(panelRect.bottom - listRect.top - 2));
+          list.style.height = `${available}px`;
+          list.style.maxHeight = `${available}px`;
+        });
       }
 
       function setActiveSlideButton() {
