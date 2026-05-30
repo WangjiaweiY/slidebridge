@@ -46,8 +46,8 @@ slidebridge env
 
 Check that the file exists and that at least one reader is available.
 
-### CDN viewer not loading
+### Viewer asset not loading
 
-The viewer loads OpenSeadragon from a CDN. If the browser cannot load the CDN
-asset, the page shows a warning. Metadata, thumbnail export, patch sampling,
-and doctor reports do not require that browser asset.
+The viewer first uses the OpenSeadragon asset bundled with SlideBridge. If that
+local asset cannot load, it falls back to the CDN. Metadata, thumbnail export,
+patch sampling, and doctor reports do not require the browser viewer asset.

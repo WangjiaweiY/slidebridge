@@ -11,8 +11,10 @@ The tile server is intended for local research and development workflows.
 
 ## OpenSeadragon
 
-The viewer loads OpenSeadragon from a CDN. If the CDN asset cannot load, the
-page shows a clear message instead of staying blank.
+The viewer first loads the bundled OpenSeadragon asset from the installed
+SlideBridge package. If the local asset cannot load, it falls back to the
+OpenSeadragon CDN. If both fail, the page shows a clear message instead of
+staying blank.
 
 ## Patch Overlay
 

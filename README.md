@@ -4,6 +4,8 @@
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 
+[中文 README](README.zh-CN.md)
+
 A lightweight WSI inspection and debugging toolkit for computational pathology.
 
 Debug whole-slide images like a developer.
@@ -50,6 +52,7 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - Metadata inspection
 - Thumbnail export
 - Local browser-based WSI viewer
+- Bundled local OpenSeadragon viewer asset with CDN fallback
 - Patch coordinate overlay
 - Lightweight QC report
 - Plugin-friendly architecture
