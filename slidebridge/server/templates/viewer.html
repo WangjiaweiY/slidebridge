@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SlideBridge Viewer - {{ filename }}</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      color: #20242a;
+      background: #101820;
+    }
+    body {
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      padding: 12px 16px;
+      background: #ffffff;
+      border-bottom: 1px solid #d6dde7;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 18px;
+      overflow-wrap: anywhere;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      font-size: 13px;
+      color: #4e5a66;
+    }
+    .pill {
+      align-self: start;
+      padding: 6px 10px;
+      border: 1px solid #cbd3df;
+      border-radius: 8px;
+      background: #f8fafc;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .warning {
+      margin-top: 8px;
+      color: #8a5a00;
+      font-size: 13px;
+    }
+    #viewer {
+      width: 100%;
+      height: 100%;
+      background: #111820;
+      position: relative;
+    }
+    #viewer-error {
+      display: none;
+      position: absolute;
+      inset: 24px;
+      max-width: 620px;
+      height: max-content;
+      padding: 16px;
+      background: #ffffff;
+      color: #9d1c1c;
+      border: 1px solid #e0a0a0;
+      border-radius: 8px;
+      z-index: 10;
+    }
+    .patch-overlay {
+      box-sizing: border-box;
+      border: 2px solid rgba(255, 80, 80, 0.95);
+      background: rgba(255, 80, 80, 0.08);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>{{ filename }}</h1>
+      <div class="meta">
+        <span>reader: {{ reader }}</span>
+        <span>dimensions: {{ width }} x {{ height }}</span>
+        <span>mpp: {{ mpp_x or "unknown" }} x {{ mpp_y or "unknown" }}</span>
+        <span>objective: {{ objective_power or "unknown" }}</span>
+        <span>vendor: {{ vendor or "unknown" }}</span>
+        <span>warnings: {{ warnings|join(", ") if warnings else "none" }}</span>
+      </div>
+      {% if patch_warning %}
+      <div class="warning">{{ patch_warning }}</div>
+      {% endif %}
+    </div>
+    <div class="pill" id="patch-count">{{ patch_count }} patches</div>
+  </header>
+  <div id="viewer">
+    <div id="viewer-error">OpenSeadragon failed to load. Please check your network connection or use a local viewer asset in a future release.</div>
+  </div>
+  <script>
+    function showViewerLoadError() {
+      const element = document.getElementById("viewer-error");
+      if (element) {
+        element.style.display = "block";
+      }
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/openseadragon.min.js" onerror="showViewerLoadError()"></script>
+  <script>
+    const imageWidth = {{ width }};
+    const imageHeight = {{ height }};
+    if (!window.OpenSeadragon) {
+      showViewerLoadError();
+    } else {
+      const viewer = OpenSeadragon({
+        id: "viewer",
+        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/",
+        tileSources: "/dzi.dzi",
+        showNavigator: true,
+        animationTime: 0.15,
+        blendTime: 0.05,
+        maxZoomPixelRatio: 2
+      });
+
+      async function loadPatches() {
+        const response = await fetch("/api/patches");
+        const patches = await response.json();
+        const renderLimit = 10000;
+        document.getElementById("patch-count").textContent =
+          patches.length > renderLimit ? `${patches.length} patches (${renderLimit} shown)` : `${patches.length} patches`;
+        viewer.addHandler("open", function () {
+          patches.slice(0, renderLimit).forEach(function (patch) {
+            const element = document.createElement("div");
+            element.className = "patch-overlay";
+            if (patch.score !== undefined) {
+              element.title = `score: ${Number(patch.score).toFixed(3)}`;
+            }
+            const rect = viewer.viewport.imageToViewportRectangle(
+              patch.x,
+              patch.y,
+              patch.width,
+              patch.height
+            );
+            viewer.addOverlay({
+              element: element,
+              location: rect,
+              checkResize: false
+            });
+          });
+        });
+      }
+
+      loadPatches().catch(function (error) {
+        console.error("Failed to load patches", error);
+      });
+    }
+  </script>
+</body>
+</html>

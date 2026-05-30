@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slidebridge-core"
+version = "0.1.1"
+description = "A lightweight WSI inspection and debugging toolkit for computational pathology."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "SlideBridge Core contributors" }
+]
+keywords = ["computational pathology", "whole slide imaging", "wsi", "debugging"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+  "fastapi",
+  "jinja2",
+  "numpy",
+  "pandas",
+  "pillow",
+  "rich",
+  "tifffile",
+  "typer",
+  "uvicorn",
+]
+
+[project.optional-dependencies]
+wsi = ["tiffslide", "openslide-python", "openslide-bin; platform_system == 'Windows'"]
+test = ["pytest", "httpx"]
+hdf5 = ["h5py"]
+
+[project.scripts]
+slidebridge = "slidebridge.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["slidebridge*"]
+
+[tool.setuptools.package-data]
+slidebridge = ["server/templates/*.html"]
