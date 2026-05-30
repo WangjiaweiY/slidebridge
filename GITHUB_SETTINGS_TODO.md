@@ -29,9 +29,11 @@ Leave blank for now, or add GitHub Pages/docs later.
 - tiffslide
 - python
 - fastapi
-- qupath
 - pathology
 - ai
+
+Do not add QuPath or ASAP topics until annotation overlay support lands in a
+future release.
 
 ## Release
 
