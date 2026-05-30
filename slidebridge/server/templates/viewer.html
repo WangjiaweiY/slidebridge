@@ -347,13 +347,16 @@
       position: relative;
       min-width: 0;
       min-height: 0;
+      height: 100vh;
+      overflow: hidden;
       background: #111820;
     }
     #viewer {
-      width: 100%;
-      height: 100%;
+      position: absolute;
+      inset: 0;
+      width: auto;
+      height: auto;
       background: #111820;
-      position: relative;
     }
     #viewer-error {
       display: none;
@@ -652,7 +655,7 @@
       });
     }
 
-    function setupTabs() {
+    function setupTabs(onChange) {
       const buttons = Array.from(document.querySelectorAll(".tab-button"));
       const panels = Array.from(document.querySelectorAll(".tab-panel"));
       buttons.forEach((button) => {
@@ -663,6 +666,9 @@
           const target = button.dataset.tabTarget;
           buttons.forEach((item) => item.classList.toggle("active", item === button));
           panels.forEach((panel) => panel.classList.toggle("active", panel.id === target));
+          if (onChange) {
+            onChange();
+          }
         });
       });
     }
@@ -714,13 +720,17 @@
     }
 
     async function initializeViewer() {
-      setupTabs();
       applyLanguage();
       await loadOpenSeadragon();
       const viewer = OpenSeadragon({
         id: "viewer",
         prefixUrl: osdPrefixUrl,
         showNavigator: true,
+        navigatorPosition: "TOP_RIGHT",
+        navigatorWidth: "260px",
+        navigatorHeight: "170px",
+        navigatorMaintainSizeRatio: true,
+        preserveViewport: false,
         animationTime: 0.15,
         blendTime: 0.05,
         maxZoomPixelRatio: 2
@@ -731,6 +741,9 @@
       let annotationPayload = null;
       let patchElements = [];
       let annotationElements = [];
+      setupTabs(function () {
+        refreshViewerLayout(false);
+      });
       setupLanguage(function () {
         if (patchPayload) {
           document.getElementById("patch-count").textContent = patchCountLabel(patchPayload);
@@ -746,8 +759,7 @@
 
       viewer.addHandler("open", function () {
         isOpen = true;
-        renderPatches();
-        renderAnnotations();
+        refreshViewerLayout(true);
       });
 
       renderSlideList();
@@ -767,6 +779,18 @@
         document.getElementById("dynamic-warnings").innerHTML = "";
         viewer.open(`/slides/${selectedSlideId}/dzi.dzi`);
         await Promise.all([loadInfo(), loadPatches(), loadAnnotations()]);
+      }
+
+      function refreshViewerLayout(goHome) {
+        window.requestAnimationFrame(function () {
+          viewer.viewport.resize();
+          if (goHome) {
+            viewer.viewport.goHome(true);
+          }
+          viewer.forceRedraw();
+          renderPatches();
+          renderAnnotations();
+        });
       }
 
       function renderSlideList() {
