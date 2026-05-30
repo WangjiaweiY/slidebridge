@@ -33,6 +33,10 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert tile.headers["cache-control"] == "public, max-age=3600"
     assert tile.headers["content-type"] == "image/jpeg"
 
+    asset = client.get("/static/vendor/openseadragon/openseadragon.min.js")
+    assert asset.status_code == 200
+    assert "OpenSeadragon" in asset.text
+
     invalid = client.get("/dzi_files/99/0_0.jpeg")
     assert invalid.status_code == 404
 

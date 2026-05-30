@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
 from jinja2 import Template
 from PIL import Image
 
@@ -74,6 +75,9 @@ def create_app(
             slide.close()
 
     app = FastAPI(title="SlideBridge Viewer", lifespan=lifespan)
+    static_dir = Path(__file__).parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:

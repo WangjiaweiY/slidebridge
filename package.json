@@ -1,0 +1,12 @@
+{
+  "name": "slidebridge-core-assets",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Frontend asset manifest for the SlideBridge Core viewer.",
+  "scripts": {
+    "vendor:openseadragon": "node scripts/vendor-openseadragon.mjs"
+  },
+  "dependencies": {
+    "openseadragon": "4.1.0"
+  }
+}

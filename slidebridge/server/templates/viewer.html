@@ -130,7 +130,7 @@
     </div>
   </header>
   <div id="viewer">
-    <div id="viewer-error">OpenSeadragon failed to load. Please check your network connection or use a local viewer asset in a future release.</div>
+    <div id="viewer-error">OpenSeadragon failed to load. Please check the bundled viewer asset or your network connection.</div>
   </div>
   <script>
     function showViewerLoadError() {
@@ -139,17 +139,53 @@
         element.style.display = "block";
       }
     }
-  </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/openseadragon.min.js" onerror="showViewerLoadError()"></script>
-  <script>
+
+    const osdAssetSources = [
+      {
+        script: "/static/vendor/openseadragon/openseadragon.min.js",
+        prefixUrl: "/static/vendor/openseadragon/images/"
+      },
+      {
+        script: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/openseadragon.min.js",
+        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/"
+      }
+    ];
+    let osdPrefixUrl = osdAssetSources[0].prefixUrl;
+
+    function loadScript(url) {
+      return new Promise(function (resolve, reject) {
+        const script = document.createElement("script");
+        script.src = url;
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    async function loadOpenSeadragon() {
+      for (const source of osdAssetSources) {
+        osdPrefixUrl = source.prefixUrl;
+        try {
+          await loadScript(source.script);
+          if (window.OpenSeadragon) {
+            return;
+          }
+        } catch (error) {
+          console.warn("OpenSeadragon asset failed", source.script, error);
+        }
+      }
+      showViewerLoadError();
+      throw new Error("OpenSeadragon failed to load");
+    }
+
     const imageWidth = {{ width }};
     const imageHeight = {{ height }};
-    if (!window.OpenSeadragon) {
-      showViewerLoadError();
-    } else {
+    async function initializeViewer() {
+      await loadOpenSeadragon();
       const viewer = OpenSeadragon({
         id: "viewer",
-        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/",
+        prefixUrl: osdPrefixUrl,
         tileSources: "/dzi.dzi",
         showNavigator: true,
         animationTime: 0.15,
@@ -253,6 +289,11 @@
         console.error("Failed to load patches", error);
       });
     }
+
+    initializeViewer().catch(function (error) {
+      console.error(error);
+      showViewerLoadError();
+    });
   </script>
 </body>
 </html>

@@ -1,5 +1,11 @@
 # SlideBridge Core
 
+[![CI](https://github.com/WangjiaweiY/slidebridge/actions/workflows/ci.yml/badge.svg)](https://github.com/WangjiaweiY/slidebridge/actions/workflows/ci.yml)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+
+[中文 README](README.zh-CN.md)
+
 A lightweight WSI inspection and debugging toolkit for computational pathology.
 
 Debug whole-slide images like a developer.
@@ -10,13 +16,17 @@ Debug whole-slide images like a developer.
 
 ## What is SlideBridge Core?
 
-SlideBridge Core helps computational pathology researchers and AI engineers inspect whole-slide images, normalize metadata, visualize patch coordinates, and generate lightweight QC reports.
+SlideBridge Core helps computational pathology researchers and AI engineers
+inspect whole-slide images, normalize metadata, visualize patch coordinates, and
+generate lightweight QC reports.
 
 Current version: `0.2.0`
 
 ## Quick Demo
 
 ```powershell
+git clone https://github.com/WangjiaweiY/slidebridge.git
+cd slidebridge
 pip install -e .
 slidebridge create-demo --out outputs\demo_slide.png
 slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
@@ -30,8 +40,10 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - Not for clinical diagnosis.
 - This project does not include proprietary vendor SDKs.
 - This project does not include proprietary vendor format implementations.
-- Vendor-specific readers should be integrated only through separately licensed private plugins.
-- This project is not affiliated with, endorsed by, or certified by any scanner vendor.
+- Vendor-specific readers should be integrated only through separately licensed
+  private plugins.
+- This project is not affiliated with, endorsed by, or certified by any scanner
+  vendor.
 
 ## Features
 
@@ -40,6 +52,7 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - Metadata inspection
 - Thumbnail export
 - Local browser-based WSI viewer
+- Bundled local OpenSeadragon viewer asset with CDN fallback
 - Patch coordinate overlay
 - Lightweight QC report
 - Plugin-friendly architecture
@@ -51,7 +64,23 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - Patch image export
 - Static overlay rendering
 
-## Installation on Windows
+## Installation
+
+### From GitHub
+
+```powershell
+pip install git+https://github.com/WangjiaweiY/slidebridge.git
+```
+
+### Development Install
+
+```powershell
+git clone https://github.com/WangjiaweiY/slidebridge.git
+cd slidebridge
+pip install -e .[dev]
+```
+
+## Windows Notes
 
 Create and activate an environment:
 
@@ -60,15 +89,16 @@ conda create -n slidebridge python=3.11 -y
 conda activate slidebridge
 ```
 
-Install dependencies and the editable package:
+If you are setting up a fresh Windows environment, install dependencies first:
 
 ```powershell
 pip install tiffslide openslide-python openslide-bin pillow numpy pandas fastapi uvicorn typer rich jinja2 pytest h5py
-cd C:\path\to\slidebridge-core
 pip install -e .
 ```
 
-Windows note: `openslide-bin` can provide the OpenSlide DLLs needed by `openslide-python`. If OpenSlide is unavailable, SlideBridge can still run supported workflows through TiffSlide or the image reader where applicable.
+Windows note: `openslide-bin` can provide the OpenSlide DLLs needed by
+`openslide-python`. If OpenSlide is unavailable, SlideBridge can still run
+supported workflows through TiffSlide or the image reader where applicable.
 
 ## Quick Start with Synthetic Demo
 
@@ -134,7 +164,8 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 - `slidebridge export-patches PATH --patches PATCHES --out DIR`: export patch images and a manifest.
 - `slidebridge render-overlay PATH --patches PATCHES --out OUTPUT`: render a static patch/score overlay image.
 - `slidebridge create-demo --out outputs\demo_slide.png`: create a synthetic H&E-like demo image.
-- `slidebridge view PATH --patches COORDS.csv --heatmap SCORES.npy`: start the local pan/zoom viewer with optional model/debug score overlay.
+- `slidebridge view PATH --patches COORDS.csv --heatmap SCORES.npy`: start the
+  local pan/zoom viewer with optional model/debug score overlay.
 - `slidebridge readers`: list registered readers and dependency availability.
 - `slidebridge env`: show Python, package, and reader dependency diagnostics.
 - `slidebridge version`: show version and runtime information.
@@ -156,7 +187,9 @@ x,y,width,height,score
 
 ## Plugin Architecture
 
-The public core defines the reader interface and registry. Private readers should live in separate private packages and register a reader object with `slidebridge.core.registry.register_reader`.
+The public core defines the reader interface and registry. Private readers
+should live in separate private packages and register a reader object with
+`slidebridge.core.registry.register_reader`.
 
 Minimal fake reader sketch:
 
@@ -191,16 +224,16 @@ v0.2.0:
 
 v0.2.1:
 
+- annotation overlay
 - QuPath GeoJSON overlay
 - ASAP XML overlay
 - annotation conversion
 
 v0.3:
 
+- canvas overlay performance
+- spatial culling for large overlays
 - plugin template
-- DICOM WSI optional reader
-- OME-TIFF / OME-Zarr optional reader
-- better QC metrics
 
 ## License
 

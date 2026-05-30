@@ -12,4 +12,3 @@
 - sensitive content scan
 - `git status` clean
 - tag release
-

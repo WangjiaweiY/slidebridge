@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a public-core feature for SlideBridge Core.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What research/debugging workflow would this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_feature
+    attributes:
+      label: Proposed feature
+      description: Describe the behavior and public dependencies involved.
+    validations:
+      required: true
+  - type: textarea
+    id: example_command
+    attributes:
+      label: Example command
+      render: shell
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+  - type: dropdown
+    id: proprietary_formats
+    attributes:
+      label: Does this involve proprietary formats or private dependencies?
+      options:
+        - "No"
+        - "Yes"
+        - Not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checklist
+      options:
+        - label: This request does not require sharing proprietary SDKs or patient data.
+          required: true
+        - label: I am not asking for proprietary format analysis or public-core implementation.
+          required: true

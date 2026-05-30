@@ -64,4 +64,9 @@ slidebridge = "slidebridge.cli:app"
 include = ["slidebridge*"]
 
 [tool.setuptools.package-data]
-slidebridge = ["server/templates/*.html"]
+slidebridge = [
+  "server/templates/*.html",
+  "server/static/vendor/openseadragon/*.js",
+  "server/static/vendor/openseadragon/*.txt",
+  "server/static/vendor/openseadragon/images/*.png",
+]
