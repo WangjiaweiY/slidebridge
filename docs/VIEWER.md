@@ -23,6 +23,24 @@ x,y,width,height,score
 
 If more than 10000 patches are provided, the viewer displays a warning and renders the first 10000 rectangles to keep the browser responsive.
 
+## Heatmap Overlay
+
+If patches include `score` or `attention`, or if `--heatmap` is provided, the viewer renders a model/debug score overlay.
+
+```powershell
+slidebridge view C:\path\to\your\slide.svs --patches outputs\coords.h5 --heatmap outputs\attention.npy --heatmap-opacity 0.45
+```
+
+The viewer includes:
+
+- show/hide overlay toggle
+- opacity slider
+- score legend
+- patch count
+- hover text with index, coordinates, size, and score
+
+For large overlays, the server can limit returned patches with `--max-overlay-patches`, and the browser displays a performance warning.
+
 ## Tile Options
 
 ```powershell
@@ -30,4 +48,3 @@ slidebridge view C:\path\to\your\slide.svs --tile-size 256 --jpeg-quality 85
 ```
 
 Tiles are JPEG responses with a one-hour cache header.
-

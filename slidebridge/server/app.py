@@ -4,7 +4,6 @@ import math
 from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -13,7 +12,9 @@ from PIL import Image
 
 from slidebridge.core.metadata import summary
 from slidebridge.core.registry import open_slide
-from slidebridge.overlays.patches import load_patches_csv, validate_patches
+from slidebridge.overlays.heatmap import attach_scores, load_scores
+from slidebridge.overlays.patch_table import PatchTable
+from slidebridge.overlays.patches import load_patch_table
 from slidebridge.utils.image import ensure_rgb
 
 
@@ -23,6 +24,11 @@ def create_app(
     reader: str | None = None,
     tile_size: int = 256,
     jpeg_quality: int = 85,
+    heatmap_path: str | Path | None = None,
+    default_patch_size: int = 256,
+    heatmap_opacity: float = 0.45,
+    score_normalization: str = "minmax",
+    max_overlay_patches: int = 50_000,
 ) -> FastAPI:
     tile_size = int(tile_size)
     jpeg_quality = int(jpeg_quality)
@@ -30,6 +36,9 @@ def create_app(
         raise ValueError("tile_size must be a positive integer")
     if jpeg_quality < 1 or jpeg_quality > 100:
         raise ValueError("jpeg_quality must be between 1 and 100")
+    if score_normalization not in {"minmax", "percentile", "none"}:
+        raise ValueError("score_normalization must be one of: minmax, percentile, none")
+    max_overlay_patches = max(0, int(max_overlay_patches))
 
     slide = open_slide(slide_path, reader=reader)
     info = summary(slide)
@@ -37,15 +46,24 @@ def create_app(
     height = int(info["height"])
     max_dzi_level = int(math.ceil(math.log2(max(width, height)))) if max(width, height) > 1 else 0
 
-    patches = []
+    patch_table = PatchTable(records=[])
+    if heatmap_path is not None and patches_path is None:
+        raise ValueError("--heatmap requires --patches so scores can be aligned to coordinates")
     if patches_path:
-        patches = validate_patches(load_patches_csv(patches_path), width, height)
-    patch_warning = ""
-    if len(patches) > 10_000:
-        patch_warning = (
-            f"Patch overlay has {len(patches)} rectangles. "
-            "The browser renders the first 10000 to keep the viewer responsive."
+        patch_table = load_patch_table(patches_path, default_patch_size=default_patch_size)
+        if heatmap_path is not None:
+            patch_table = attach_scores(patch_table, load_scores(heatmap_path))
+        if score_normalization != "none":
+            patch_table = patch_table.normalize_scores(score_normalization)  # type: ignore[arg-type]
+        patch_table = patch_table.validate(width, height, mode="clip")
+
+    patch_summary = patch_table.summary()
+    patch_warnings = list(patch_summary.get("warnings", []))
+    if len(patch_table) > max_overlay_patches:
+        patch_warnings.append(
+            f"overlay_truncated:{max_overlay_patches}:{len(patch_table)}"
         )
+    patch_warning = "; ".join(patch_warnings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -72,8 +90,9 @@ def create_app(
                 objective_power=info["objective_power"],
                 vendor=info["vendor"],
                 warnings=info["warnings"],
-                patch_count=len(patches),
+                patch_count=len(patch_table),
                 patch_warning=patch_warning,
+                heatmap_opacity=max(0.0, min(float(heatmap_opacity), 1.0)),
             )
         )
 
@@ -82,8 +101,23 @@ def create_app(
         return info
 
     @app.get("/api/patches")
-    def api_patches() -> list[dict]:
-        return patches
+    def api_patches() -> dict:
+        returned_records = patch_table.records[:max_overlay_patches]
+        scores = [record.score for record in patch_table.records if record.score is not None]
+        warnings = list(patch_summary.get("warnings", []))
+        if len(patch_table) > max_overlay_patches:
+            warnings.append(
+                f"Returning first {max_overlay_patches} of {len(patch_table)} patches for viewer responsiveness."
+            )
+        return {
+            "count": len(patch_table),
+            "returned": len(returned_records),
+            "has_scores": bool(scores),
+            "score_min": min(scores) if scores else None,
+            "score_max": max(scores) if scores else None,
+            "warnings": warnings,
+            "patches": [record.to_dict() for record in returned_records],
+        }
 
     @app.get("/dzi.dzi")
     def dzi() -> Response:

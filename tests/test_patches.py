@@ -9,7 +9,11 @@ def test_load_patches_csv_with_defaults(tmp_path):
 
     patches = load_patches_csv(path)
 
-    assert patches == [{"x": 10, "y": 20, "width": 256, "height": 256, "score": 0.82}]
+    assert patches[0]["x"] == 10
+    assert patches[0]["y"] == 20
+    assert patches[0]["width"] == 256
+    assert patches[0]["height"] == 256
+    assert patches[0]["score"] == 0.82
 
 
 def test_load_patches_csv_width_height_and_score(tmp_path):
@@ -39,4 +43,3 @@ def test_validate_patches_out_of_bounds_does_not_crash():
     assert validated[0]["width"] > 0
     assert validated[1]["x"] == 99
     assert validated[1]["y"] == 79
-

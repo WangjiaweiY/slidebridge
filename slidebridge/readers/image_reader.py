@@ -36,7 +36,8 @@ class ImageSlide:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self._image = ensure_rgb(Image.open(path))
+        with Image.open(path) as image:
+            self._image = ensure_rgb(image).copy()
         self.dimensions = (int(self._image.width), int(self._image.height))
         self.level_count = 1
         self.level_dimensions = [self.dimensions]
@@ -79,4 +80,3 @@ class ImageSlide:
 
     def close(self) -> None:
         self._image.close()
-

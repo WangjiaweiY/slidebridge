@@ -7,6 +7,6 @@ SlideBridge Core is designed as a clean public core for research and algorithm d
 - It is not for clinical diagnosis.
 - It does not upload slide data or clinical data.
 - It does not represent, endorse, or certify any scanner vendor.
+- Heatmap and score overlays are algorithm debugging visualizations only.
 
 Private readers should be distributed separately under appropriate licenses.
-

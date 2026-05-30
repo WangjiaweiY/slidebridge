@@ -45,6 +45,29 @@
       font-size: 13px;
       white-space: nowrap;
     }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+      font-size: 13px;
+      color: #4e5a66;
+    }
+    .controls input[type="range"] {
+      width: 120px;
+    }
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-bar {
+      width: 92px;
+      height: 10px;
+      border: 1px solid #cbd3df;
+      background: linear-gradient(90deg, rgba(48, 112, 210, 0.25), rgba(245, 211, 84, 0.75), rgba(220, 48, 48, 0.95));
+    }
     .warning {
       margin-top: 8px;
       color: #8a5a00;
@@ -73,7 +96,11 @@
       box-sizing: border-box;
       border: 2px solid rgba(255, 80, 80, 0.95);
       background: rgba(255, 80, 80, 0.08);
-      pointer-events: none;
+      pointer-events: auto;
+    }
+    .patch-overlay.heatmap {
+      border: 0;
+      mix-blend-mode: multiply;
     }
   </style>
 </head>
@@ -93,7 +120,14 @@
       <div class="warning">{{ patch_warning }}</div>
       {% endif %}
     </div>
-    <div class="pill" id="patch-count">{{ patch_count }} patches</div>
+    <div>
+      <div class="pill" id="patch-count">{{ patch_count }} patches</div>
+      <div class="controls">
+        <label><input id="overlay-toggle" type="checkbox" checked> overlay</label>
+        <label>opacity <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}"></label>
+        <div class="legend" id="score-legend" hidden><span>low</span><span class="legend-bar"></span><span>high</span></div>
+      </div>
+    </div>
   </header>
   <div id="viewer">
     <div id="viewer-error">OpenSeadragon failed to load. Please check your network connection or use a local viewer asset in a future release.</div>
@@ -125,16 +159,32 @@
 
       async function loadPatches() {
         const response = await fetch("/api/patches");
-        const patches = await response.json();
-        const renderLimit = 10000;
+        const payload = await response.json();
+        const patches = payload.patches || [];
+        const hasScores = Boolean(payload.has_scores);
+        const renderLimit = patches.length;
         document.getElementById("patch-count").textContent =
-          patches.length > renderLimit ? `${patches.length} patches (${renderLimit} shown)` : `${patches.length} patches`;
+          payload.count > payload.returned ? `${payload.count} patches (${payload.returned} shown)` : `${payload.count} patches`;
+        document.getElementById("score-legend").hidden = !hasScores;
+        if (payload.warnings && payload.warnings.length) {
+          const warning = document.createElement("div");
+          warning.className = "warning";
+          warning.textContent = payload.warnings.join("; ");
+          document.querySelector("header > div").appendChild(warning);
+        }
         viewer.addHandler("open", function () {
           patches.slice(0, renderLimit).forEach(function (patch) {
             const element = document.createElement("div");
-            element.className = "patch-overlay";
+            element.className = hasScores ? "patch-overlay heatmap" : "patch-overlay";
+            const score = patch.score === undefined || patch.score === null ? null : Number(patch.score);
+            if (score !== null && Number.isFinite(score)) {
+              element.style.background = scoreColor(score, Number(document.getElementById("opacity-slider").value));
+              element.dataset.score = String(score);
+            }
             if (patch.score !== undefined) {
-              element.title = `score: ${Number(patch.score).toFixed(3)}`;
+              element.title = patchTitle(patch, score);
+            } else {
+              element.title = patchTitle(patch, null);
             }
             const rect = viewer.viewport.imageToViewportRectangle(
               patch.x,
@@ -149,6 +199,54 @@
             });
           });
         });
+        bindOverlayControls();
+      }
+
+      function patchTitle(patch, score) {
+        const parts = [
+          `index: ${patch.index ?? ""}`,
+          `x/y: ${patch.x}, ${patch.y}`,
+          `size: ${patch.width} x ${patch.height}`
+        ];
+        if (score !== null && Number.isFinite(score)) {
+          parts.push(`score: ${score.toFixed(3)}`);
+        }
+        return parts.join("\n");
+      }
+
+      function scoreColor(score, opacity) {
+        const value = Math.max(0, Math.min(1, Number(score)));
+        if (value < 0.5) {
+          const t = value / 0.5;
+          const r = Math.round(48 + (245 - 48) * t);
+          const g = Math.round(112 + (211 - 112) * t);
+          const b = Math.round(210 + (84 - 210) * t);
+          return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+        }
+        const t = (value - 0.5) / 0.5;
+        const r = Math.round(245 + (220 - 245) * t);
+        const g = Math.round(211 + (48 - 211) * t);
+        const b = Math.round(84 + (48 - 84) * t);
+        return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+      }
+
+      function bindOverlayControls() {
+        const toggle = document.getElementById("overlay-toggle");
+        const slider = document.getElementById("opacity-slider");
+        const update = function () {
+          const opacity = Number(slider.value);
+          document.querySelectorAll(".patch-overlay").forEach(function (element) {
+            element.style.display = toggle.checked ? "block" : "none";
+            if (element.dataset.score !== undefined) {
+              element.style.background = scoreColor(Number(element.dataset.score), opacity);
+            } else {
+              element.style.opacity = String(opacity);
+            }
+          });
+        };
+        toggle.addEventListener("change", update);
+        slider.addEventListener("input", update);
+        update();
       }
 
       loadPatches().catch(function (error) {

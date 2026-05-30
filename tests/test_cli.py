@@ -14,14 +14,14 @@ def test_root_version_option():
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert "SlideBridge Core 0.1.1" in result.stdout
+    assert "SlideBridge Core 0.2.0" in result.stdout
 
 
 def test_version_command():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "SlideBridge Core version: 0.1.1" in result.stdout
+    assert "SlideBridge Core version: 0.2.0" in result.stdout
     assert "Python version:" in result.stdout
 
 
@@ -67,4 +67,3 @@ def test_create_demo_and_inspect(tmp_path):
     assert payload["reader"] == "image"
     assert payload["width"] == 512
     assert payload["height"] == 384
-

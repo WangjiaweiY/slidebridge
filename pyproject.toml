@@ -4,41 +4,58 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slidebridge-core"
-version = "0.1.1"
+version = "0.2.0"
 description = "A lightweight WSI inspection and debugging toolkit for computational pathology."
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+license = "Apache-2.0"
 authors = [
   { name = "SlideBridge Core contributors" }
 ]
-keywords = ["computational pathology", "whole slide imaging", "wsi", "debugging"]
+keywords = [
+  "computational-pathology",
+  "whole-slide-image",
+  "digital-pathology",
+  "wsi",
+  "openslide",
+  "tiffslide",
+  "pathology-ai",
+  "debugging",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dependencies = [
   "fastapi",
+  "h5py",
   "jinja2",
   "numpy",
+  "openslide-python",
+  "openslide-bin; platform_system == 'Windows'",
   "pandas",
   "pillow",
   "rich",
   "tifffile",
+  "tiffslide",
   "typer",
   "uvicorn",
 ]
 
 [project.optional-dependencies]
-wsi = ["tiffslide", "openslide-python", "openslide-bin; platform_system == 'Windows'"]
-test = ["pytest", "httpx"]
-hdf5 = ["h5py"]
+dev = [
+  "pytest",
+  "httpx",
+  "build",
+  "twine",
+]
+h5 = ["h5py"]
+torch = ["torch"]
 
 [project.scripts]
 slidebridge = "slidebridge.cli:app"

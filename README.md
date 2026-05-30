@@ -4,9 +4,25 @@ A lightweight WSI inspection and debugging toolkit for computational pathology.
 
 Debug whole-slide images like a developer.
 
+![SlideBridge demo overlay](docs/assets/demo_overlay.png)
+
+> The demo image above is synthetic and contains no patient data.
+
 ## What is SlideBridge Core?
 
 SlideBridge Core helps computational pathology researchers and AI engineers inspect whole-slide images, normalize metadata, visualize patch coordinates, and generate lightweight QC reports.
+
+Current version: `0.2.0`
+
+## Quick Demo
+
+```powershell
+pip install -e .
+slidebridge create-demo --out outputs\demo_slide.png
+slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
+slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\demo_overlay.png
+slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
+```
 
 ## Important Notice
 
@@ -29,6 +45,11 @@ SlideBridge Core helps computational pathology researchers and AI engineers insp
 - Plugin-friendly architecture
 - Environment and reader diagnostics
 - Synthetic demo image generation
+- PatchTable coordinate abstraction
+- CSV/NPY/H5/JSON/PT optional coordinate loading
+- Score/attention heatmap overlay
+- Patch image export
+- Static overlay rendering
 
 ## Installation on Windows
 
@@ -43,7 +64,7 @@ Install dependencies and the editable package:
 
 ```powershell
 pip install tiffslide openslide-python openslide-bin pillow numpy pandas fastapi uvicorn typer rich jinja2 pytest h5py
-cd E:\Codex\slidebridge\slidebridge-core
+cd C:\path\to\slidebridge-core
 pip install -e .
 ```
 
@@ -58,6 +79,37 @@ slidebridge thumbnail outputs\demo_slide.png --out outputs\demo_thumbnail.jpg
 slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --patch-size 256 --count 100
 slidebridge doctor outputs\demo_slide.png --out outputs\demo_report.html
 slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
+```
+
+## Model Output Debugging
+
+Generate coordinates in an interoperable H5 format and inspect model/debug scores in the viewer:
+
+```powershell
+slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.h5 --format h5 --count 200
+slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.h5 --port 7860 --open-browser
+```
+
+## Attention / Score Heatmap
+
+If the coordinate file contains `score` or `attention`, SlideBridge can render a model/debug score overlay:
+
+```powershell
+slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
+slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\demo_overlay.png
+slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
+```
+
+If scores are stored separately:
+
+```powershell
+slidebridge view C:\path\to\your\slide.svs --patches outputs\coords.h5 --heatmap outputs\attention.npy
+```
+
+## Export Patches
+
+```powershell
+slidebridge export-patches C:\path\to\your\slide.svs --patches outputs\coords.csv --out outputs\patches --limit 50
 ```
 
 ## Use Your Own WSI
@@ -78,8 +130,11 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 - `slidebridge thumbnail PATH --out OUTPUT`: export an RGB thumbnail.
 - `slidebridge doctor PATH_OR_DIR --out REPORT.html --json-out REPORT.json`: generate HTML and optional JSON QC reports.
 - `slidebridge sample-patches PATH --out COORDS.csv`: create random patch coordinates for overlay testing.
+- `slidebridge inspect-patches PATCHES --slide PATH`: inspect coordinate files and optional slide bounds.
+- `slidebridge export-patches PATH --patches PATCHES --out DIR`: export patch images and a manifest.
+- `slidebridge render-overlay PATH --patches PATCHES --out OUTPUT`: render a static patch/score overlay image.
 - `slidebridge create-demo --out outputs\demo_slide.png`: create a synthetic H&E-like demo image.
-- `slidebridge view PATH --patches COORDS.csv`: start the local pan/zoom viewer.
+- `slidebridge view PATH --patches COORDS.csv --heatmap SCORES.npy`: start the local pan/zoom viewer with optional model/debug score overlay.
 - `slidebridge readers`: list registered readers and dependency availability.
 - `slidebridge env`: show Python, package, and reader dependency diagnostics.
 - `slidebridge version`: show version and runtime information.
@@ -127,20 +182,18 @@ No proprietary reader is included in SlideBridge Core.
 
 ## Roadmap
 
-v0.1.1:
+v0.2.0:
 
-- release hardening
-- env/readers diagnostics
-- synthetic demo
-- documentation cleanup
+- interoperable patch coordinate loading
+- model/debug score heatmap overlay
+- patch image export
+- patch coordinate inspection
 
-v0.2:
+v0.2.1:
 
-- attention heatmap overlay
-- h5/npy/pt coords support
 - QuPath GeoJSON overlay
 - ASAP XML overlay
-- export patches
+- annotation conversion
 
 v0.3:
 
@@ -152,4 +205,3 @@ v0.3:
 ## License
 
 Apache-2.0
-

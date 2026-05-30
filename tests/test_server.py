@@ -20,7 +20,9 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
 
     patches = client.get("/api/patches")
     assert patches.status_code == 200
-    assert patches.json()[0]["score"] == 0.5
+    assert patches.json()["patches"][0]["score"] == 0.5
+    assert patches.json()["count"] == 1
+    assert patches.json()["has_scores"] is True
 
     dzi = client.get("/dzi.dzi")
     assert dzi.status_code == 200
@@ -44,4 +46,3 @@ def test_server_rejects_invalid_tile_config(tmp_path):
         assert "tile_size" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected invalid tile_size to raise")
-
