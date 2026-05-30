@@ -22,6 +22,8 @@ def run_ssh_command(command: list[str], timeout: float | None = None) -> RemoteC
     completed = subprocess.run(
         command,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         timeout=timeout,
         check=False,

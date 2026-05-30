@@ -365,7 +365,7 @@ def view(
     patches: Optional[Path] = typer.Option(None, "--patches", help="Patch coordinate CSV."),
     host: str = typer.Option("127.0.0.1", "--host", help="Server host."),
     port: int = typer.Option(7860, "--port", help="Server port."),
-    open_browser: bool = typer.Option(False, "--open-browser", help="Open the browser."),
+    open_browser: bool = typer.Option(False, "--open-browser/--no-open-browser", help="Open the browser."),
     reader: Optional[str] = typer.Option(None, "--reader", help="Specify a reader by name."),
     tile_size: int = typer.Option(256, "--tile-size", min=64, max=1024, help="Deep Zoom tile size."),
     jpeg_quality: int = typer.Option(85, "--jpeg-quality", min=1, max=100, help="JPEG tile quality."),
