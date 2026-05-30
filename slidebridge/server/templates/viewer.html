@@ -171,6 +171,22 @@
     .tab-panel.active {
       display: block;
     }
+    #library-tab {
+      overflow: hidden;
+    }
+    #library-tab.active {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+    }
+    #library-panel {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      height: 100%;
+      min-height: 0;
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
     section {
       padding: 0 0 14px;
       margin-bottom: 14px;
@@ -223,9 +239,31 @@
     }
     .slide-list {
       display: grid;
+      align-content: start;
       gap: 6px;
+      min-height: 0;
       max-height: none;
-      overflow: auto;
+      overflow-x: hidden;
+      overflow-y: scroll;
+      padding-right: 8px;
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      scrollbar-color: #7b8a93 #e7edf2;
+    }
+    .slide-list::-webkit-scrollbar {
+      width: 10px;
+    }
+    .slide-list::-webkit-scrollbar-track {
+      background: #e7edf2;
+      border-radius: 999px;
+    }
+    .slide-list::-webkit-scrollbar-thumb {
+      background: #7b8a93;
+      border: 2px solid #e7edf2;
+      border-radius: 999px;
+    }
+    .slide-list::-webkit-scrollbar-thumb:hover {
+      background: #596872;
     }
     .slide-item {
       width: 100%;
@@ -411,7 +449,7 @@
         border-bottom: 1px solid var(--line);
       }
       .slide-list {
-        max-height: 180px;
+        max-height: 240px;
       }
     }
   </style>
