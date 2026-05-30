@@ -48,6 +48,25 @@ The viewer includes:
 For large overlays, the server can limit returned patches with
 `--max-overlay-patches`, and the browser displays a performance warning.
 
+## Annotation Overlay
+
+The viewer can display annotation files with patch and heatmap overlays:
+
+```powershell
+slidebridge view C:\path\to\your\slide.svs --patches outputs\coords.csv --annotations outputs\annotations.geojson --port 7860 --open-browser
+```
+
+Annotation overlays use level-0 image coordinates and support:
+
+- show/hide toggle
+- opacity slider
+- label summary
+- hover text with label, type, id, and bbox
+- polygon, rectangle, point, and line display
+
+If the annotation count exceeds `--max-annotations`, the server returns the
+first subset and reports a warning.
+
 ## Tile Options
 
 ```powershell

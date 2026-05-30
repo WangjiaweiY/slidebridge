@@ -11,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Template
 from PIL import Image
 
+from slidebridge.annotations.io import load_annotation_table
+from slidebridge.annotations.table import AnnotationTable
 from slidebridge.core.metadata import summary
 from slidebridge.core.registry import open_slide
 from slidebridge.overlays.heatmap import attach_scores, load_scores
@@ -30,6 +32,11 @@ def create_app(
     heatmap_opacity: float = 0.45,
     score_normalization: str = "minmax",
     max_overlay_patches: int = 50_000,
+    annotations_path: str | Path | None = None,
+    annotation_format: str | None = None,
+    annotation_opacity: float = 0.35,
+    max_annotations: int = 10_000,
+    annotation_labels: list[str] | None = None,
 ) -> FastAPI:
     tile_size = int(tile_size)
     jpeg_quality = int(jpeg_quality)
@@ -40,6 +47,7 @@ def create_app(
     if score_normalization not in {"minmax", "percentile", "none"}:
         raise ValueError("score_normalization must be one of: minmax, percentile, none")
     max_overlay_patches = max(0, int(max_overlay_patches))
+    max_annotations = max(0, int(max_annotations))
 
     slide = open_slide(slide_path, reader=reader)
     info = summary(slide)
@@ -65,6 +73,19 @@ def create_app(
             f"overlay_truncated:{max_overlay_patches}:{len(patch_table)}"
         )
     patch_warning = "; ".join(patch_warnings)
+    annotation_table = AnnotationTable(records=[])
+    if annotations_path is not None:
+        annotation_table = load_annotation_table(annotations_path, format=annotation_format).compute_bboxes().normalize_colors()
+        if annotation_labels:
+            annotation_table = annotation_table.filter_labels(annotation_labels)
+        annotation_table = annotation_table.validate(width, height, mode="warn")
+    annotation_summary = annotation_table.summary()
+    annotation_warnings = list(annotation_summary.get("warnings", []))
+    if len(annotation_table) > max_annotations:
+        annotation_warnings.append(
+            f"Returning first {max_annotations} of {len(annotation_table)} annotations for viewer responsiveness."
+        )
+    annotation_warning = "; ".join(annotation_warnings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -97,6 +118,9 @@ def create_app(
                 patch_count=len(patch_table),
                 patch_warning=patch_warning,
                 heatmap_opacity=max(0.0, min(float(heatmap_opacity), 1.0)),
+                annotation_count=len(annotation_table),
+                annotation_warning=annotation_warning,
+                annotation_opacity=max(0.0, min(float(annotation_opacity), 1.0)),
             )
         )
 
@@ -121,6 +145,24 @@ def create_app(
             "score_max": max(scores) if scores else None,
             "warnings": warnings,
             "patches": [record.to_dict() for record in returned_records],
+        }
+
+    @app.get("/api/annotations")
+    def api_annotations() -> dict:
+        returned_records = annotation_table.records[:max_annotations]
+        warnings = list(annotation_summary.get("warnings", []))
+        if len(annotation_table) > max_annotations:
+            warnings.append(
+                f"Returning first {max_annotations} of {len(annotation_table)} annotations for viewer responsiveness."
+            )
+        return {
+            "count": len(annotation_table),
+            "returned": len(returned_records),
+            "coordinate_space": annotation_table.coordinate_space,
+            "labels": annotation_table.labels(),
+            "type_counts": annotation_summary.get("type_counts", {}),
+            "warnings": warnings,
+            "annotations": [record.to_dict() for record in returned_records],
         }
 
     @app.get("/dzi.dzi")

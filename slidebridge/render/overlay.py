@@ -5,6 +5,8 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
+from slidebridge.annotations.render import draw_annotations
+from slidebridge.annotations.table import AnnotationTable
 from slidebridge.core.protocol import Slide
 from slidebridge.overlays.patch_table import PatchTable
 from slidebridge.utils.image import ensure_rgb
@@ -13,11 +15,14 @@ from slidebridge.utils.paths import ensure_parent
 
 def render_overlay(
     slide: Slide,
-    patch_table: PatchTable,
+    patch_table: PatchTable | None,
     out_path: str | Path,
+    annotation_table: AnnotationTable | None = None,
     max_size: int = 1600,
     opacity: float = 0.45,
     show_labels: bool = False,
+    annotation_opacity: float = 0.35,
+    draw_annotation_labels: bool = False,
     image_format: str | None = None,
 ) -> dict[str, Any]:
     thumbnail = ensure_rgb(slide.get_thumbnail(max_size=max_size))
@@ -27,6 +32,8 @@ def render_overlay(
     scale_y = thumb_height / slide_height
     overlay = Image.new("RGBA", thumbnail.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay, "RGBA")
+    patch_table = patch_table or PatchTable(records=[])
+    annotation_table = annotation_table or AnnotationTable(records=[])
     has_scores = any(record.score is not None for record in patch_table.records)
     alpha = int(max(0.0, min(1.0, float(opacity))) * 255)
     rendered = 0
@@ -54,6 +61,15 @@ def render_overlay(
                 draw.text((box[0] + 2, box[1] + 2), label, fill=(30, 30, 30, 220))
         rendered += 1
 
+    rendered_annotations = draw_annotations(
+        draw,
+        annotation_table,
+        scale_x,
+        scale_y,
+        opacity=annotation_opacity,
+        draw_labels=draw_annotation_labels,
+    )
+
     composed = Image.alpha_composite(thumbnail.convert("RGBA"), overlay).convert("RGB")
     output = ensure_parent(out_path)
     fmt = _format_from_path(output, image_format)
@@ -65,6 +81,8 @@ def render_overlay(
         "input_slide": str(slide.path),
         "patches_count": len(patch_table),
         "rendered_patches_count": rendered,
+        "annotations_count": len(annotation_table),
+        "rendered_annotations_count": rendered_annotations,
         "output_path": str(output),
         "has_scores": has_scores,
     }
