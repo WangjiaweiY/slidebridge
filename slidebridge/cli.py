@@ -4,6 +4,7 @@ import csv
 import json
 import platform
 import random
+import subprocess
 import sys
 import webbrowser
 from pathlib import Path
@@ -27,6 +28,11 @@ from slidebridge.overlays.patches import load_patch_table
 from slidebridge.qc.blur import blur_score
 from slidebridge.qc.report import generate_html_report, generate_json_report
 from slidebridge.qc.tissue import estimate_tissue_percent
+from slidebridge.remote.commands import build_find_command, build_remote_slidebridge_command, quote_remote_arg
+from slidebridge.remote.diagnostics import REMOTE_INSTALL_HINT, RemoteCommandResult, run_ssh_command
+from slidebridge.remote.spec import RemotePath, is_remote_spec, parse_remote_path
+from slidebridge.remote.ssh import build_ssh_base_command, require_ssh_available
+from slidebridge.remote.tunnel import build_tunnel_command, is_local_port_available, wait_for_http
 from slidebridge.render.overlay import render_overlay
 from slidebridge.server.app import create_app
 from slidebridge.utils.demo import create_demo_slide
@@ -484,6 +490,226 @@ def label_patches_command(
             slide.close()
 
 
+@app.command("remote-check")
+def remote_check(
+    remote: str = typer.Argument(..., help="Remote host, user@host, or user@host:/server/path. Server-side paths are not uploaded."),
+    ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
+    identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
+    ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option, e.g. '-J bastion'. May be repeated."),
+    remote_runner: str = typer.Option("slidebridge", "--remote-runner", help="Remote SlideBridge command."),
+    remote_workdir: Optional[str] = typer.Option(None, "--remote-workdir", help="Optional remote working directory."),
+    slide: Optional[str] = typer.Option(None, "--slide", help="Optional remote slide path when REMOTE has no path."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON summary."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print commands without connecting over SSH."),
+) -> None:
+    """Check remote SSH access, SlideBridge availability, readers, and optional slide inspection."""
+
+    try:
+        remote_path, slide_path = _remote_from_target(remote, slide=slide, ssh_port=ssh_port)
+        checks = [
+            ("version", ["version"]),
+            ("env", ["env"]),
+            ("readers", ["readers"]),
+        ]
+        if slide_path:
+            checks.append(("inspect", ["inspect", slide_path]))
+        commands = [
+            (
+                name,
+                build_remote_slidebridge_command(remote_runner, args, remote_workdir=remote_workdir),
+            )
+            for name, args in checks
+        ]
+        ssh_commands = [
+            (name, _ssh_command_for_remote(remote_path, command, ssh_port, identity_file, ssh_option))
+            for name, command in commands
+        ]
+        if dry_run:
+            _print_remote_dry_run(None, commands, ssh_commands)
+            return
+        require_ssh_available()
+        results = []
+        for name, ssh_command in ssh_commands:
+            result = run_ssh_command(ssh_command, timeout=60)
+            if not json_output:
+                console.print(f"\n[bold]remote {name}[/bold]")
+                _print_remote_result(result)
+            results.append({"name": name, "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
+        if any(result["returncode"] != 0 for result in results) and not json_output:
+            console.print(f"[yellow]{REMOTE_INSTALL_HINT}[/yellow]")
+        if json_output:
+            print(json.dumps({"target": remote_path.target, "slide": slide_path, "results": results}, ensure_ascii=False, indent=2))
+    except Exception as exc:
+        _fail(exc)
+
+
+@app.command("remote-ls")
+def remote_ls(
+    remote_dir: str = typer.Argument(..., help="Remote directory as user@host:/server/path or host:/server/path. No files are downloaded."),
+    ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
+    identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
+    ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option, e.g. '-J bastion'. May be repeated."),
+    remote_workdir: Optional[str] = typer.Option(None, "--remote-workdir", help="Optional remote working directory."),
+    patterns: str = typer.Option("*.svs,*.tif,*.tiff,*.ndpi,*.mrxs,*.scn", "--patterns", help="Comma-separated find patterns."),
+    max_depth: int = typer.Option(2, "--max-depth", help="find maxdepth on the remote Linux/POSIX server."),
+    limit: int = typer.Option(100, "--limit", help="Maximum rows to print."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print command without connecting over SSH."),
+) -> None:
+    """List likely slide files on a remote Linux/POSIX server without reading them."""
+
+    try:
+        remote_path = parse_remote_path(remote_dir)
+        remote_path = RemotePath(remote_path.user, remote_path.host, remote_path.path, ssh_port)
+        find_command = build_find_command(remote_path.path, _split_csv(patterns), max_depth=max_depth, limit=limit)
+        remote_command = f"cd {quote_remote_arg(remote_workdir)} && {find_command}" if remote_workdir else find_command
+        ssh_command = _ssh_command_for_remote(remote_path, remote_command, ssh_port, identity_file, ssh_option)
+        if dry_run:
+            _print_remote_dry_run(None, [("find", remote_command)], [("find", ssh_command)])
+            return
+        require_ssh_available()
+        result = run_ssh_command(ssh_command, timeout=120)
+        if result.returncode != 0:
+            _print_remote_result(result)
+            raise RuntimeError("remote-ls failed. The remote server must provide a Linux/POSIX find command.")
+        rows = _parse_remote_ls(result.stdout)
+        if json_output:
+            print(json.dumps({"target": remote_path.target, "remote_dir": remote_path.path, "files": rows}, ensure_ascii=False, indent=2))
+        else:
+            table = Table(title="Remote Slide Files")
+            table.add_column("path")
+            table.add_column("size")
+            table.add_column("modified")
+            for row in rows:
+                table.add_row(row["path"], str(row["size"]), row["modified"])
+            console.print(table)
+    except Exception as exc:
+        _fail(exc)
+
+
+@app.command("remote-inspect")
+def remote_inspect(
+    remote_slide: str = typer.Argument(..., help="Remote slide as user@host:/server/path or host:/server/path. The slide remains remote."),
+    ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
+    identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
+    ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option, e.g. '-J bastion'. May be repeated."),
+    remote_runner: str = typer.Option("slidebridge", "--remote-runner", help="Remote SlideBridge command."),
+    remote_workdir: Optional[str] = typer.Option(None, "--remote-workdir", help="Optional remote working directory."),
+    json_output: bool = typer.Option(False, "--json", help="Run remote inspect with --json and print raw JSON."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print command without connecting over SSH."),
+) -> None:
+    """Run slidebridge inspect on a remote server-side slide path over SSH."""
+
+    try:
+        remote_path = parse_remote_path(remote_slide)
+        args = ["inspect", remote_path.path] + (["--json"] if json_output else [])
+        remote_command = build_remote_slidebridge_command(remote_runner, args, remote_workdir=remote_workdir)
+        ssh_command = _ssh_command_for_remote(remote_path, remote_command, ssh_port, identity_file, ssh_option)
+        if dry_run:
+            _print_remote_dry_run(None, [("inspect", remote_command)], [("inspect", ssh_command)])
+            return
+        require_ssh_available()
+        result = run_ssh_command(ssh_command, timeout=120)
+        if result.returncode != 0:
+            _print_remote_result(result)
+            console.print(f"[yellow]{REMOTE_INSTALL_HINT}[/yellow]")
+            raise RuntimeError("remote-inspect failed")
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+    except Exception as exc:
+        _fail(exc)
+
+
+@app.command("remote-view")
+def remote_view(
+    remote_slide: str = typer.Argument(..., help="Remote slide as user@host:/server/path or host:/server/path. The slide remains remote."),
+    ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
+    identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
+    ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option, e.g. '-J bastion'. May be repeated."),
+    remote_runner: str = typer.Option("slidebridge", "--remote-runner", help="Remote SlideBridge command."),
+    remote_workdir: Optional[str] = typer.Option(None, "--remote-workdir", help="Optional remote working directory."),
+    local_host: str = typer.Option("127.0.0.1", "--local-host", help="Local tunnel bind host. Defaults to localhost."),
+    local_port: int = typer.Option(7860, "--local-port", help="Local tunnel port."),
+    remote_host: str = typer.Option("127.0.0.1", "--remote-host", help="Remote viewer bind host. Defaults to localhost."),
+    remote_port: int = typer.Option(7860, "--remote-port", help="Remote viewer port."),
+    open_browser: bool = typer.Option(True, "--open-browser/--no-open-browser", help="Open local browser after tunnel is ready."),
+    wait_timeout: float = typer.Option(30.0, "--wait-timeout", help="Seconds to wait for the forwarded viewer."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print commands without connecting over SSH."),
+    verbose: bool = typer.Option(False, "--verbose", help="Print extra command details."),
+    patches: Optional[str] = typer.Option(None, "--patches", help="Remote patch coordinate path."),
+    heatmap: Optional[str] = typer.Option(None, "--heatmap", help="Remote heatmap/score path."),
+    annotations: Optional[str] = typer.Option(None, "--annotations", help="Remote annotation path."),
+    annotation_format: Optional[str] = typer.Option(None, "--annotation-format", help="Annotation format override."),
+    default_patch_size: int = typer.Option(256, "--default-patch-size", help="Default patch size for remote coordinate files."),
+    heatmap_opacity: float = typer.Option(0.45, "--heatmap-opacity", min=0.0, max=1.0, help="Heatmap opacity."),
+    annotation_opacity: float = typer.Option(0.35, "--annotation-opacity", min=0.0, max=1.0, help="Annotation opacity."),
+    max_overlay_patches: int = typer.Option(50_000, "--max-overlay-patches", help="Maximum patch overlays returned by remote viewer."),
+    max_annotations: int = typer.Option(10_000, "--max-annotations", help="Maximum annotations returned by remote viewer."),
+) -> None:
+    """View a remote server-side WSI through an SSH localhost tunnel."""
+
+    try:
+        remote_path = parse_remote_path(remote_slide)
+        remote_command = build_remote_slidebridge_command(
+            remote_runner,
+            _remote_view_args(
+                remote_path.path,
+                remote_host,
+                remote_port,
+                patches=patches,
+                heatmap=heatmap,
+                annotations=annotations,
+                annotation_format=annotation_format,
+                default_patch_size=default_patch_size,
+                heatmap_opacity=heatmap_opacity,
+                annotation_opacity=annotation_opacity,
+                max_overlay_patches=max_overlay_patches,
+                max_annotations=max_annotations,
+            ),
+            remote_workdir=remote_workdir,
+        )
+        ssh_command = build_tunnel_command(
+            remote_path,
+            remote_command,
+            local_host=local_host,
+            local_port=local_port,
+            remote_host=remote_host,
+            remote_port=remote_port,
+            ssh_port=ssh_port,
+            identity_file=str(identity_file) if identity_file else None,
+            ssh_options=ssh_option,
+        )
+        local_url = _local_url(local_host, local_port)
+        _warn_if_public_bind(local_host, "local")
+        _warn_if_public_bind(remote_host, "remote")
+        if dry_run:
+            _print_remote_dry_run(local_url, [("view", remote_command)], [("tunnel", ssh_command)])
+            return
+        require_ssh_available()
+        if not is_local_port_available("127.0.0.1" if local_host == "0.0.0.0" else local_host, local_port):
+            raise RuntimeError(f"Local port {local_port} is already in use. Choose another --local-port.")
+        if verbose:
+            _print_remote_dry_run(local_url, [("view", remote_command)], [("tunnel", ssh_command)])
+        console.print(f"Starting remote SlideBridge viewer through SSH: {local_url}")
+        process = subprocess.Popen(ssh_command)
+        try:
+            if wait_for_http(f"{local_url}/api/info", timeout=wait_timeout):
+                console.print(f"Remote viewer ready: {local_url}")
+                if open_browser:
+                    webbrowser.open(local_url)
+            else:
+                raise RuntimeError(f"Viewer did not become reachable at {local_url} within {wait_timeout} seconds.")
+            process.wait()
+        except KeyboardInterrupt:
+            console.print("Stopping SSH tunnel...")
+            process.terminate()
+            process.wait(timeout=10)
+        except Exception:
+            process.terminate()
+            raise
+    except Exception as exc:
+        _fail(exc)
+
+
 @app.command("render-overlay")
 def render_overlay_command(
     slide_path: Path = typer.Argument(..., help="Path to a WSI or image."),
@@ -542,6 +768,144 @@ def render_overlay_command(
     finally:
         if slide is not None:
             slide.close()
+
+
+def _remote_from_target(remote: str, slide: Optional[str] = None, ssh_port: Optional[int] = None) -> tuple[RemotePath, str | None]:
+    if is_remote_spec(remote):
+        parsed = parse_remote_path(remote)
+        return RemotePath(parsed.user, parsed.host, parsed.path, ssh_port), parsed.path
+    text = str(remote or "").strip()
+    if not text or "/" in text or "\\" in text:
+        raise ValueError("REMOTE must be a host, user@host, or [user@]host:/server/path.")
+    user = None
+    host = text
+    if "@" in text:
+        user, host = text.split("@", 1)
+    if not host:
+        raise ValueError("Remote host is empty.")
+    return RemotePath(user=user or None, host=host, path=slide or "", ssh_port=ssh_port), slide
+
+
+def _ssh_command_for_remote(
+    remote: RemotePath,
+    remote_command: str,
+    ssh_port: Optional[int],
+    identity_file: Optional[Path],
+    ssh_options: list[str],
+) -> list[str]:
+    command = build_ssh_base_command(
+        remote.host,
+        user=remote.user,
+        port=ssh_port or remote.ssh_port,
+        identity_file=identity_file,
+        ssh_options=ssh_options,
+    )
+    command.append(remote_command)
+    return command
+
+
+def _remote_view_args(
+    remote_slide: str,
+    remote_host: str,
+    remote_port: int,
+    patches: Optional[str] = None,
+    heatmap: Optional[str] = None,
+    annotations: Optional[str] = None,
+    annotation_format: Optional[str] = None,
+    default_patch_size: int = 256,
+    heatmap_opacity: float = 0.45,
+    annotation_opacity: float = 0.35,
+    max_overlay_patches: int = 50_000,
+    max_annotations: int = 10_000,
+) -> list[str]:
+    args = [
+        "view",
+        remote_slide,
+        "--host",
+        remote_host,
+        "--port",
+        str(int(remote_port)),
+        "--no-open-browser",
+        "--default-patch-size",
+        str(int(default_patch_size)),
+        "--heatmap-opacity",
+        str(float(heatmap_opacity)),
+        "--annotation-opacity",
+        str(float(annotation_opacity)),
+        "--max-overlay-patches",
+        str(int(max_overlay_patches)),
+        "--max-annotations",
+        str(int(max_annotations)),
+    ]
+    if patches:
+        args.extend(["--patches", patches])
+    if heatmap:
+        args.extend(["--heatmap", heatmap])
+    if annotations:
+        args.extend(["--annotations", annotations])
+    if annotation_format:
+        args.extend(["--annotation-format", annotation_format])
+    return args
+
+
+def _print_remote_dry_run(
+    local_url: Optional[str],
+    remote_commands: list[tuple[str, str]],
+    ssh_commands: list[tuple[str, list[str]]],
+) -> None:
+    if local_url:
+        console.print("[bold]Local URL:[/bold]")
+        console.print(local_url)
+    console.print("[bold]Remote command:[/bold]")
+    for name, command in remote_commands:
+        console.print(f"{name}: {command}")
+    console.print("[bold]SSH command:[/bold]")
+    for name, command in ssh_commands:
+        console.print(f"{name}: {_format_command(command)}")
+
+
+def _print_remote_result(result: RemoteCommandResult) -> None:
+    if result.stdout:
+        console.print(result.stdout.rstrip())
+    if result.stderr:
+        console.print(f"[yellow]{result.stderr.rstrip()}[/yellow]")
+    if result.returncode != 0:
+        console.print(f"[red]Remote command exited with code {result.returncode}[/red]")
+
+
+def _format_command(command: list[str]) -> str:
+    return subprocess.list2cmdline([str(part) for part in command])
+
+
+def _split_csv(value: str) -> list[str]:
+    return [item.strip() for item in str(value or "").split(",") if item.strip()]
+
+
+def _parse_remote_ls(output: str) -> list[dict[str, str | int]]:
+    rows = []
+    for line in output.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        try:
+            size: str | int = int(parts[1])
+        except ValueError:
+            size = parts[1]
+        rows.append({"path": parts[0], "size": size, "modified": parts[2]})
+    return rows
+
+
+def _warn_if_public_bind(host: str, side: str) -> None:
+    if host == "0.0.0.0":
+        console.print(
+            f"[yellow]Binding {side} host to 0.0.0.0 may expose the viewer on your network. "
+            "Use only in trusted environments.[/yellow]"
+        )
+
+
+def _local_url(local_host: str, local_port: int) -> str:
+    browser_host = "127.0.0.1" if local_host == "0.0.0.0" else local_host
+    return f"http://{browser_host}:{int(local_port)}"
 
 
 def _doctor_one(path: Path, reader: Optional[str] = None) -> dict:

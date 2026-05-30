@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.1`
+Current version: `0.2.2`
 
 ## Quick Demo
 
@@ -66,6 +66,7 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - AnnotationTable abstraction
 - QuPath GeoJSON, ASAP XML, and SlideBridge JSON annotation loading
 - Annotation overlay, conversion, and patch labeling
+- Remote WSI viewing over SSH tunnel
 
 ## Installation
 
@@ -164,6 +165,28 @@ slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv 
 slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --out outputs\demo_coords_labeled.csv
 ```
 
+## Remote WSI Viewing over SSH
+
+View slides stored on a remote server from your local browser. The slide remains
+on the server; SlideBridge runs the tile server remotely and forwards it to
+localhost over SSH.
+
+```powershell
+slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
+```
+
+With remote patch coordinates and annotations:
+
+```powershell
+slidebridge remote-view user@server:/data/slides/case.svs `
+  --patches /data/features/case_coords.h5 `
+  --annotations /data/annotations/case.geojson `
+  --remote-runner "conda run -n slidebridge slidebridge"
+```
+
+Use `slidebridge remote-view --dry-run` to inspect the SSH tunnel and remote
+command before connecting. See [Remote WSI Viewing](docs/REMOTE_VIEWING.md).
+
 ## Export Patches
 
 ```powershell
@@ -196,6 +219,10 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 - `slidebridge inspect-annotations ANNOTATIONS --slide PATH`: inspect annotation files and optional slide bounds.
 - `slidebridge convert-annotations INPUT --out OUTPUT`: convert public annotation formats.
 - `slidebridge label-patches PATCHES --annotations ANNOTATIONS --out OUTPUT`: assign annotation-derived patch labels.
+- `slidebridge remote-check REMOTE`: check remote SSH and SlideBridge availability.
+- `slidebridge remote-ls REMOTE_DIR`: list likely slide files on a remote server.
+- `slidebridge remote-inspect REMOTE_SLIDE`: inspect a remote slide over SSH.
+- `slidebridge remote-view REMOTE_SLIDE`: view a remote slide through an SSH localhost tunnel.
 - `slidebridge view PATH --patches COORDS.csv --heatmap SCORES.npy`: start the
   local pan/zoom viewer with optional model/debug score and annotation overlays.
 - `slidebridge readers`: list registered readers and dependency availability.
@@ -262,6 +289,12 @@ v0.2.1:
 - ASAP XML overlay
 - annotation conversion
 - patch labeling from annotations
+
+v0.2.2:
+
+- remote WSI viewing over SSH tunnel
+- remote-check, remote-ls, remote-inspect, and remote-view
+- dry-run remote command diagnostics
 
 v0.3:
 
