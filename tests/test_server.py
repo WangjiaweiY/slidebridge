@@ -73,6 +73,9 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     assert "Slide Library" in page.text
     assert "scan scope" in page.text
     assert "selected slide" in page.text
+    assert "sidebar-tabs" in page.text
+    assert "language-toggle" in page.text
+    assert "data-i18n=\"slideMetadata\"" in page.text
 
     info = client.get("/api/info?slide_id=1")
     assert info.status_code == 200

@@ -32,14 +32,15 @@
     }
     .app-shell {
       display: grid;
-      grid-template-columns: minmax(320px, 400px) 1fr;
+      grid-template-columns: 400px minmax(0, 1fr);
       height: 100vh;
       width: 100vw;
     }
     aside {
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
       min-width: 0;
+      width: 400px;
       background: var(--panel);
       border-right: 1px solid var(--line);
       box-shadow: 1px 0 14px rgba(0, 0, 0, 0.12);
@@ -126,37 +127,58 @@
       overflow-wrap: anywhere;
     }
     .scroll {
-      overflow-y: auto;
-      overflow-x: hidden;
+      overflow: hidden;
+      display: grid;
       min-height: 0;
+    }
+    .sidebar-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+    .tab-button {
+      height: 32px;
+      border: 1px solid #cbd5df;
+      border-radius: 6px;
+      background: #fff;
+      color: #33424e;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .tab-button:hover {
+      border-color: #7fb1be;
+      background: #f4fbfc;
+    }
+    .tab-button.active {
+      border-color: var(--accent);
+      background: #e8f5f7;
+      color: #174e5b;
+      font-weight: 700;
+    }
+    .tab-panel {
+      display: none;
+      min-height: 0;
+      height: 100%;
+      overflow-x: hidden;
+      overflow-y: auto;
       scrollbar-gutter: stable;
+      padding: 14px 16px;
+    }
+    .tab-panel.active {
+      display: block;
     }
     section {
-      padding: 14px 16px;
+      padding: 0 0 14px;
+      margin-bottom: 14px;
       border-bottom: 1px solid var(--line);
     }
-    details.panel {
-      border-bottom: 1px solid var(--line);
-    }
-    details.panel > summary {
-      cursor: pointer;
-      list-style: none;
-      padding: 13px 16px;
-      user-select: none;
-    }
-    details.panel > summary::-webkit-details-marker {
-      display: none;
-    }
-    details.panel > summary::after {
-      content: "▾";
-      color: var(--muted);
-      font-size: 12px;
-    }
-    details.panel:not([open]) > summary::after {
-      content: "▸";
-    }
-    details.panel .panel-body {
-      padding: 0 16px 14px;
+    section:last-child {
+      margin-bottom: 0;
+      border-bottom: 0;
     }
     .section-title {
       display: flex;
@@ -168,9 +190,6 @@
       letter-spacing: 0;
       color: #2b3a45;
       text-transform: uppercase;
-    }
-    details.panel > summary.section-title {
-      margin-bottom: 0;
     }
     .meta-grid {
       display: grid;
@@ -205,7 +224,7 @@
     .slide-list {
       display: grid;
       gap: 6px;
-      max-height: min(170px, 22vh);
+      max-height: none;
       overflow: auto;
     }
     .slide-item {
@@ -312,6 +331,18 @@
       color: var(--muted);
       font-size: 12px;
     }
+    .lang-toggle {
+      height: 26px;
+      min-width: 46px;
+      padding: 0 8px;
+      border: 1px solid #b9cad5;
+      border-radius: 999px;
+      background: #fff;
+      color: #24515b;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
     main {
       position: relative;
       min-width: 0;
@@ -372,6 +403,7 @@
         min-height: 100vh;
       }
       aside {
+        width: 100%;
         border-right: 0;
         border-bottom: 1px solid var(--line);
       }
@@ -387,7 +419,8 @@
       <div class="brand">
         <div class="brand-row">
           <div class="brand-name">SlideBridge</div>
-          <div class="mode-badge">{{ "Library" if library_mode else "Single slide" }}</div>
+          <div class="mode-badge" data-i18n="{{ 'modeLibrary' if library_mode else 'modeSingle' }}">{{ "Library" if library_mode else "Single slide" }}</div>
+          <button id="language-toggle" class="lang-toggle" type="button">中文</button>
         </div>
         <h1 id="slide-title">{{ filename }}</h1>
         <div class="connection-card">
@@ -400,59 +433,64 @@
           {% endif %}
         </div>
         <div class="selected-path-card">
-          <span class="label">selected slide</span>
+          <span class="label" data-i18n="selectedSlide">selected slide</span>
           <span id="selected-path-short">{{ filename }}</span>
         </div>
       </div>
+      <nav class="sidebar-tabs" role="tablist" aria-label="Viewer panels">
+        <button class="tab-button {{ 'active' if library_mode else 'hidden' }}" type="button" data-tab-target="library-tab" data-i18n="tabLibrary">Library</button>
+        <button class="tab-button {{ '' if library_mode else 'active' }}" type="button" data-tab-target="info-tab" data-i18n="tabInfo">Info</button>
+        <button class="tab-button" type="button" data-tab-target="overlays-tab" data-i18n="tabOverlays">Overlays</button>
+      </nav>
       <div class="scroll">
-        <section id="library-panel" class="{{ '' if library_mode else 'hidden' }}">
+        <div id="library-tab" class="tab-panel {{ 'active' if library_mode else 'hidden' }}">
+        <section id="library-panel">
           <div class="section-title">
-            <span>Slide Library</span>
+            <span data-i18n="slideLibrary">Slide Library</span>
             <span id="slide-count">{{ slide_count }}</span>
           </div>
-          <input id="slide-search" class="search" type="search" placeholder="Filter slides">
+          <input id="slide-search" class="search" type="search" placeholder="Filter slides" data-i18n-placeholder="filterSlides">
           <div id="slide-list" class="slide-list"></div>
           {% if library_warning %}
           <div class="warning">{{ library_warning }}</div>
           {% endif %}
         </section>
-        <details class="panel">
-          <summary class="section-title"><span>Session</span></summary>
-          <div class="panel-body">
+        </div>
+        <div id="info-tab" class="tab-panel {{ '' if library_mode else 'active' }}">
+          <section>
+            <div class="section-title"><span data-i18n="session">Session</span></div>
             <div class="meta-grid">
-              <div class="key">mode</div><div class="value">{{ "remote SSH" if viewer_context == "remote" else "local" }}</div>
-              <div class="key">source type</div><div class="value">{{ "directory library" if library_mode else "single slide" }}</div>
+              <div class="key" data-i18n="mode">mode</div><div class="value">{{ "remote SSH" if viewer_context == "remote" else "local" }}</div>
+              <div class="key" data-i18n="sourceType">source type</div><div class="value" data-i18n="{{ 'directoryLibrary' if library_mode else 'singleSlide' }}">{{ "directory library" if library_mode else "single slide" }}</div>
               {% if library_mode %}
-              <div class="key">scan scope</div><div class="value">{{ "root + subfolders" if library_recursive else "root only" }}</div>
+              <div class="key" data-i18n="scanScope">scan scope</div><div class="value" data-i18n="{{ 'rootSubfolders' if library_recursive else 'rootOnly' }}">{{ "root + subfolders" if library_recursive else "root only" }}</div>
               {% endif %}
               {% if viewer_context == "remote" %}
-              <div class="key">ssh user</div><div class="value">{{ viewer_remote_user or "unknown" }}</div>
-              <div class="key">ssh host</div><div class="value">{{ viewer_remote_host or "unknown" }}</div>
-              <div class="key">ssh port</div><div class="value">{{ viewer_remote_ssh_port or "default" }}</div>
-              <div class="key">remote root</div><div class="value path-value">{{ viewer_source }}</div>
+              <div class="key" data-i18n="sshUser">ssh user</div><div class="value">{{ viewer_remote_user or "unknown" }}</div>
+              <div class="key" data-i18n="sshHost">ssh host</div><div class="value">{{ viewer_remote_host or "unknown" }}</div>
+              <div class="key" data-i18n="sshPort">ssh port</div><div class="value">{{ viewer_remote_ssh_port or "default" }}</div>
+              <div class="key" data-i18n="remoteRoot">remote root</div><div class="value path-value">{{ viewer_source }}</div>
               {% else %}
-              <div class="key">source</div><div class="value path-value">{{ viewer_source }}</div>
+              <div class="key" data-i18n="source">source</div><div class="value path-value">{{ viewer_source }}</div>
               {% endif %}
-              <div class="key">selected path</div><div class="value path-value" id="meta-path">{{ viewer_source }}</div>
+              <div class="key" data-i18n="selectedPath">selected path</div><div class="value path-value" id="meta-path">{{ viewer_source }}</div>
             </div>
-          </div>
-        </details>
-        <details class="panel" open>
-          <summary class="section-title"><span>Slide Metadata</span></summary>
-          <div class="panel-body">
+          </section>
+          <section>
+            <div class="section-title"><span data-i18n="slideMetadata">Slide Metadata</span></div>
             <div class="meta-grid">
-              <div class="key">reader</div><div class="value" id="meta-reader">{{ reader }}</div>
-              <div class="key">dimensions</div><div class="value" id="meta-dimensions">{{ width }} x {{ height }}</div>
-              <div class="key">mpp</div><div class="value" id="meta-mpp">{{ mpp_x or "unknown" }} x {{ mpp_y or "unknown" }}</div>
-              <div class="key">objective</div><div class="value" id="meta-objective">{{ objective_power or "unknown" }}</div>
-              <div class="key">vendor</div><div class="value" id="meta-vendor">{{ vendor or "unknown" }}</div>
-              <div class="key">warnings</div><div class="value" id="meta-warnings">{{ warnings|join(", ") if warnings else "none" }}</div>
+              <div class="key" data-i18n="reader">reader</div><div class="value" id="meta-reader">{{ reader }}</div>
+              <div class="key" data-i18n="dimensions">dimensions</div><div class="value" id="meta-dimensions">{{ width }} x {{ height }}</div>
+              <div class="key" data-i18n="mpp">mpp</div><div class="value" id="meta-mpp">{{ mpp_x or "unknown" }} x {{ mpp_y or "unknown" }}</div>
+              <div class="key" data-i18n="objective">objective</div><div class="value" id="meta-objective">{{ objective_power or "unknown" }}</div>
+              <div class="key" data-i18n="vendor">vendor</div><div class="value" id="meta-vendor">{{ vendor or "unknown" }}</div>
+              <div class="key" data-i18n="warnings">warnings</div><div class="value" id="meta-warnings">{{ warnings|join(", ") if warnings else "none" }}</div>
             </div>
-          </div>
-        </details>
-        <details class="panel" open>
-          <summary class="section-title"><span>Overlays</span></summary>
-          <div class="panel-body">
+          </section>
+        </div>
+        <div id="overlays-tab" class="tab-panel">
+          <section>
+            <div class="section-title"><span data-i18n="overlays">Overlays</span></div>
             <div class="count-row">
               <div class="pill" id="patch-count">{{ patch_count }} patches</div>
               <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
@@ -467,24 +505,24 @@
             <div class="controls">
               <div class="control-row">
                 <label class="control-label">
-                  <span>model/debug overlay</span>
+                  <span data-i18n="modelOverlay">model/debug overlay</span>
                   <input id="overlay-toggle" type="checkbox" checked>
                 </label>
                 <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}">
-                <div class="legend" id="score-legend" hidden><span>low</span><span class="legend-bar"></span><span>high</span></div>
+                <div class="legend" id="score-legend" hidden><span data-i18n="low">low</span><span class="legend-bar"></span><span data-i18n="high">high</span></div>
               </div>
               <div class="control-row">
                 <label class="control-label">
-                  <span>annotation overlay for research/debugging</span>
+                  <span data-i18n="annotationOverlay">annotation overlay for research/debugging</span>
                   <input id="annotation-toggle" type="checkbox" checked>
                 </label>
                 <input id="annotation-opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ annotation_opacity }}">
               </div>
             </div>
-          </div>
-        </details>
+          </section>
+        </div>
       </div>
-      <div class="footer">Coordinates are level-0 pixels. Viewer is for research/debugging only.</div>
+      <div class="footer" data-i18n="footer">Coordinates are level-0 pixels. Viewer is for research/debugging only.</div>
     </aside>
     <main>
       <div id="viewer">
@@ -495,6 +533,139 @@
   <script>
     const slideEntries = {{ slides_json | safe }};
     let selectedSlideId = slideEntries.length ? slideEntries[0].id : 0;
+    const i18n = {
+      en: {
+        modeLibrary: "Library",
+        modeSingle: "Single slide",
+        selectedSlide: "selected slide",
+        tabLibrary: "Library",
+        tabInfo: "Info",
+        tabOverlays: "Overlays",
+        slideLibrary: "Slide Library",
+        filterSlides: "Filter slides",
+        session: "Session",
+        slideMetadata: "Slide Metadata",
+        overlays: "Overlays",
+        mode: "mode",
+        sourceType: "source type",
+        directoryLibrary: "directory library",
+        singleSlide: "single slide",
+        scanScope: "scan scope",
+        rootSubfolders: "root + subfolders",
+        rootOnly: "root only",
+        sshUser: "ssh user",
+        sshHost: "ssh host",
+        sshPort: "ssh port",
+        remoteRoot: "remote root",
+        source: "source",
+        selectedPath: "selected path",
+        reader: "reader",
+        dimensions: "dimensions",
+        mpp: "mpp",
+        objective: "objective",
+        vendor: "vendor",
+        warnings: "warnings",
+        modelOverlay: "model/debug overlay",
+        annotationOverlay: "annotation overlay for research/debugging",
+        low: "low",
+        high: "high",
+        patches: "patches",
+        annotations: "annotations",
+        shown: "shown",
+        none: "none",
+        footer: "Coordinates are level-0 pixels. Viewer is for research/debugging only."
+      },
+      zh: {
+        modeLibrary: "切片库",
+        modeSingle: "单张切片",
+        selectedSlide: "当前切片",
+        tabLibrary: "切片库",
+        tabInfo: "信息",
+        tabOverlays: "叠加层",
+        slideLibrary: "切片库",
+        filterSlides: "筛选切片",
+        session: "会话",
+        slideMetadata: "切片元数据",
+        overlays: "叠加层",
+        mode: "模式",
+        sourceType: "来源类型",
+        directoryLibrary: "目录切片库",
+        singleSlide: "单张切片",
+        scanScope: "扫描范围",
+        rootSubfolders: "根目录 + 子目录",
+        rootOnly: "仅根目录",
+        sshUser: "SSH 用户",
+        sshHost: "SSH 主机",
+        sshPort: "SSH 端口",
+        remoteRoot: "远端根目录",
+        source: "来源",
+        selectedPath: "当前路径",
+        reader: "读取器",
+        dimensions: "尺寸",
+        mpp: "MPP",
+        objective: "物镜倍率",
+        vendor: "厂商",
+        warnings: "警告",
+        modelOverlay: "模型/调试叠加层",
+        annotationOverlay: "标注叠加层（研究/调试）",
+        low: "低",
+        high: "高",
+        patches: "patch",
+        annotations: "标注",
+        shown: "已显示",
+        none: "无",
+        footer: "坐标均为 level-0 像素。本 viewer 仅用于研究和调试。"
+      }
+    };
+    let currentLanguage = localStorage.getItem("slidebridge.viewer.language")
+      || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en");
+
+    function t(key) {
+      return (i18n[currentLanguage] && i18n[currentLanguage][key]) || i18n.en[key] || key;
+    }
+
+    function applyLanguage() {
+      document.documentElement.lang = currentLanguage === "zh" ? "zh-CN" : "en";
+      document.querySelectorAll("[data-i18n]").forEach((element) => {
+        element.textContent = t(element.dataset.i18n);
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+        element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder));
+      });
+      const toggle = document.getElementById("language-toggle");
+      if (toggle) {
+        toggle.textContent = currentLanguage === "zh" ? "EN" : "中文";
+        toggle.title = currentLanguage === "zh" ? "Switch to English" : "切换到中文";
+      }
+    }
+
+    function setupLanguage(onChange) {
+      const toggle = document.getElementById("language-toggle");
+      if (!toggle) {
+        return;
+      }
+      toggle.addEventListener("click", function () {
+        currentLanguage = currentLanguage === "zh" ? "en" : "zh";
+        localStorage.setItem("slidebridge.viewer.language", currentLanguage);
+        applyLanguage();
+        onChange();
+      });
+    }
+
+    function setupTabs() {
+      const buttons = Array.from(document.querySelectorAll(".tab-button"));
+      const panels = Array.from(document.querySelectorAll(".tab-panel"));
+      buttons.forEach((button) => {
+        button.addEventListener("click", function () {
+          if (button.classList.contains("hidden")) {
+            return;
+          }
+          const target = button.dataset.tabTarget;
+          buttons.forEach((item) => item.classList.toggle("active", item === button));
+          panels.forEach((panel) => panel.classList.toggle("active", panel.id === target));
+        });
+      });
+    }
 
     function showViewerLoadError() {
       const element = document.getElementById("viewer-error");
@@ -543,6 +714,8 @@
     }
 
     async function initializeViewer() {
+      setupTabs();
+      applyLanguage();
       await loadOpenSeadragon();
       const viewer = OpenSeadragon({
         id: "viewer",
@@ -558,6 +731,18 @@
       let annotationPayload = null;
       let patchElements = [];
       let annotationElements = [];
+      setupLanguage(function () {
+        if (patchPayload) {
+          document.getElementById("patch-count").textContent = patchCountLabel(patchPayload);
+        }
+        if (annotationPayload) {
+          document.getElementById("annotation-count").textContent = annotationCountLabel(annotationPayload);
+        }
+        const infoWarnings = document.getElementById("meta-warnings");
+        if (infoWarnings && infoWarnings.dataset.empty === "true") {
+          infoWarnings.textContent = t("none");
+        }
+      });
 
       viewer.addHandler("open", function () {
         isOpen = true;
@@ -644,21 +829,38 @@
         document.getElementById("meta-mpp").textContent = `${info.mpp_x ?? "unknown"} x ${info.mpp_y ?? "unknown"}`;
         document.getElementById("meta-objective").textContent = info.objective_power ?? "unknown";
         document.getElementById("meta-vendor").textContent = info.vendor ?? "unknown";
-        document.getElementById("meta-warnings").textContent = info.warnings && info.warnings.length ? info.warnings.join(", ") : "none";
+        const warnings = document.getElementById("meta-warnings");
+        if (info.warnings && info.warnings.length) {
+          warnings.textContent = info.warnings.join(", ");
+          warnings.dataset.empty = "false";
+        } else {
+          warnings.textContent = t("none");
+          warnings.dataset.empty = "true";
+        }
       }
 
       function updatePatchHeader(payload) {
-        document.getElementById("patch-count").textContent =
-          payload.count > payload.returned ? `${payload.count} patches (${payload.returned} shown)` : `${payload.count} patches`;
+        document.getElementById("patch-count").textContent = patchCountLabel(payload);
         document.getElementById("score-legend").hidden = !payload.has_scores;
         appendWarnings(payload.warnings || []);
       }
 
       function updateAnnotationHeader(payload) {
-        const labels = payload.labels && payload.labels.length ? ` (${payload.labels.join(", ")})` : "";
-        document.getElementById("annotation-count").textContent =
-          payload.count > payload.returned ? `${payload.count} annotations (${payload.returned} shown)${labels}` : `${payload.count} annotations${labels}`;
+        document.getElementById("annotation-count").textContent = annotationCountLabel(payload);
         appendWarnings(payload.warnings || []);
+      }
+
+      function patchCountLabel(payload) {
+        return payload.count > payload.returned
+          ? `${payload.count} ${t("patches")} (${payload.returned} ${t("shown")})`
+          : `${payload.count} ${t("patches")}`;
+      }
+
+      function annotationCountLabel(payload) {
+        const labels = payload.labels && payload.labels.length ? ` (${payload.labels.join(", ")})` : "";
+        return payload.count > payload.returned
+          ? `${payload.count} ${t("annotations")} (${payload.returned} ${t("shown")})${labels}`
+          : `${payload.count} ${t("annotations")}${labels}`;
       }
 
       function appendWarnings(warnings) {
