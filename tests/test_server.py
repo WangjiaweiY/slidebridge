@@ -65,15 +65,20 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     assert slides.status_code == 200
     payload = slides.json()
     assert payload["library_mode"] is True
+    assert payload["recursive"] is True
     assert payload["count"] == 2
 
     page = client.get("/")
     assert page.status_code == 200
     assert "Slide Library" in page.text
+    assert "scan scope" in page.text
+    assert "selected slide" in page.text
 
     info = client.get("/api/info?slide_id=1")
     assert info.status_code == 200
     assert info.json()["reader"] == "image"
+    assert info.json()["relative_path"].startswith("nested")
+    assert info.json()["library_root"] == str(tmp_path)
 
     dzi = client.get("/slides/1/dzi.dzi")
     assert dzi.status_code == 200

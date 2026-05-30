@@ -32,7 +32,7 @@
     }
     .app-shell {
       display: grid;
-      grid-template-columns: minmax(300px, 360px) 1fr;
+      grid-template-columns: minmax(320px, 400px) 1fr;
       height: 100vh;
       width: 100vw;
     }
@@ -78,13 +78,57 @@
       line-height: 1.25;
       overflow-wrap: anywhere;
     }
+    .selected-path-card {
+      margin-top: 10px;
+      padding: 8px 10px;
+      border: 1px solid #d4e2e6;
+      border-radius: 6px;
+      background: #eef7f9;
+      color: #274c55;
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .selected-path-card .label {
+      display: block;
+      margin-bottom: 3px;
+      color: #59717a;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
     .scroll {
-      overflow: auto;
+      overflow-y: auto;
+      overflow-x: hidden;
       min-height: 0;
+      scrollbar-gutter: stable;
     }
     section {
       padding: 14px 16px;
       border-bottom: 1px solid var(--line);
+    }
+    details.panel {
+      border-bottom: 1px solid var(--line);
+    }
+    details.panel > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 13px 16px;
+      user-select: none;
+    }
+    details.panel > summary::-webkit-details-marker {
+      display: none;
+    }
+    details.panel > summary::after {
+      content: "▾";
+      color: var(--muted);
+      font-size: 12px;
+    }
+    details.panel:not([open]) > summary::after {
+      content: "▸";
+    }
+    details.panel .panel-body {
+      padding: 0 16px 14px;
     }
     .section-title {
       display: flex;
@@ -96,6 +140,9 @@
       letter-spacing: 0;
       color: #2b3a45;
       text-transform: uppercase;
+    }
+    details.panel > summary.section-title {
+      margin-bottom: 0;
     }
     .meta-grid {
       display: grid;
@@ -125,7 +172,7 @@
     .slide-list {
       display: grid;
       gap: 6px;
-      max-height: 280px;
+      max-height: min(280px, 32vh);
       overflow: auto;
     }
     .slide-item {
@@ -158,6 +205,13 @@
       color: var(--muted);
       font-size: 12px;
       overflow-wrap: anywhere;
+    }
+    .slide-item .slide-folder {
+      color: #375866;
+      font-weight: 600;
+    }
+    .slide-item .slide-size {
+      color: var(--muted);
     }
     .controls {
       display: grid;
@@ -299,6 +353,10 @@
           <div class="mode-badge">{{ "Library" if library_mode else "Single slide" }}</div>
         </div>
         <h1 id="slide-title">{{ filename }}</h1>
+        <div class="selected-path-card">
+          <span class="label">selected slide</span>
+          <span id="selected-path-short">{{ filename }}</span>
+        </div>
       </div>
       <div class="scroll">
         <section id="library-panel" class="{{ '' if library_mode else 'hidden' }}">
@@ -312,63 +370,73 @@
           <div class="warning">{{ library_warning }}</div>
           {% endif %}
         </section>
-        <section>
-          <div class="section-title">Session</div>
-          <div class="meta-grid">
-            <div class="key">mode</div><div class="value">{{ "remote SSH" if viewer_context == "remote" else "local" }}</div>
-            {% if viewer_context == "remote" %}
-            <div class="key">ssh user</div><div class="value">{{ viewer_remote_user or "unknown" }}</div>
-            <div class="key">ssh host</div><div class="value">{{ viewer_remote_host or "unknown" }}</div>
-            <div class="key">ssh port</div><div class="value">{{ viewer_remote_ssh_port or "default" }}</div>
-            <div class="key">remote root</div><div class="value">{{ viewer_source }}</div>
-            {% else %}
-            <div class="key">source</div><div class="value">{{ viewer_source }}</div>
+        <details class="panel" open>
+          <summary class="section-title"><span>Session</span></summary>
+          <div class="panel-body">
+            <div class="meta-grid">
+              <div class="key">mode</div><div class="value">{{ "remote SSH" if viewer_context == "remote" else "local" }}</div>
+              <div class="key">source type</div><div class="value">{{ "directory library" if library_mode else "single slide" }}</div>
+              {% if library_mode %}
+              <div class="key">scan scope</div><div class="value">{{ "root + subfolders" if library_recursive else "root only" }}</div>
+              {% endif %}
+              {% if viewer_context == "remote" %}
+              <div class="key">ssh user</div><div class="value">{{ viewer_remote_user or "unknown" }}</div>
+              <div class="key">ssh host</div><div class="value">{{ viewer_remote_host or "unknown" }}</div>
+              <div class="key">ssh port</div><div class="value">{{ viewer_remote_ssh_port or "default" }}</div>
+              <div class="key">remote root</div><div class="value">{{ viewer_source }}</div>
+              {% else %}
+              <div class="key">source</div><div class="value">{{ viewer_source }}</div>
+              {% endif %}
+              <div class="key">selected path</div><div class="value" id="meta-path">{{ viewer_source }}</div>
+            </div>
+          </div>
+        </details>
+        <details class="panel" open>
+          <summary class="section-title"><span>Slide Metadata</span></summary>
+          <div class="panel-body">
+            <div class="meta-grid">
+              <div class="key">reader</div><div class="value" id="meta-reader">{{ reader }}</div>
+              <div class="key">dimensions</div><div class="value" id="meta-dimensions">{{ width }} x {{ height }}</div>
+              <div class="key">mpp</div><div class="value" id="meta-mpp">{{ mpp_x or "unknown" }} x {{ mpp_y or "unknown" }}</div>
+              <div class="key">objective</div><div class="value" id="meta-objective">{{ objective_power or "unknown" }}</div>
+              <div class="key">vendor</div><div class="value" id="meta-vendor">{{ vendor or "unknown" }}</div>
+              <div class="key">warnings</div><div class="value" id="meta-warnings">{{ warnings|join(", ") if warnings else "none" }}</div>
+            </div>
+          </div>
+        </details>
+        <details class="panel" open>
+          <summary class="section-title"><span>Overlays</span></summary>
+          <div class="panel-body">
+            <div class="count-row">
+              <div class="pill" id="patch-count">{{ patch_count }} patches</div>
+              <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
+            </div>
+            {% if patch_warning %}
+            <div class="warning">{{ patch_warning }}</div>
             {% endif %}
-            <div class="key">selected path</div><div class="value" id="meta-path">{{ viewer_source }}</div>
-          </div>
-        </section>
-        <section>
-          <div class="section-title">Slide Metadata</div>
-          <div class="meta-grid">
-            <div class="key">reader</div><div class="value" id="meta-reader">{{ reader }}</div>
-            <div class="key">dimensions</div><div class="value" id="meta-dimensions">{{ width }} x {{ height }}</div>
-            <div class="key">mpp</div><div class="value" id="meta-mpp">{{ mpp_x or "unknown" }} x {{ mpp_y or "unknown" }}</div>
-            <div class="key">objective</div><div class="value" id="meta-objective">{{ objective_power or "unknown" }}</div>
-            <div class="key">vendor</div><div class="value" id="meta-vendor">{{ vendor or "unknown" }}</div>
-            <div class="key">warnings</div><div class="value" id="meta-warnings">{{ warnings|join(", ") if warnings else "none" }}</div>
-          </div>
-        </section>
-        <section>
-          <div class="section-title">Overlays</div>
-          <div class="count-row">
-            <div class="pill" id="patch-count">{{ patch_count }} patches</div>
-            <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
-          </div>
-          {% if patch_warning %}
-          <div class="warning">{{ patch_warning }}</div>
-          {% endif %}
-          {% if annotation_warning %}
-          <div class="warning">{{ annotation_warning }}</div>
-          {% endif %}
-          <div id="dynamic-warnings"></div>
-          <div class="controls">
-            <div class="control-row">
-              <label class="control-label">
-                <span>model/debug overlay</span>
-                <input id="overlay-toggle" type="checkbox" checked>
-              </label>
-              <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}">
-              <div class="legend" id="score-legend" hidden><span>low</span><span class="legend-bar"></span><span>high</span></div>
-            </div>
-            <div class="control-row">
-              <label class="control-label">
-                <span>annotation overlay for research/debugging</span>
-                <input id="annotation-toggle" type="checkbox" checked>
-              </label>
-              <input id="annotation-opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ annotation_opacity }}">
+            {% if annotation_warning %}
+            <div class="warning">{{ annotation_warning }}</div>
+            {% endif %}
+            <div id="dynamic-warnings"></div>
+            <div class="controls">
+              <div class="control-row">
+                <label class="control-label">
+                  <span>model/debug overlay</span>
+                  <input id="overlay-toggle" type="checkbox" checked>
+                </label>
+                <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}">
+                <div class="legend" id="score-legend" hidden><span>low</span><span class="legend-bar"></span><span>high</span></div>
+              </div>
+              <div class="control-row">
+                <label class="control-label">
+                  <span>annotation overlay for research/debugging</span>
+                  <input id="annotation-toggle" type="checkbox" checked>
+                </label>
+                <input id="annotation-opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ annotation_opacity }}">
+              </div>
             </div>
           </div>
-        </section>
+        </details>
       </div>
       <div class="footer">Coordinates are level-0 pixels. Viewer is for research/debugging only.</div>
     </aside>
@@ -484,7 +552,8 @@
             button.type = "button";
             button.className = "slide-item";
             button.dataset.slideId = String(entry.id);
-            button.innerHTML = `<strong>${escapeHtml(entry.filename)}</strong><span>${escapeHtml(entry.relative_path)}</span>`;
+            button.title = entry.path || entry.relative_path;
+            button.innerHTML = `<strong>${escapeHtml(entry.relative_path)}</strong><span class="slide-folder">${escapeHtml(entryFolder(entry))}</span><span class="slide-size">${formatBytes(entry.size_bytes)}</span>`;
             button.addEventListener("click", () => selectSlide(entry.id));
             list.appendChild(button);
           });
@@ -522,6 +591,7 @@
       function updateInfo(info) {
         document.getElementById("slide-title").textContent = info.filename || "";
         document.title = `SlideBridge Viewer - ${info.filename || ""}`;
+        document.getElementById("selected-path-short").textContent = info.relative_path || info.path || info.filename || "";
         document.getElementById("meta-path").textContent = info.path || "";
         document.getElementById("meta-reader").textContent = info.reader || "unknown";
         document.getElementById("meta-dimensions").textContent = `${info.width} x ${info.height}`;
@@ -771,6 +841,27 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#039;");
+      }
+
+      function entryFolder(entry) {
+        const relative = String(entry.relative_path || "");
+        const slash = Math.max(relative.lastIndexOf("/"), relative.lastIndexOf("\\"));
+        return slash >= 0 ? relative.slice(0, slash) : ".";
+      }
+
+      function formatBytes(value) {
+        const size = Number(value);
+        if (!Number.isFinite(size) || size <= 0) {
+          return "";
+        }
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let current = size;
+        let unit = 0;
+        while (current >= 1024 && unit < units.length - 1) {
+          current /= 1024;
+          unit += 1;
+        }
+        return `${current.toFixed(current >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
       }
 
       document.getElementById("overlay-toggle").addEventListener("change", updatePatchOverlayStyle);

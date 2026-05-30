@@ -140,6 +140,9 @@ def create_app(
             entry = get_entry(slide_id)
             slide = open_slide(entry.path, reader=reader)
             info = summary(slide)
+            info["slide_id"] = entry.id
+            info["relative_path"] = entry.relative_path
+            info["library_root"] = str(source) if library_mode else str(entry.path.parent)
             width = int(info["width"])
             height = int(info["height"])
             max_dzi_level = int(math.ceil(math.log2(max(width, height)))) if max(width, height) > 1 else 0
@@ -229,6 +232,7 @@ def create_app(
                 annotation_opacity=max(0.0, min(float(annotation_opacity), 1.0)),
                 library_mode=library_mode,
                 library_root=str(source),
+                library_recursive=recursive,
                 library_warning=library_warning,
                 slide_count=len(entries),
                 slides_json=json.dumps([entry.to_dict() for entry in entries], ensure_ascii=False),
