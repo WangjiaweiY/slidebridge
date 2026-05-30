@@ -26,6 +26,9 @@ def test_remote_view_dry_run_prints_tunnel_and_remote_command():
     assert "ssh -L 127.0.0.1:7860:127.0.0.1:7860 user@example.org" in result.stdout
     assert "conda run -n slidebridge slidebridge view /data/slides/demo.svs" in result.stdout
     assert "--no-open-browser" in result.stdout
+    assert "--viewer-context remote" in result.stdout
+    assert "--viewer-remote-user user" in result.stdout
+    assert "--viewer-remote-host example.org" in result.stdout
 
 
 def test_remote_inspect_dry_run_prints_command():

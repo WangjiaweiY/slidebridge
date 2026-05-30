@@ -82,3 +82,26 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     tile = client.get("/slides/1/dzi_files/10/0_0.jpeg")
     assert tile.status_code == 200
     assert tile.headers["content-type"] == "image/jpeg"
+
+
+def test_server_remote_context_is_rendered(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=256, height=256, seed=5)
+    app = create_app(
+        slide_path,
+        reader="image",
+        viewer_context="remote",
+        viewer_remote_user="user",
+        viewer_remote_host="server",
+        viewer_remote_ssh_port=2222,
+        viewer_source="/data/slides/demo.png",
+    )
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "remote SSH" in response.text
+    assert "user" in response.text
+    assert "server" in response.text
+    assert "2222" in response.text
+    assert "/data/slides/demo.png" in response.text

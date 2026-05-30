@@ -313,6 +313,21 @@
           {% endif %}
         </section>
         <section>
+          <div class="section-title">Session</div>
+          <div class="meta-grid">
+            <div class="key">mode</div><div class="value">{{ "remote SSH" if viewer_context == "remote" else "local" }}</div>
+            {% if viewer_context == "remote" %}
+            <div class="key">ssh user</div><div class="value">{{ viewer_remote_user or "unknown" }}</div>
+            <div class="key">ssh host</div><div class="value">{{ viewer_remote_host or "unknown" }}</div>
+            <div class="key">ssh port</div><div class="value">{{ viewer_remote_ssh_port or "default" }}</div>
+            <div class="key">remote root</div><div class="value">{{ viewer_source }}</div>
+            {% else %}
+            <div class="key">source</div><div class="value">{{ viewer_source }}</div>
+            {% endif %}
+            <div class="key">selected path</div><div class="value" id="meta-path">{{ viewer_source }}</div>
+          </div>
+        </section>
+        <section>
           <div class="section-title">Slide Metadata</div>
           <div class="meta-grid">
             <div class="key">reader</div><div class="value" id="meta-reader">{{ reader }}</div>
@@ -507,6 +522,7 @@
       function updateInfo(info) {
         document.getElementById("slide-title").textContent = info.filename || "";
         document.title = `SlideBridge Viewer - ${info.filename || ""}`;
+        document.getElementById("meta-path").textContent = info.path || "";
         document.getElementById("meta-reader").textContent = info.reader || "unknown";
         document.getElementById("meta-dimensions").textContent = `${info.width} x ${info.height}`;
         document.getElementById("meta-mpp").textContent = `${info.mpp_x ?? "unknown"} x ${info.mpp_y ?? "unknown"}`;

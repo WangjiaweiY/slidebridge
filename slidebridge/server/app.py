@@ -89,6 +89,11 @@ def create_app(
     annotation_labels: list[str] | None = None,
     recursive: bool = False,
     max_slides: int = 500,
+    viewer_context: str = "local",
+    viewer_remote_user: str | None = None,
+    viewer_remote_host: str | None = None,
+    viewer_remote_ssh_port: int | None = None,
+    viewer_source: str | None = None,
 ) -> FastAPI:
     tile_size = int(tile_size)
     jpeg_quality = int(jpeg_quality)
@@ -107,6 +112,10 @@ def create_app(
     if not entries:
         raise FileNotFoundError(f"No viewable slide files found: {source}")
     library_mode = source.is_dir()
+    viewer_context = str(viewer_context or "local").lower()
+    if viewer_context not in {"local", "remote"}:
+        raise ValueError("viewer_context must be local or remote")
+    viewer_source = viewer_source or str(source)
     library_warning = ""
     if library_mode and len(entries) >= max_slides:
         library_warning = f"Showing first {max_slides} viewable files. Increase --max-slides if needed."
@@ -223,6 +232,11 @@ def create_app(
                 library_warning=library_warning,
                 slide_count=len(entries),
                 slides_json=json.dumps([entry.to_dict() for entry in entries], ensure_ascii=False),
+                viewer_context=viewer_context,
+                viewer_remote_user=viewer_remote_user,
+                viewer_remote_host=viewer_remote_host,
+                viewer_remote_ssh_port=viewer_remote_ssh_port,
+                viewer_source=viewer_source,
             )
         )
 

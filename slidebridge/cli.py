@@ -381,6 +381,11 @@ def view(
     annotation_labels: Optional[str] = typer.Option(None, "--annotation-labels", help="Comma-separated annotation label filter."),
     recursive: bool = typer.Option(False, "--recursive/--no-recursive", help="When PATH is a directory, include nested slide files."),
     max_slides: int = typer.Option(500, "--max-slides", help="Maximum slide files listed in directory viewer mode."),
+    viewer_context: str = typer.Option("local", "--viewer-context", help="Viewer display context: local or remote."),
+    viewer_remote_user: Optional[str] = typer.Option(None, "--viewer-remote-user", help="Remote SSH user shown in the viewer."),
+    viewer_remote_host: Optional[str] = typer.Option(None, "--viewer-remote-host", help="Remote SSH host shown in the viewer."),
+    viewer_remote_ssh_port: Optional[int] = typer.Option(None, "--viewer-remote-ssh-port", help="Remote SSH port shown in the viewer."),
+    viewer_source: Optional[str] = typer.Option(None, "--viewer-source", help="Source path shown in the viewer session panel."),
 ) -> None:
     try:
         viewer_app = create_app(
@@ -401,6 +406,11 @@ def view(
             annotation_labels=_split_labels(annotation_labels),
             recursive=recursive,
             max_slides=max_slides,
+            viewer_context=viewer_context,
+            viewer_remote_user=viewer_remote_user,
+            viewer_remote_host=viewer_remote_host,
+            viewer_remote_ssh_port=viewer_remote_ssh_port,
+            viewer_source=viewer_source,
         )
         url = f"http://{host}:{port}"
         console.print(f"Starting SlideBridge viewer: {url}")
@@ -672,6 +682,11 @@ def remote_view(
                 max_annotations=max_annotations,
                 recursive=recursive,
                 max_slides=max_slides,
+                viewer_context="remote",
+                viewer_remote_user=remote_path.user,
+                viewer_remote_host=remote_path.host,
+                viewer_remote_ssh_port=ssh_port or remote_path.ssh_port,
+                viewer_source=remote_path.path,
             ),
             remote_workdir=remote_workdir,
         )
@@ -827,6 +842,11 @@ def _remote_view_args(
     max_annotations: int = 10_000,
     recursive: bool = False,
     max_slides: int = 500,
+    viewer_context: str = "local",
+    viewer_remote_user: Optional[str] = None,
+    viewer_remote_host: Optional[str] = None,
+    viewer_remote_ssh_port: Optional[int] = None,
+    viewer_source: Optional[str] = None,
 ) -> list[str]:
     args = [
         "view",
@@ -848,7 +868,17 @@ def _remote_view_args(
         str(int(max_annotations)),
         "--max-slides",
         str(int(max_slides)),
+        "--viewer-context",
+        viewer_context,
     ]
+    if viewer_remote_user:
+        args.extend(["--viewer-remote-user", viewer_remote_user])
+    if viewer_remote_host:
+        args.extend(["--viewer-remote-host", viewer_remote_host])
+    if viewer_remote_ssh_port is not None:
+        args.extend(["--viewer-remote-ssh-port", str(int(viewer_remote_ssh_port))])
+    if viewer_source:
+        args.extend(["--viewer-source", viewer_source])
     if recursive:
         args.append("--recursive")
     if patches:
