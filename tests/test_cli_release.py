@@ -15,7 +15,7 @@ def test_release_version_output_contains_021():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "0.2.1" in result.stdout
+    assert "0.2.2" in result.stdout
 
 
 def test_cli_render_overlay(tmp_path):

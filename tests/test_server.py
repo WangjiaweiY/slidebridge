@@ -50,3 +50,73 @@ def test_server_rejects_invalid_tile_config(tmp_path):
         assert "tile_size" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected invalid tile_size to raise")
+
+
+def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
+    create_demo_slide(tmp_path / "demo_a.png", width=512, height=384, seed=3)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    create_demo_slide(nested / "demo_b.png", width=640, height=512, seed=4)
+
+    app = create_app(tmp_path, reader="image", recursive=True, tile_size=128)
+    client = TestClient(app)
+
+    slides = client.get("/api/slides")
+    assert slides.status_code == 200
+    payload = slides.json()
+    assert payload["library_mode"] is True
+    assert payload["recursive"] is True
+    assert payload["count"] == 2
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "Slide Library" in page.text
+    assert "scan scope" in page.text
+    assert "selected slide" in page.text
+    assert "sidebar-tabs" in page.text
+    assert "language-toggle" in page.text
+    assert "zoom-control" in page.text
+    assert "equiv. magnification" in page.text
+    assert "zoomToImageScale" in page.text
+    assert "data-i18n=\"slideMetadata\"" in page.text
+    assert "flex-direction: column" in page.text
+    assert "overflow-y: auto" in page.text
+    assert "syncLibraryListHeight" not in page.text
+    assert "setupSlideListScroll" not in page.text
+
+    info = client.get("/api/info?slide_id=1")
+    assert info.status_code == 200
+    assert info.json()["reader"] == "image"
+    assert info.json()["relative_path"].startswith("nested")
+    assert info.json()["library_root"] == str(tmp_path)
+
+    dzi = client.get("/slides/1/dzi.dzi")
+    assert dzi.status_code == 200
+    assert "TileSize=\"128\"" in dzi.text
+
+    tile = client.get("/slides/1/dzi_files/10/0_0.jpeg")
+    assert tile.status_code == 200
+    assert tile.headers["content-type"] == "image/jpeg"
+
+
+def test_server_remote_context_is_rendered(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=256, height=256, seed=5)
+    app = create_app(
+        slide_path,
+        reader="image",
+        viewer_context="remote",
+        viewer_remote_user="user",
+        viewer_remote_host="server",
+        viewer_remote_ssh_port=2222,
+        viewer_source="/data/slides/demo.png",
+    )
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "remote SSH" in response.text
+    assert "user" in response.text
+    assert "server" in response.text
+    assert "2222" in response.text
+    assert "/data/slides/demo.png" in response.text

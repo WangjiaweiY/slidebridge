@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.2
+
+Added:
+
+- Remote WSI viewing over SSH tunnel
+- remote-view command
+- remote-check command
+- remote-ls command
+- remote-inspect command
+- remote command builder utilities
+- directory viewer mode for local and remote slide folders
+- redesigned browser viewer shell with slide library selection
+- docs for remote viewing from Windows to Linux servers
+
+Security/Compliance:
+
+- remote viewer binds to 127.0.0.1 by default
+- no slide data is downloaded automatically
+- no proprietary readers or vendor SDKs
+- research/debugging only
+
 ## 0.2.1
 
 Added:

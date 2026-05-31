@@ -5,91 +5,407 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SlideBridge Viewer - {{ filename }}</title>
   <style>
+    :root {
+      color-scheme: light;
+      --bg: #0f1419;
+      --panel: #fbfcfe;
+      --panel-2: #f2f5f8;
+      --line: #d8e0e8;
+      --text: #17202a;
+      --muted: #5c6875;
+      --accent: #1f7a8c;
+      --accent-2: #c2415d;
+      --warning: #8a5a00;
+    }
+    * {
+      box-sizing: border-box;
+    }
     html, body {
       height: 100%;
       margin: 0;
       font-family: Arial, sans-serif;
-      color: #20242a;
-      background: #101820;
+      color: var(--text);
+      background: var(--bg);
     }
     body {
+      overflow: hidden;
+    }
+    .app-shell {
       display: grid;
-      grid-template-rows: auto 1fr;
+      grid-template-columns: 400px minmax(0, 1fr);
+      height: 100vh;
+      width: 100vw;
     }
-    header {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-      padding: 12px 16px;
-      background: #ffffff;
-      border-bottom: 1px solid #d6dde7;
-    }
-    h1 {
-      margin: 0 0 6px;
-      font-size: 18px;
-      overflow-wrap: anywhere;
-    }
-    .meta {
+    aside {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px 14px;
-      font-size: 13px;
-      color: #4e5a66;
+      flex-direction: column;
+      min-width: 0;
+      width: 400px;
+      height: 100vh;
+      min-height: 0;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      box-shadow: 1px 0 14px rgba(0, 0, 0, 0.12);
+      z-index: 3;
     }
-    .pill {
-      align-self: start;
-      padding: 6px 10px;
-      border: 1px solid #cbd3df;
-      border-radius: 8px;
-      background: #f8fafc;
-      font-size: 13px;
+    .brand {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .brand-name {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .mode-badge {
+      padding: 4px 8px;
+      border: 1px solid #b9cad5;
+      border-radius: 999px;
+      background: #edf6f8;
+      color: #24515b;
+      font-size: 12px;
       white-space: nowrap;
     }
-    .right-panel {
+    h1 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+    .connection-card {
       display: grid;
-      gap: 8px;
-      justify-items: end;
+      gap: 3px;
+      margin-top: 8px;
+      padding: 7px 9px;
+      border: 1px solid #dbe5ec;
+      border-radius: 6px;
+      background: #f6f9fb;
+      color: #324652;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .connection-card strong {
+      color: #193744;
+      font-size: 12px;
+    }
+    .connection-card span {
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .selected-path-card {
+      margin-top: 8px;
+      padding: 7px 9px;
+      border: 1px solid #d4e2e6;
+      border-radius: 6px;
+      background: #eef7f9;
+      color: #274c55;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .selected-path-card .label {
+      display: block;
+      margin-bottom: 3px;
+      color: #59717a;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+    .selected-path-card span:last-child {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+    }
+    .scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+    .tab-button {
+      height: 32px;
+      border: 1px solid #cbd5df;
+      border-radius: 6px;
+      background: #fff;
+      color: #33424e;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .tab-button:hover {
+      border-color: #7fb1be;
+      background: #f4fbfc;
+    }
+    .tab-button.active {
+      border-color: var(--accent);
+      background: #e8f5f7;
+      color: #174e5b;
+      font-weight: 700;
+    }
+    .tab-panel {
+      display: none;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+      padding: 14px 16px;
+    }
+    .tab-panel.active {
+      display: block;
+    }
+    #library-tab {
+      overflow: hidden;
+    }
+    #library-tab.active {
+      display: flex;
+      flex-direction: column;
+    }
+    #library-panel {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+    section {
+      padding: 0 0 14px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    section:last-child {
+      margin-bottom: 0;
+      border-bottom: 0;
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0;
+      color: #2b3a45;
+      text-transform: uppercase;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 7px 10px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .meta-grid .key {
+      color: var(--muted);
+    }
+    .meta-grid .value {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .meta-grid .value.path-value {
+      max-height: 54px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .search {
+      width: 100%;
+      height: 34px;
+      padding: 6px 9px;
+      margin-bottom: 10px;
+      border: 1px solid #cbd5df;
+      border-radius: 6px;
+      color: var(--text);
+      background: #fff;
+      font-size: 13px;
+    }
+    .slide-list {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-right: 8px;
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      scrollbar-color: #7b8a93 #e7edf2;
+    }
+    .slide-list::-webkit-scrollbar {
+      width: 10px;
+    }
+    .slide-list::-webkit-scrollbar-track {
+      background: #e7edf2;
+      border-radius: 999px;
+    }
+    .slide-list::-webkit-scrollbar-thumb {
+      background: #7b8a93;
+      border: 2px solid #e7edf2;
+      border-radius: 999px;
+    }
+    .slide-list::-webkit-scrollbar-thumb:hover {
+      background: #596872;
+    }
+    .slide-item {
+      width: 100%;
+      padding: 7px 9px;
+      border: 1px solid #d3dce5;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .slide-item:hover {
+      border-color: #7fb1be;
+      background: #f2fafb;
+    }
+    .slide-item.active {
+      border-color: var(--accent);
+      background: #e8f5f7;
+    }
+    .slide-item strong {
+      display: -webkit-box;
+      font-size: 13px;
+      line-height: 1.25;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+    }
+    .slide-item span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .slide-item .slide-folder {
+      color: #375866;
+      font-weight: 600;
+    }
+    .slide-item .slide-size {
+      color: var(--muted);
     }
     .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-      justify-content: flex-end;
+      display: grid;
+      gap: 12px;
       font-size: 13px;
-      color: #4e5a66;
     }
-    .controls input[type="range"] {
-      width: 120px;
-    }
-    .legend {
-      display: flex;
-      align-items: center;
+    .control-row {
+      display: grid;
       gap: 6px;
     }
+    .control-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .control-label span {
+      color: var(--muted);
+    }
+    input[type="range"] {
+      width: 100%;
+    }
+    .count-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .pill {
+      padding: 5px 8px;
+      border: 1px solid #cbd5df;
+      border-radius: 999px;
+      background: var(--panel-2);
+      color: #2d3a46;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .legend {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
     .legend-bar {
-      width: 92px;
       height: 10px;
       border: 1px solid #cbd3df;
       background: linear-gradient(90deg, rgba(48, 112, 210, 0.25), rgba(245, 211, 84, 0.75), rgba(220, 48, 48, 0.95));
     }
     .warning {
       margin-top: 8px;
-      color: #8a5a00;
+      color: var(--warning);
       font-size: 13px;
+      line-height: 1.35;
+    }
+    .footer {
+      padding: 10px 16px;
+      border-top: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .lang-toggle {
+      height: 26px;
+      min-width: 46px;
+      padding: 0 8px;
+      border: 1px solid #b9cad5;
+      border-radius: 999px;
+      background: #fff;
+      color: #24515b;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    main {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      height: 100vh;
+      overflow: hidden;
+      background: #111820;
     }
     #viewer {
-      width: 100%;
-      height: 100%;
+      position: absolute;
+      inset: 0;
+      width: auto;
+      height: auto;
       background: #111820;
-      position: relative;
     }
     #viewer-error {
       display: none;
       position: absolute;
-      inset: 24px;
+      inset: 24px auto auto 24px;
       max-width: 620px;
-      height: max-content;
       padding: 16px;
       background: #ffffff;
       color: #9d1c1c;
@@ -119,45 +435,387 @@
       background: currentColor;
       box-sizing: border-box;
     }
+    .zoom-control {
+      position: absolute;
+      left: 18px;
+      top: 18px;
+      z-index: 8;
+      display: grid;
+      gap: 8px;
+      width: 86px;
+      padding: 9px;
+      border: 1px solid rgba(215, 224, 232, 0.9);
+      border-radius: 8px;
+      background: rgba(248, 251, 253, 0.94);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+      color: #1e2a35;
+      pointer-events: auto;
+      user-select: none;
+    }
+    .zoom-readout {
+      display: grid;
+      gap: 2px;
+      text-align: center;
+    }
+    .zoom-value {
+      font-size: 18px;
+      line-height: 1;
+      font-weight: 700;
+      color: #123f4a;
+    }
+    .zoom-label {
+      font-size: 10px;
+      line-height: 1.2;
+      color: #60717d;
+    }
+    .zoom-bar {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 3px 0 3px 15px;
+    }
+    .zoom-bar::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      border-radius: 999px;
+      background: #c7d3dc;
+    }
+    .zoom-button {
+      position: relative;
+      height: 24px;
+      padding: 0 7px;
+      border: 1px solid #cad6df;
+      border-radius: 6px;
+      background: #fff;
+      color: #2d3b46;
+      font: inherit;
+      font-size: 12px;
+      line-height: 22px;
+      cursor: pointer;
+    }
+    .zoom-button::before {
+      content: "";
+      position: absolute;
+      left: -13px;
+      top: 50%;
+      width: 8px;
+      height: 2px;
+      background: #94a5b0;
+      transform: translateY(-50%);
+    }
+    .zoom-button:hover {
+      border-color: #1f7a8c;
+      background: #eef8fa;
+    }
+    .zoom-button.active {
+      border-color: #1f7a8c;
+      background: #dff2f5;
+      color: #0f5260;
+      font-weight: 700;
+    }
+    .hidden {
+      display: none !important;
+    }
+    @media (max-width: 860px) {
+      body {
+        overflow: auto;
+      }
+      .app-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 70vh;
+        height: auto;
+        min-height: 100vh;
+      }
+      aside {
+        width: 100%;
+        height: auto;
+        min-height: 0;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .slide-list {
+        max-height: 240px;
+      }
+      .zoom-control {
+        left: 12px;
+        top: 12px;
+        right: auto;
+      }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>{{ filename }}</h1>
-      <div class="meta">
-        <span>reader: {{ reader }}</span>
-        <span>dimensions: {{ width }} x {{ height }}</span>
-        <span>mpp: {{ mpp_x or "unknown" }} x {{ mpp_y or "unknown" }}</span>
-        <span>objective: {{ objective_power or "unknown" }}</span>
-        <span>vendor: {{ vendor or "unknown" }}</span>
-        <span>warnings: {{ warnings|join(", ") if warnings else "none" }}</span>
+  <div class="app-shell">
+    <aside>
+      <div class="brand">
+        <div class="brand-row">
+          <div class="brand-name">SlideBridge</div>
+          <div class="mode-badge" data-i18n="{{ 'modeLibrary' if library_mode else 'modeSingle' }}">{{ "Library" if library_mode else "Single slide" }}</div>
+          <button id="language-toggle" class="lang-toggle" type="button">中文</button>
+        </div>
+        <h1 id="slide-title">{{ filename }}</h1>
+        <div class="connection-card">
+          {% if viewer_context == "remote" %}
+          <strong>remote SSH · {{ viewer_remote_user or "unknown" }}@{{ viewer_remote_host or "unknown" }}:{{ viewer_remote_ssh_port or "22" }}</strong>
+          <span title="{{ viewer_source }}">root: {{ viewer_source }}</span>
+          {% else %}
+          <strong>local viewer</strong>
+          <span title="{{ viewer_source }}">source: {{ viewer_source }}</span>
+          {% endif %}
+        </div>
+        <div class="selected-path-card">
+          <span class="label" data-i18n="selectedSlide">selected slide</span>
+          <span id="selected-path-short">{{ filename }}</span>
+        </div>
       </div>
-      {% if patch_warning %}
-      <div class="warning">{{ patch_warning }}</div>
-      {% endif %}
-      {% if annotation_warning %}
-      <div class="warning">{{ annotation_warning }}</div>
-      {% endif %}
-    </div>
-    <div class="right-panel">
-      <div class="pill" id="patch-count">{{ patch_count }} patches</div>
-      <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
-      <div class="controls">
-        <label><input id="overlay-toggle" type="checkbox" checked> model/debug overlay</label>
-        <label>opacity <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}"></label>
-        <div class="legend" id="score-legend" hidden><span>low</span><span class="legend-bar"></span><span>high</span></div>
+      <nav class="sidebar-tabs" role="tablist" aria-label="Viewer panels">
+        <button class="tab-button {{ 'active' if library_mode else 'hidden' }}" type="button" data-tab-target="library-tab" data-i18n="tabLibrary">Library</button>
+        <button class="tab-button {{ '' if library_mode else 'active' }}" type="button" data-tab-target="info-tab" data-i18n="tabInfo">Info</button>
+        <button class="tab-button" type="button" data-tab-target="overlays-tab" data-i18n="tabOverlays">Overlays</button>
+      </nav>
+      <div class="scroll">
+        <div id="library-tab" class="tab-panel {{ 'active' if library_mode else 'hidden' }}">
+        <section id="library-panel">
+          <div class="section-title">
+            <span data-i18n="slideLibrary">Slide Library</span>
+            <span id="slide-count">{{ slide_count }}</span>
+          </div>
+          <input id="slide-search" class="search" type="search" placeholder="Filter slides" data-i18n-placeholder="filterSlides">
+          <div id="slide-list" class="slide-list"></div>
+          {% if library_warning %}
+          <div class="warning">{{ library_warning }}</div>
+          {% endif %}
+        </section>
+        </div>
+        <div id="info-tab" class="tab-panel {{ '' if library_mode else 'active' }}">
+          <section>
+            <div class="section-title"><span data-i18n="session">Session</span></div>
+            <div class="meta-grid">
+              <div class="key" data-i18n="mode">mode</div><div class="value">{{ "remote SSH" if viewer_context == "remote" else "local" }}</div>
+              <div class="key" data-i18n="sourceType">source type</div><div class="value" data-i18n="{{ 'directoryLibrary' if library_mode else 'singleSlide' }}">{{ "directory library" if library_mode else "single slide" }}</div>
+              {% if library_mode %}
+              <div class="key" data-i18n="scanScope">scan scope</div><div class="value" data-i18n="{{ 'rootSubfolders' if library_recursive else 'rootOnly' }}">{{ "root + subfolders" if library_recursive else "root only" }}</div>
+              {% endif %}
+              {% if viewer_context == "remote" %}
+              <div class="key" data-i18n="sshUser">ssh user</div><div class="value">{{ viewer_remote_user or "unknown" }}</div>
+              <div class="key" data-i18n="sshHost">ssh host</div><div class="value">{{ viewer_remote_host or "unknown" }}</div>
+              <div class="key" data-i18n="sshPort">ssh port</div><div class="value">{{ viewer_remote_ssh_port or "default" }}</div>
+              <div class="key" data-i18n="remoteRoot">remote root</div><div class="value path-value">{{ viewer_source }}</div>
+              {% else %}
+              <div class="key" data-i18n="source">source</div><div class="value path-value">{{ viewer_source }}</div>
+              {% endif %}
+              <div class="key" data-i18n="selectedPath">selected path</div><div class="value path-value" id="meta-path">{{ viewer_source }}</div>
+            </div>
+          </section>
+          <section>
+            <div class="section-title"><span data-i18n="slideMetadata">Slide Metadata</span></div>
+            <div class="meta-grid">
+              <div class="key" data-i18n="reader">reader</div><div class="value" id="meta-reader">{{ reader }}</div>
+              <div class="key" data-i18n="dimensions">dimensions</div><div class="value" id="meta-dimensions">{{ width }} x {{ height }}</div>
+              <div class="key" data-i18n="mpp">mpp</div><div class="value" id="meta-mpp">{{ mpp_x or "unknown" }} x {{ mpp_y or "unknown" }}</div>
+              <div class="key" data-i18n="objective">objective</div><div class="value" id="meta-objective">{{ objective_power or "unknown" }}</div>
+              <div class="key" data-i18n="vendor">vendor</div><div class="value" id="meta-vendor">{{ vendor or "unknown" }}</div>
+              <div class="key" data-i18n="warnings">warnings</div><div class="value" id="meta-warnings">{{ warnings|join(", ") if warnings else "none" }}</div>
+            </div>
+          </section>
+        </div>
+        <div id="overlays-tab" class="tab-panel">
+          <section>
+            <div class="section-title"><span data-i18n="overlays">Overlays</span></div>
+            <div class="count-row">
+              <div class="pill" id="patch-count">{{ patch_count }} patches</div>
+              <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
+            </div>
+            {% if patch_warning %}
+            <div class="warning">{{ patch_warning }}</div>
+            {% endif %}
+            {% if annotation_warning %}
+            <div class="warning">{{ annotation_warning }}</div>
+            {% endif %}
+            <div id="dynamic-warnings"></div>
+            <div class="controls">
+              <div class="control-row">
+                <label class="control-label">
+                  <span data-i18n="modelOverlay">model/debug overlay</span>
+                  <input id="overlay-toggle" type="checkbox" checked>
+                </label>
+                <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}">
+                <div class="legend" id="score-legend" hidden><span data-i18n="low">low</span><span class="legend-bar"></span><span data-i18n="high">high</span></div>
+              </div>
+              <div class="control-row">
+                <label class="control-label">
+                  <span data-i18n="annotationOverlay">annotation overlay for research/debugging</span>
+                  <input id="annotation-toggle" type="checkbox" checked>
+                </label>
+                <input id="annotation-opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ annotation_opacity }}">
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
-      <div class="controls">
-        <label><input id="annotation-toggle" type="checkbox" checked> annotation overlay for research/debugging</label>
-        <label>opacity <input id="annotation-opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ annotation_opacity }}"></label>
+      <div class="footer" data-i18n="footer">Coordinates are level-0 pixels. Viewer is for research/debugging only.</div>
+    </aside>
+    <main>
+      <div id="viewer">
+        <div id="viewer-error">OpenSeadragon failed to load. Please check the bundled viewer asset or your network connection.</div>
       </div>
-    </div>
-  </header>
-  <div id="viewer">
-    <div id="viewer-error">OpenSeadragon failed to load. Please check the bundled viewer asset or your network connection.</div>
+      <div id="zoom-control" class="zoom-control" aria-label="Equivalent magnification control">
+        <div class="zoom-readout">
+          <div id="zoom-value" class="zoom-value">fit</div>
+          <div id="zoom-label" class="zoom-label" data-i18n="equivalentMagnification">equiv. magnification</div>
+        </div>
+        <div id="zoom-bar" class="zoom-bar"></div>
+      </div>
+    </main>
   </div>
   <script>
+    const slideEntries = {{ slides_json | safe }};
+    let selectedSlideId = slideEntries.length ? slideEntries[0].id : 0;
+    const i18n = {
+      en: {
+        modeLibrary: "Library",
+        modeSingle: "Single slide",
+        selectedSlide: "selected slide",
+        tabLibrary: "Library",
+        tabInfo: "Info",
+        tabOverlays: "Overlays",
+        slideLibrary: "Slide Library",
+        filterSlides: "Filter slides",
+        session: "Session",
+        slideMetadata: "Slide Metadata",
+        overlays: "Overlays",
+        mode: "mode",
+        sourceType: "source type",
+        directoryLibrary: "directory library",
+        singleSlide: "single slide",
+        scanScope: "scan scope",
+        rootSubfolders: "root + subfolders",
+        rootOnly: "root only",
+        sshUser: "ssh user",
+        sshHost: "ssh host",
+        sshPort: "ssh port",
+        remoteRoot: "remote root",
+        source: "source",
+        selectedPath: "selected path",
+        reader: "reader",
+        dimensions: "dimensions",
+        mpp: "mpp",
+        objective: "objective",
+        vendor: "vendor",
+        warnings: "warnings",
+        modelOverlay: "model/debug overlay",
+        annotationOverlay: "annotation overlay for research/debugging",
+        low: "low",
+        high: "high",
+        patches: "patches",
+        annotations: "annotations",
+        shown: "shown",
+        none: "none",
+        equivalentMagnification: "equiv. magnification",
+        fit: "Fit",
+        pixelScale: "pixel scale",
+        footer: "Coordinates are level-0 pixels. Viewer is for research/debugging only."
+      },
+      zh: {
+        modeLibrary: "切片库",
+        modeSingle: "单张切片",
+        selectedSlide: "当前切片",
+        tabLibrary: "切片库",
+        tabInfo: "信息",
+        tabOverlays: "叠加层",
+        slideLibrary: "切片库",
+        filterSlides: "筛选切片",
+        session: "会话",
+        slideMetadata: "切片元数据",
+        overlays: "叠加层",
+        mode: "模式",
+        sourceType: "来源类型",
+        directoryLibrary: "目录切片库",
+        singleSlide: "单张切片",
+        scanScope: "扫描范围",
+        rootSubfolders: "根目录 + 子目录",
+        rootOnly: "仅根目录",
+        sshUser: "SSH 用户",
+        sshHost: "SSH 主机",
+        sshPort: "SSH 端口",
+        remoteRoot: "远端根目录",
+        source: "来源",
+        selectedPath: "当前路径",
+        reader: "读取器",
+        dimensions: "尺寸",
+        mpp: "MPP",
+        objective: "物镜倍率",
+        vendor: "厂商",
+        warnings: "警告",
+        modelOverlay: "模型/调试叠加层",
+        annotationOverlay: "标注叠加层（研究/调试）",
+        low: "低",
+        high: "高",
+        patches: "patch",
+        annotations: "标注",
+        shown: "已显示",
+        none: "无",
+        footer: "坐标均为 level-0 像素。本 viewer 仅用于研究和调试。"
+      }
+    };
+    let currentLanguage = localStorage.getItem("slidebridge.viewer.language")
+      || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en");
+
+    function t(key) {
+      return (i18n[currentLanguage] && i18n[currentLanguage][key]) || i18n.en[key] || key;
+    }
+
+    function applyLanguage() {
+      document.documentElement.lang = currentLanguage === "zh" ? "zh-CN" : "en";
+      document.querySelectorAll("[data-i18n]").forEach((element) => {
+        element.textContent = t(element.dataset.i18n);
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+        element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder));
+      });
+      const toggle = document.getElementById("language-toggle");
+      if (toggle) {
+        toggle.textContent = currentLanguage === "zh" ? "EN" : "中文";
+        toggle.title = currentLanguage === "zh" ? "Switch to English" : "切换到中文";
+      }
+    }
+
+    function setupLanguage(onChange) {
+      const toggle = document.getElementById("language-toggle");
+      if (!toggle) {
+        return;
+      }
+      toggle.addEventListener("click", function () {
+        currentLanguage = currentLanguage === "zh" ? "en" : "zh";
+        localStorage.setItem("slidebridge.viewer.language", currentLanguage);
+        applyLanguage();
+        onChange();
+      });
+    }
+
+    function setupTabs(onChange) {
+      const buttons = Array.from(document.querySelectorAll(".tab-button"));
+      const panels = Array.from(document.querySelectorAll(".tab-panel"));
+      buttons.forEach((button) => {
+        button.addEventListener("click", function () {
+          if (button.classList.contains("hidden")) {
+            return;
+          }
+          const target = button.dataset.tabTarget;
+          buttons.forEach((item) => item.classList.toggle("active", item === button));
+          panels.forEach((panel) => panel.classList.toggle("active", panel.id === target));
+          if (onChange) {
+            onChange();
+          }
+        });
+      });
+    }
+
     function showViewerLoadError() {
       const element = document.getElementById("viewer-error");
       if (element) {
@@ -205,12 +863,18 @@
     }
 
     async function initializeViewer() {
+      applyLanguage();
       await loadOpenSeadragon();
       const viewer = OpenSeadragon({
         id: "viewer",
         prefixUrl: osdPrefixUrl,
-        tileSources: "/dzi.dzi",
+        showNavigationControl: false,
         showNavigator: true,
+        navigatorPosition: "TOP_RIGHT",
+        navigatorWidth: "260px",
+        navigatorHeight: "170px",
+        navigatorMaintainSizeRatio: true,
+        preserveViewport: false,
         animationTime: 0.15,
         blendTime: 0.05,
         maxZoomPixelRatio: 2
@@ -221,53 +885,353 @@
       let annotationPayload = null;
       let patchElements = [];
       let annotationElements = [];
+      let currentSlideInfo = null;
+      let currentZoomLevels = [];
+      setupTabs(function () {
+        refreshViewerLayout(false);
+      });
+      setupLanguage(function () {
+        if (patchPayload) {
+          document.getElementById("patch-count").textContent = patchCountLabel(patchPayload);
+        }
+        if (annotationPayload) {
+          document.getElementById("annotation-count").textContent = annotationCountLabel(annotationPayload);
+        }
+        const infoWarnings = document.getElementById("meta-warnings");
+        if (infoWarnings && infoWarnings.dataset.empty === "true") {
+          infoWarnings.textContent = t("none");
+        }
+        renderZoomControl();
+        updateZoomReadout();
+      });
 
       viewer.addHandler("open", function () {
         isOpen = true;
-        renderPatches();
-        renderAnnotations();
+        renderZoomControl();
+        refreshViewerLayout(true);
+        updateZoomReadout();
       });
+      viewer.addHandler("animation", updateZoomReadout);
+      viewer.addHandler("animation-finish", updateZoomReadout);
+      viewer.addHandler("zoom", updateZoomReadout);
+      viewer.addHandler("pan", updateZoomReadout);
 
-      fetch("/api/patches")
-        .then((response) => response.json())
-        .then((payload) => {
-          patchPayload = payload;
-          updatePatchHeader(payload);
+      renderSlideList();
+      const search = document.getElementById("slide-search");
+      if (search) {
+        search.addEventListener("input", renderSlideList);
+      }
+      await selectSlide(selectedSlideId);
+
+      async function selectSlide(slideId) {
+        selectedSlideId = Number(slideId);
+        isOpen = false;
+        patchPayload = null;
+        annotationPayload = null;
+        clearOverlays();
+        setActiveSlideButton();
+        document.getElementById("dynamic-warnings").innerHTML = "";
+        viewer.open(`/slides/${selectedSlideId}/dzi.dzi`);
+        await Promise.all([loadInfo(), loadPatches(), loadAnnotations()]);
+      }
+
+      function refreshViewerLayout(goHome) {
+        window.requestAnimationFrame(function () {
+          viewer.viewport.resize();
+          if (goHome) {
+            viewer.viewport.goHome(true);
+          }
+          viewer.forceRedraw();
           renderPatches();
-        })
-        .catch((error) => console.error("Failed to load patches", error));
-
-      fetch("/api/annotations")
-        .then((response) => response.json())
-        .then((payload) => {
-          annotationPayload = payload;
-          updateAnnotationHeader(payload);
           renderAnnotations();
-        })
-        .catch((error) => console.error("Failed to load annotations", error));
+        });
+      }
+
+      function renderSlideList() {
+        const list = document.getElementById("slide-list");
+        if (!list) {
+          return;
+        }
+        const query = (document.getElementById("slide-search")?.value || "").toLowerCase();
+        list.innerHTML = "";
+        slideEntries
+          .filter((entry) => !query || entry.relative_path.toLowerCase().includes(query) || entry.filename.toLowerCase().includes(query))
+          .forEach((entry) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "slide-item";
+            button.dataset.slideId = String(entry.id);
+            button.title = entry.path || entry.relative_path;
+            button.innerHTML = `<strong>${escapeHtml(entry.relative_path)}</strong><span class="slide-folder">${escapeHtml(entryFolder(entry))}</span><span class="slide-size">${formatBytes(entry.size_bytes)}</span>`;
+            button.addEventListener("click", () => selectSlide(entry.id));
+            list.appendChild(button);
+          });
+        setActiveSlideButton();
+      }
+
+      function setActiveSlideButton() {
+        document.querySelectorAll(".slide-item").forEach((button) => {
+          button.classList.toggle("active", Number(button.dataset.slideId) === selectedSlideId);
+        });
+      }
+
+      async function loadInfo() {
+        const response = await fetch(`/api/info?slide_id=${selectedSlideId}`);
+        const info = await response.json();
+        updateInfo(info);
+      }
+
+      async function loadPatches() {
+        const response = await fetch(`/api/patches?slide_id=${selectedSlideId}`);
+        const payload = await response.json();
+        patchPayload = payload;
+        updatePatchHeader(payload);
+        renderPatches();
+      }
+
+      async function loadAnnotations() {
+        const response = await fetch(`/api/annotations?slide_id=${selectedSlideId}`);
+        const payload = await response.json();
+        annotationPayload = payload;
+        updateAnnotationHeader(payload);
+        renderAnnotations();
+      }
+
+      function updateInfo(info) {
+        document.getElementById("slide-title").textContent = info.filename || "";
+        document.title = `SlideBridge Viewer - ${info.filename || ""}`;
+        document.getElementById("selected-path-short").textContent = info.relative_path || info.path || info.filename || "";
+        document.getElementById("meta-path").textContent = info.path || "";
+        document.getElementById("meta-reader").textContent = info.reader || "unknown";
+        document.getElementById("meta-dimensions").textContent = `${info.width} x ${info.height}`;
+        document.getElementById("meta-mpp").textContent = `${info.mpp_x ?? "unknown"} x ${info.mpp_y ?? "unknown"}`;
+        document.getElementById("meta-objective").textContent = info.objective_power ?? "unknown";
+        document.getElementById("meta-vendor").textContent = info.vendor ?? "unknown";
+        currentSlideInfo = info;
+        renderZoomControl();
+        updateZoomReadout();
+        const warnings = document.getElementById("meta-warnings");
+        if (info.warnings && info.warnings.length) {
+          warnings.textContent = info.warnings.join(", ");
+          warnings.dataset.empty = "false";
+        } else {
+          warnings.textContent = t("none");
+          warnings.dataset.empty = "true";
+        }
+      }
+
+      function renderZoomControl() {
+        const bar = document.getElementById("zoom-bar");
+        if (!bar) {
+          return;
+        }
+        currentZoomLevels = zoomLevelsFor(currentSlideInfo);
+        bar.innerHTML = "";
+        currentZoomLevels.forEach((level) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "zoom-button";
+          button.textContent = level.fit ? t("fit") : level.label;
+          button.title = level.fit ? t("fit") : `${level.label} ${t("equivalentMagnification")}`;
+          if (level.fit) {
+            button.dataset.fit = "true";
+          } else {
+            button.dataset.scale = String(level.scale);
+          }
+          button.addEventListener("click", function () {
+            if (level.fit) {
+              viewer.viewport.goHome(false);
+            } else {
+              zoomToImageScale(level.scale);
+            }
+            window.setTimeout(updateZoomReadout, 50);
+          });
+          bar.appendChild(button);
+        });
+        updateZoomReadout();
+      }
+
+      function zoomLevelsFor(info) {
+        const base = magnificationBase(info);
+        if (!base) {
+          return [
+            {fit: false, label: "2:1", scale: 2},
+            {fit: false, label: "1:1", scale: 1},
+            {fit: false, label: "1:2", scale: 0.5},
+            {fit: false, label: "1:4", scale: 0.25},
+            {fit: true, label: t("fit")}
+          ];
+        }
+        const common = [1, 2, 5, 10, 20, 40, 60, 80];
+        const levels = common
+          .filter((value) => value <= base.value * 1.01)
+          .map((value) => ({fit: false, label: `${formatMagnification(value)}`, scale: value / base.value, mag: value}));
+        if (!levels.length || Math.abs((levels[levels.length - 1].mag || 0) - base.value) > 0.75) {
+          levels.push({fit: false, label: `${formatMagnification(base.value)}`, scale: 1, mag: base.value});
+        }
+        levels.sort((a, b) => Number(b.mag || 0) - Number(a.mag || 0));
+        levels.push({fit: true, label: t("fit")});
+        return levels;
+      }
+
+      function magnificationBase(info) {
+        if (!info) {
+          return null;
+        }
+        const objective = Number(info.objective_power);
+        if (Number.isFinite(objective) && objective > 0) {
+          return {value: objective, source: "objective"};
+        }
+        const mppValues = [Number(info.mpp_x), Number(info.mpp_y)].filter((value) => Number.isFinite(value) && value > 0);
+        if (mppValues.length) {
+          const mpp = mppValues.reduce((sum, value) => sum + value, 0) / mppValues.length;
+          return {value: 10 / mpp, source: "mpp"};
+        }
+        return null;
+      }
+
+      function currentImageScale() {
+        if (!viewer || !viewer.viewport || !isOpen) {
+          return null;
+        }
+        const sample = Math.max(1, Math.min(1000, Number(currentSlideInfo?.width || 1000)));
+        try {
+          const p0 = viewer.viewport.imageToViewportCoordinates(0, 0);
+          const p1 = viewer.viewport.imageToViewportCoordinates(sample, 0);
+          const s0 = viewer.viewport.pixelFromPoint(p0, true);
+          const s1 = viewer.viewport.pixelFromPoint(p1, true);
+          const scale = Math.abs(Number(s1.x) - Number(s0.x)) / sample;
+          return Number.isFinite(scale) && scale > 0 ? scale : null;
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function zoomToImageScale(targetScale) {
+        const currentScale = currentImageScale();
+        const currentZoom = viewer.viewport.getZoom(true);
+        const scale = Number(targetScale);
+        if (!Number.isFinite(scale) || scale <= 0 || !currentScale || !Number.isFinite(currentZoom) || currentZoom <= 0) {
+          return;
+        }
+        const targetZoom = currentZoom * (scale / currentScale);
+        viewer.viewport.zoomTo(targetZoom, viewer.viewport.getCenter(true), false);
+      }
+
+      function updateZoomReadout() {
+        const value = document.getElementById("zoom-value");
+        if (!value) {
+          return;
+        }
+        const scale = currentImageScale();
+        if (!scale) {
+          value.textContent = t("fit");
+          setActiveZoomButton(null);
+          return;
+        }
+        const base = magnificationBase(currentSlideInfo);
+        if (base) {
+          value.textContent = formatMagnification(base.value * scale);
+          const label = document.getElementById("zoom-label");
+          if (label) {
+            label.textContent = t("equivalentMagnification");
+          }
+        } else {
+          value.textContent = `${scale.toFixed(scale >= 1 ? 1 : 2)}x`;
+          const label = document.getElementById("zoom-label");
+          if (label) {
+            label.textContent = t("pixelScale");
+          }
+        }
+        setActiveZoomButton(scale);
+      }
+
+      function setActiveZoomButton(scale) {
+        const buttons = Array.from(document.querySelectorAll(".zoom-button"));
+        buttons.forEach((button) => button.classList.remove("active"));
+        if (!scale || !currentZoomLevels.length) {
+          return;
+        }
+        const numericLevels = currentZoomLevels.filter((level) => !level.fit && Number.isFinite(Number(level.scale)));
+        if (!numericLevels.length) {
+          return;
+        }
+        const minScale = Math.min(...numericLevels.map((level) => Number(level.scale)));
+        if (scale < minScale * 0.65) {
+          const fitButton = buttons.find((button) => button.dataset.fit === "true");
+          if (fitButton) {
+            fitButton.classList.add("active");
+          }
+          return;
+        }
+        let best = null;
+        let bestDistance = Infinity;
+        numericLevels.forEach((level) => {
+          const distance = Math.abs(Math.log(scale / Number(level.scale)));
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            best = level;
+          }
+        });
+        if (best && bestDistance < 0.28) {
+          const button = buttons.find((item) => Number(item.dataset.scale) === Number(best.scale));
+          if (button) {
+            button.classList.add("active");
+          }
+        }
+      }
+
+      function formatMagnification(value) {
+        const mag = Number(value);
+        if (!Number.isFinite(mag) || mag <= 0) {
+          return "unknown";
+        }
+        const digits = mag >= 10 ? 0 : mag >= 2 ? 1 : 2;
+        return `${mag.toFixed(digits).replace(/\.0+$/, "")}x`;
+      }
 
       function updatePatchHeader(payload) {
-        document.getElementById("patch-count").textContent =
-          payload.count > payload.returned ? `${payload.count} patches (${payload.returned} shown)` : `${payload.count} patches`;
+        document.getElementById("patch-count").textContent = patchCountLabel(payload);
         document.getElementById("score-legend").hidden = !payload.has_scores;
         appendWarnings(payload.warnings || []);
       }
 
       function updateAnnotationHeader(payload) {
-        const labels = payload.labels && payload.labels.length ? ` (${payload.labels.join(", ")})` : "";
-        document.getElementById("annotation-count").textContent =
-          payload.count > payload.returned ? `${payload.count} annotations (${payload.returned} shown)${labels}` : `${payload.count} annotations${labels}`;
+        document.getElementById("annotation-count").textContent = annotationCountLabel(payload);
         appendWarnings(payload.warnings || []);
       }
 
+      function patchCountLabel(payload) {
+        return payload.count > payload.returned
+          ? `${payload.count} ${t("patches")} (${payload.returned} ${t("shown")})`
+          : `${payload.count} ${t("patches")}`;
+      }
+
+      function annotationCountLabel(payload) {
+        const labels = payload.labels && payload.labels.length ? ` (${payload.labels.join(", ")})` : "";
+        return payload.count > payload.returned
+          ? `${payload.count} ${t("annotations")} (${payload.returned} ${t("shown")})${labels}`
+          : `${payload.count} ${t("annotations")}${labels}`;
+      }
+
       function appendWarnings(warnings) {
-        if (!warnings.length) {
-          return;
-        }
-        const warning = document.createElement("div");
-        warning.className = "warning";
-        warning.textContent = warnings.join("; ");
-        document.querySelector("header > div").appendChild(warning);
+        const target = document.getElementById("dynamic-warnings");
+        warnings.forEach((message) => {
+          if (!message) {
+            return;
+          }
+          const warning = document.createElement("div");
+          warning.className = "warning";
+          warning.textContent = message;
+          target.appendChild(warning);
+        });
+      }
+
+      function clearOverlays() {
+        patchElements.forEach((element) => viewer.removeOverlay(element));
+        annotationElements.forEach((element) => viewer.removeOverlay(element));
+        patchElements = [];
+        annotationElements = [];
       }
 
       function renderPatches() {
@@ -352,7 +1316,7 @@
         let y = Number(bbox[1]);
         let width = Math.max(1, Number(bbox[2]) - x);
         let height = Math.max(1, Number(bbox[3]) - y);
-        const color = annotation.color || "#e41a1c";
+        const color = annotation.color || "#c2415d";
         if (annotation.type === "point") {
           const px = Number(annotation.coordinates.x);
           const py = Number(annotation.coordinates.y);
@@ -467,6 +1431,36 @@
             element.style.opacity = String(opacity);
           }
         });
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function entryFolder(entry) {
+        const relative = String(entry.relative_path || "");
+        const slash = Math.max(relative.lastIndexOf("/"), relative.lastIndexOf("\\"));
+        return slash >= 0 ? relative.slice(0, slash) : ".";
+      }
+
+      function formatBytes(value) {
+        const size = Number(value);
+        if (!Number.isFinite(size) || size <= 0) {
+          return "";
+        }
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let current = size;
+        let unit = 0;
+        while (current >= 1024 && unit < units.length - 1) {
+          current /= 1024;
+          unit += 1;
+        }
+        return `${current.toFixed(current >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
       }
 
       document.getElementById("overlay-toggle").addEventListener("change", updatePatchOverlayStyle);
