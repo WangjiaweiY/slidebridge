@@ -9,6 +9,7 @@ from slidebridge.annotations.render import draw_annotations
 from slidebridge.annotations.table import AnnotationTable
 from slidebridge.core.protocol import Slide
 from slidebridge.overlays.patch_table import PatchTable
+from slidebridge.overlays.raster_heatmap import composite_raster_heatmap
 from slidebridge.utils.image import ensure_rgb
 from slidebridge.utils.paths import ensure_parent
 
@@ -23,6 +24,9 @@ def render_overlay(
     show_labels: bool = False,
     annotation_opacity: float = 0.35,
     draw_annotation_labels: bool = False,
+    raster_heatmap_path: str | Path | None = None,
+    raster_heatmap_opacity: float | None = None,
+    max_raster_heatmap_size: int = 4096,
     image_format: str | None = None,
 ) -> dict[str, Any]:
     thumbnail = ensure_rgb(slide.get_thumbnail(max_size=max_size))
@@ -37,6 +41,17 @@ def render_overlay(
     has_scores = any(record.score is not None for record in patch_table.records)
     alpha = int(max(0.0, min(1.0, float(opacity))) * 255)
     rendered = 0
+    raster_summary = None
+
+    if raster_heatmap_path is not None:
+        raster_opacity = opacity if raster_heatmap_opacity is None else raster_heatmap_opacity
+        thumbnail, raster = composite_raster_heatmap(
+            thumbnail,
+            raster_heatmap_path,
+            opacity=raster_opacity,
+            max_size=max_raster_heatmap_size,
+        )
+        raster_summary = raster.summary(slide_width=slide_width, slide_height=slide_height)
 
     for record in patch_table.records:
         x1 = int(round(record.x * scale_x))
@@ -83,6 +98,7 @@ def render_overlay(
         "rendered_patches_count": rendered,
         "annotations_count": len(annotation_table),
         "rendered_annotations_count": rendered_annotations,
+        "raster_heatmap": raster_summary,
         "output_path": str(output),
         "has_scores": has_scores,
     }

@@ -26,6 +26,7 @@ from slidebridge.core.metadata import summary
 from slidebridge.core.registry import SlideOpenError, get_registered_readers, open_slide
 from slidebridge.export.patches import export_patches as export_patch_images
 from slidebridge.overlays.patches import load_patch_table
+from slidebridge.overlays.raster_heatmap import is_raster_heatmap_path
 from slidebridge.qc.blur import blur_score
 from slidebridge.qc.report import generate_html_report, generate_json_report
 from slidebridge.qc.tissue import estimate_tissue_percent
@@ -36,7 +37,7 @@ from slidebridge.remote.ssh import build_ssh_base_command, require_ssh_available
 from slidebridge.remote.tunnel import build_tunnel_command, is_local_port_available, wait_for_http
 from slidebridge.render.overlay import render_overlay
 from slidebridge.server.app import create_app
-from slidebridge.utils.demo import create_demo_slide
+from slidebridge.utils.demo import create_demo_heatmap, create_demo_slide
 from slidebridge.utils.image import ensure_rgb, image_to_base64_jpeg
 from slidebridge.utils.paths import ensure_parent, iter_slide_paths
 
@@ -266,6 +267,23 @@ def create_demo(
         _fail(exc)
 
 
+@app.command("create-demo-heatmap")
+def create_demo_heatmap_command(
+    out: Path = typer.Option(Path("outputs/demo_heatmap.png"), "--out", help="Output PNG/JPG heatmap path."),
+    width: int = typer.Option(1024, "--width", help="Heatmap image width in pixels."),
+    height: int = typer.Option(768, "--height", help="Heatmap image height in pixels."),
+    seed: int = typer.Option(42, "--seed", help="Random seed."),
+    style: str = typer.Option("hotspot", "--style", help="Synthetic style: hotspot, gradient, or rings."),
+) -> None:
+    """Create a synthetic full-slide raster heatmap for viewer demos."""
+
+    try:
+        output = create_demo_heatmap(out, width=width, height=height, seed=seed, style=style)
+        console.print(f"Saved demo heatmap: {output}")
+    except Exception as exc:
+        _fail(exc)
+
+
 @app.command("create-demo-annotations")
 def create_demo_annotations_command(
     out: Path = typer.Option(Path("outputs/demo_annotations.geojson"), "--out", help="Output annotation path."),
@@ -371,6 +389,7 @@ def view(
     tile_size: int = typer.Option(256, "--tile-size", min=64, max=1024, help="Deep Zoom tile size."),
     jpeg_quality: int = typer.Option(85, "--jpeg-quality", min=1, max=100, help="JPEG tile quality."),
     heatmap: Optional[Path] = typer.Option(None, "--heatmap", help="Optional score/attention file."),
+    raster_heatmap: Optional[Path] = typer.Option(None, "--raster-heatmap", help="Optional PNG/JPG heatmap covering the full slide."),
     default_patch_size: int = typer.Option(256, "--default-patch-size", help="Default patch size for coordinate files."),
     heatmap_opacity: float = typer.Option(0.45, "--heatmap-opacity", min=0.0, max=1.0, help="Heatmap opacity."),
     score_normalization: str = typer.Option("minmax", "--score-normalization", help="minmax, percentile, or none."),
@@ -380,6 +399,7 @@ def view(
     annotation_opacity: float = typer.Option(0.35, "--annotation-opacity", min=0.0, max=1.0, help="Annotation overlay opacity."),
     max_annotations: int = typer.Option(10_000, "--max-annotations", help="Maximum annotations returned to the browser."),
     annotation_labels: Optional[str] = typer.Option(None, "--annotation-labels", help="Comma-separated annotation label filter."),
+    max_raster_heatmap_size: int = typer.Option(4096, "--max-raster-heatmap-size", help="Maximum raster heatmap side served to browser."),
     recursive: bool = typer.Option(False, "--recursive/--no-recursive", help="When PATH is a directory, include nested slide files."),
     max_slides: int = typer.Option(500, "--max-slides", help="Maximum slide files listed in directory viewer mode."),
     viewer_context: str = typer.Option("local", "--viewer-context", help="Viewer display context: local or remote."),
@@ -389,13 +409,15 @@ def view(
     viewer_source: Optional[str] = typer.Option(None, "--viewer-source", help="Source path shown in the viewer session panel."),
 ) -> None:
     try:
+        patch_score_heatmap, full_slide_heatmap = _resolve_heatmap_paths(heatmap, raster_heatmap)
         viewer_app = create_app(
             path,
             patches_path=patches,
             reader=reader,
             tile_size=tile_size,
             jpeg_quality=jpeg_quality,
-            heatmap_path=heatmap,
+            heatmap_path=patch_score_heatmap,
+            raster_heatmap_path=full_slide_heatmap,
             default_patch_size=default_patch_size,
             heatmap_opacity=heatmap_opacity,
             score_normalization=score_normalization,
@@ -405,6 +427,7 @@ def view(
             annotation_opacity=annotation_opacity,
             max_annotations=max_annotations,
             annotation_labels=_split_labels(annotation_labels),
+            max_raster_heatmap_size=max_raster_heatmap_size,
             recursive=recursive,
             max_slides=max_slides,
             viewer_context=viewer_context,
@@ -652,6 +675,7 @@ def remote_view(
     verbose: bool = typer.Option(False, "--verbose", help="Print extra command details."),
     patches: Optional[str] = typer.Option(None, "--patches", help="Remote patch coordinate path."),
     heatmap: Optional[str] = typer.Option(None, "--heatmap", help="Remote heatmap/score path."),
+    raster_heatmap: Optional[str] = typer.Option(None, "--raster-heatmap", help="Remote PNG/JPG heatmap covering the full slide."),
     annotations: Optional[str] = typer.Option(None, "--annotations", help="Remote annotation path."),
     annotation_format: Optional[str] = typer.Option(None, "--annotation-format", help="Annotation format override."),
     default_patch_size: int = typer.Option(256, "--default-patch-size", help="Default patch size for remote coordinate files."),
@@ -659,6 +683,7 @@ def remote_view(
     annotation_opacity: float = typer.Option(0.35, "--annotation-opacity", min=0.0, max=1.0, help="Annotation opacity."),
     max_overlay_patches: int = typer.Option(50_000, "--max-overlay-patches", help="Maximum patch overlays returned by remote viewer."),
     max_annotations: int = typer.Option(10_000, "--max-annotations", help="Maximum annotations returned by remote viewer."),
+    max_raster_heatmap_size: int = typer.Option(4096, "--max-raster-heatmap-size", help="Maximum remote raster heatmap side served to browser."),
     recursive: bool = typer.Option(False, "--recursive/--no-recursive", help="When REMOTE_SLIDE is a directory, include nested slide files."),
     max_slides: int = typer.Option(500, "--max-slides", help="Maximum slide files listed by the remote directory viewer."),
 ) -> None:
@@ -666,6 +691,7 @@ def remote_view(
 
     try:
         remote_path = parse_remote_path(remote_slide)
+        patch_score_heatmap, full_slide_heatmap = _resolve_heatmap_paths(heatmap, raster_heatmap)
         remote_command = build_remote_slidebridge_command(
             remote_runner,
             _remote_view_args(
@@ -673,7 +699,8 @@ def remote_view(
                 remote_host,
                 remote_port,
                 patches=patches,
-                heatmap=heatmap,
+                heatmap=patch_score_heatmap,
+                raster_heatmap=full_slide_heatmap,
                 annotations=annotations,
                 annotation_format=annotation_format,
                 default_patch_size=default_patch_size,
@@ -681,6 +708,7 @@ def remote_view(
                 annotation_opacity=annotation_opacity,
                 max_overlay_patches=max_overlay_patches,
                 max_annotations=max_annotations,
+                max_raster_heatmap_size=max_raster_heatmap_size,
                 recursive=recursive,
                 max_slides=max_slides,
                 viewer_context="remote",
@@ -744,6 +772,7 @@ def render_overlay_command(
     patches: Optional[Path] = typer.Option(None, "--patches", help="Patch coordinate file."),
     out: Path = typer.Option(..., "--out", help="Output PNG/JPG path."),
     heatmap: Optional[Path] = typer.Option(None, "--heatmap", help="Optional score/attention file."),
+    raster_heatmap: Optional[Path] = typer.Option(None, "--raster-heatmap", help="Optional PNG/JPG heatmap covering the full slide."),
     reader: Optional[str] = typer.Option(None, "--reader", help="Specify a reader by name."),
     default_patch_size: int = typer.Option(256, "--default-patch-size", help="Default patch size."),
     max_size: int = typer.Option(1600, "--max-size", help="Maximum rendered image side length."),
@@ -756,19 +785,21 @@ def render_overlay_command(
     annotation_opacity: float = typer.Option(0.35, "--annotation-opacity", min=0.0, max=1.0, help="Annotation opacity."),
     annotation_labels: Optional[str] = typer.Option(None, "--annotation-labels", help="Comma-separated annotation label filter."),
     draw_annotation_labels: bool = typer.Option(False, "--draw-annotation-labels/--no-draw-annotation-labels", help="Draw annotation labels."),
+    max_raster_heatmap_size: int = typer.Option(4096, "--max-raster-heatmap-size", help="Maximum raster heatmap side used during rendering."),
 ) -> None:
     slide = None
     try:
         if score_normalization not in {"minmax", "percentile", "none"}:
             raise ValueError("--score-normalization must be one of: minmax, percentile, none")
-        if patches is None and annotations is None:
-            raise ValueError("render-overlay requires --patches, --annotations, or both")
+        patch_score_heatmap, full_slide_heatmap = _resolve_heatmap_paths(heatmap, raster_heatmap)
+        if patches is None and annotations is None and full_slide_heatmap is None:
+            raise ValueError("render-overlay requires --patches, --annotations, --raster-heatmap, or --heatmap PNG/JPG")
         slide = open_slide(slide_path, reader=reader)
         table = None
         if patches is not None:
-            table = load_patch_table(patches, default_patch_size=default_patch_size, score_path=heatmap)
+            table = load_patch_table(patches, default_patch_size=default_patch_size, score_path=patch_score_heatmap)
             table = table.validate(slide.dimensions[0], slide.dimensions[1], mode="clip")
-        elif heatmap is not None:
+        elif patch_score_heatmap is not None:
             raise ValueError("--heatmap requires --patches")
         if table is not None and score_normalization != "none":
             table = table.normalize_scores(score_normalization)  # type: ignore[arg-type]
@@ -788,6 +819,9 @@ def render_overlay_command(
             show_labels=show_labels,
             annotation_opacity=annotation_opacity,
             draw_annotation_labels=draw_annotation_labels,
+            raster_heatmap_path=full_slide_heatmap,
+            raster_heatmap_opacity=opacity,
+            max_raster_heatmap_size=max_raster_heatmap_size,
             image_format=image_format,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -973,6 +1007,7 @@ def _remote_view_args(
     remote_port: int,
     patches: Optional[str] = None,
     heatmap: Optional[str] = None,
+    raster_heatmap: Optional[str] = None,
     annotations: Optional[str] = None,
     annotation_format: Optional[str] = None,
     default_patch_size: int = 256,
@@ -980,6 +1015,7 @@ def _remote_view_args(
     annotation_opacity: float = 0.35,
     max_overlay_patches: int = 50_000,
     max_annotations: int = 10_000,
+    max_raster_heatmap_size: int = 4096,
     recursive: bool = False,
     max_slides: int = 500,
     viewer_context: str = "local",
@@ -1006,6 +1042,8 @@ def _remote_view_args(
         str(int(max_overlay_patches)),
         "--max-annotations",
         str(int(max_annotations)),
+        "--max-raster-heatmap-size",
+        str(int(max_raster_heatmap_size)),
         "--max-slides",
         str(int(max_slides)),
         "--viewer-context",
@@ -1025,6 +1063,8 @@ def _remote_view_args(
         args.extend(["--patches", patches])
     if heatmap:
         args.extend(["--heatmap", heatmap])
+    if raster_heatmap:
+        args.extend(["--raster-heatmap", raster_heatmap])
     if annotations:
         args.extend(["--annotations", annotations])
     if annotation_format:
@@ -1186,6 +1226,16 @@ def _split_labels(labels: Optional[str]) -> list[str]:
     if not labels:
         return []
     return [item.strip() for item in labels.split(",") if item.strip()]
+
+
+def _resolve_heatmap_paths(heatmap, raster_heatmap):
+    if raster_heatmap is not None and not is_raster_heatmap_path(raster_heatmap):
+        raise ValueError("--raster-heatmap must point to a PNG, JPG, or JPEG file.")
+    if heatmap is not None and is_raster_heatmap_path(heatmap):
+        if raster_heatmap is not None:
+            raise ValueError("Use either --heatmap PNG/JPG or --raster-heatmap, not both.")
+        return None, heatmap
+    return heatmap, raster_heatmap
 
 
 def _write_sample_patches(

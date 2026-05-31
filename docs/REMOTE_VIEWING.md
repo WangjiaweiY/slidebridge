@@ -92,6 +92,14 @@ slidebridge remote-view user@server:/data/slides/case.svs `
   --remote-runner "conda run -n slidebridge slidebridge"
 ```
 
+With a remote full-slide raster heatmap:
+
+```powershell
+slidebridge remote-view user@server:/data/slides/case.svs `
+  --raster-heatmap /data/model_outputs/case_heatmap.png `
+  --remote-runner "conda run -n slidebridge slidebridge"
+```
+
 Preview commands without connecting:
 
 ```powershell

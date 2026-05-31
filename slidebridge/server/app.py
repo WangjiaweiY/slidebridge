@@ -23,6 +23,7 @@ from slidebridge.core.registry import open_slide
 from slidebridge.overlays.heatmap import attach_scores, load_scores
 from slidebridge.overlays.patch_table import PatchTable
 from slidebridge.overlays.patches import load_patch_table
+from slidebridge.overlays.raster_heatmap import RasterHeatmap, is_raster_heatmap_path, load_raster_heatmap
 from slidebridge.utils.image import ensure_rgb
 from slidebridge.utils.paths import SUPPORTED_IMAGE_EXTENSIONS, SUPPORTED_WSI_EXTENSIONS
 
@@ -74,6 +75,13 @@ class AnnotationContext:
     warning: str
 
 
+@dataclass
+class RasterHeatmapContext:
+    heatmap: RasterHeatmap | None
+    summary: dict[str, Any]
+    warning: str
+
+
 def create_app(
     slide_path: str | Path,
     patches_path: str | Path | None = None,
@@ -81,6 +89,7 @@ def create_app(
     tile_size: int = 256,
     jpeg_quality: int = 85,
     heatmap_path: str | Path | None = None,
+    raster_heatmap_path: str | Path | None = None,
     default_patch_size: int = 256,
     heatmap_opacity: float = 0.45,
     score_normalization: str = "minmax",
@@ -90,6 +99,7 @@ def create_app(
     annotation_opacity: float = 0.35,
     max_annotations: int = 10_000,
     annotation_labels: list[str] | None = None,
+    max_raster_heatmap_size: int = 4096,
     recursive: bool = False,
     max_slides: int = 500,
     viewer_context: str = "local",
@@ -123,6 +133,12 @@ def create_app(
     if library_mode and len(entries) >= max_slides:
         library_warning = f"Showing first {max_slides} viewable files. Increase --max-slides if needed."
 
+    if heatmap_path is not None and is_raster_heatmap_path(heatmap_path):
+        if raster_heatmap_path is not None:
+            raise ValueError("Use either --heatmap PNG/JPG or --raster-heatmap, not both.")
+        raster_heatmap_path = heatmap_path
+        heatmap_path = None
+
     if heatmap_path is not None and patches_path is None:
         raise ValueError("--heatmap requires --patches so scores can be aligned to coordinates")
 
@@ -131,6 +147,7 @@ def create_app(
     sessions: dict[int, SlideSession] = {}
     patch_cache: dict[int, OverlayContext] = {}
     annotation_cache: dict[int, AnnotationContext] = {}
+    raster_heatmap_cache: dict[int, RasterHeatmapContext] = {}
 
     def get_entry(slide_id: int) -> SlideEntry:
         if slide_id < 0 or slide_id >= len(entries):
@@ -194,6 +211,24 @@ def create_app(
         annotation_cache[slide_id] = context
         return context
 
+    def get_raster_heatmap_context(slide_id: int = 0) -> RasterHeatmapContext:
+        if slide_id in raster_heatmap_cache:
+            return raster_heatmap_cache[slide_id]
+        session = get_session(slide_id)
+        if raster_heatmap_path is None:
+            context = RasterHeatmapContext(None, {"available": False, "warnings": []}, "")
+            raster_heatmap_cache[slide_id] = context
+            return context
+        heatmap = load_raster_heatmap(raster_heatmap_path, max_size=max_raster_heatmap_size)
+        summary_payload = heatmap.summary(slide_width=session.width, slide_height=session.height)
+        warnings = list(summary_payload.get("warnings", []))
+        if library_mode:
+            warnings.append("The same raster heatmap is applied to the selected slide in directory viewer mode.")
+        summary_payload["warnings"] = warnings
+        context = RasterHeatmapContext(heatmap, summary_payload, "; ".join(warnings))
+        raster_heatmap_cache[slide_id] = context
+        return context
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         del app
@@ -215,6 +250,7 @@ def create_app(
         session = get_session(0)
         patch_context = get_patch_context(0)
         annotation_context = get_annotation_context(0)
+        raster_heatmap_context = get_raster_heatmap_context(0)
         template_path = Path(__file__).parent / "templates" / "viewer.html"
         template = Template(template_path.read_text(encoding="utf-8"))
         return HTMLResponse(
@@ -230,6 +266,8 @@ def create_app(
                 warnings=session.info["warnings"],
                 patch_count=len(patch_context.table),
                 patch_warning=patch_context.warning,
+                raster_heatmap_available=raster_heatmap_context.heatmap is not None,
+                raster_heatmap_warning=raster_heatmap_context.warning,
                 heatmap_opacity=max(0.0, min(float(heatmap_opacity), 1.0)),
                 annotation_count=len(annotation_context.table),
                 annotation_warning=annotation_context.warning,
@@ -310,6 +348,14 @@ def create_app(
             "annotations": [record.to_dict() for record in returned_records],
         })
 
+    @app.get("/api/raster-heatmap")
+    def api_raster_heatmap(slide_id: int = Query(0, ge=0)) -> JSONResponse:
+        context = get_raster_heatmap_context(slide_id)
+        payload = dict(context.summary)
+        if context.heatmap is not None:
+            payload["url"] = f"/slides/{int(slide_id)}/{tile_cache_key}/raster_heatmap.png"
+        return _json_response(payload)
+
     @app.get("/dzi.dzi")
     def dzi(slide_id: int = Query(0, ge=0)) -> Response:
         return _dzi_response(get_session(slide_id), tile_size)
@@ -343,6 +389,20 @@ def create_app(
         if slide_id < 0:
             raise HTTPException(status_code=404, detail="Slide id must be non-negative")
         return _tile_response(get_session(slide_id), level, col, row, tile_size, jpeg_quality, cacheable=True)
+
+    @app.get("/slides/{slide_id}/{cache_key}/raster_heatmap.png")
+    def slide_raster_heatmap(slide_id: int, cache_key: str) -> Response:
+        _validate_cache_key(cache_key, tile_cache_key)
+        if slide_id < 0:
+            raise HTTPException(status_code=404, detail="Slide id must be non-negative")
+        context = get_raster_heatmap_context(slide_id)
+        if context.heatmap is None:
+            raise HTTPException(status_code=404, detail="No raster heatmap is loaded")
+        return Response(
+            content=context.heatmap.to_png_bytes(),
+            media_type="image/png",
+            headers=CACHEABLE_TILE_HEADERS,
+        )
 
     return app
 
