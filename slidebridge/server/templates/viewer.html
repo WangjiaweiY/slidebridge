@@ -37,10 +37,12 @@
       width: 100vw;
     }
     aside {
-      display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      display: flex;
+      flex-direction: column;
       min-width: 0;
       width: 400px;
+      height: 100vh;
+      min-height: 0;
       background: var(--panel);
       border-right: 1px solid var(--line);
       box-shadow: 1px 0 14px rgba(0, 0, 0, 0.12);
@@ -127,10 +129,11 @@
       overflow-wrap: anywhere;
     }
     .scroll {
-      overflow: hidden;
-      display: grid;
-      height: 100%;
+      flex: 1 1 auto;
       min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
     .sidebar-tabs {
       display: grid;
@@ -162,9 +165,8 @@
     }
     .tab-panel {
       display: none;
+      flex: 1 1 auto;
       min-height: 0;
-      height: 100%;
-      max-height: 100%;
       overflow-x: hidden;
       overflow-y: auto;
       scrollbar-gutter: stable;
@@ -177,13 +179,13 @@
       overflow: hidden;
     }
     #library-tab.active {
-      display: grid;
-      grid-template-rows: minmax(0, 1fr);
+      display: flex;
+      flex-direction: column;
     }
     #library-panel {
-      display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr) auto;
-      height: 100%;
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
       min-height: 0;
       margin-bottom: 0;
       padding-bottom: 0;
@@ -240,14 +242,13 @@
       font-size: 13px;
     }
     .slide-list {
-      display: grid;
-      align-content: start;
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
       gap: 6px;
       min-height: 0;
-      height: 100%;
-      max-height: none;
       overflow-x: hidden;
-      overflow-y: scroll;
+      overflow-y: auto;
       overscroll-behavior: contain;
       padding-right: 8px;
       scrollbar-gutter: stable;
@@ -449,6 +450,8 @@
       }
       aside {
         width: 100%;
+        height: auto;
+        min-height: 0;
         border-right: 0;
         border-bottom: 1px solid var(--line);
       }
@@ -708,7 +711,6 @@
           const target = button.dataset.tabTarget;
           buttons.forEach((item) => item.classList.toggle("active", item === button));
           panels.forEach((panel) => panel.classList.toggle("active", panel.id === target));
-          syncLibraryListHeight();
           if (onChange) {
             onChange();
           }
@@ -810,8 +812,6 @@
       if (search) {
         search.addEventListener("input", renderSlideList);
       }
-      setupSlideListScroll();
-      window.addEventListener("resize", syncLibraryListHeight);
       await selectSlide(selectedSlideId);
 
       async function selectSlide(slideId) {
@@ -858,37 +858,6 @@
             list.appendChild(button);
           });
         setActiveSlideButton();
-        syncLibraryListHeight();
-      }
-
-      function setupSlideListScroll() {
-        const list = document.getElementById("slide-list");
-        if (!list) {
-          return;
-        }
-        list.addEventListener("wheel", function (event) {
-          if (list.scrollHeight <= list.clientHeight) {
-            return;
-          }
-          list.scrollTop += event.deltaY;
-          event.preventDefault();
-          event.stopPropagation();
-        }, {passive: false});
-      }
-
-      function syncLibraryListHeight() {
-        const panel = document.getElementById("library-tab");
-        const list = document.getElementById("slide-list");
-        if (!panel || !list || !panel.classList.contains("active")) {
-          return;
-        }
-        window.requestAnimationFrame(function () {
-          const listRect = list.getBoundingClientRect();
-          const panelRect = panel.getBoundingClientRect();
-          const available = Math.max(160, Math.floor(panelRect.bottom - listRect.top - 2));
-          list.style.height = `${available}px`;
-          list.style.maxHeight = `${available}px`;
-        });
       }
 
       function setActiveSlideButton() {
