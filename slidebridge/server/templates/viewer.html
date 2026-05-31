@@ -437,8 +437,8 @@
     }
     .zoom-control {
       position: absolute;
-      right: 18px;
-      top: 190px;
+      left: 18px;
+      top: 18px;
       z-index: 8;
       display: grid;
       gap: 8px;
@@ -542,9 +542,9 @@
         max-height: 240px;
       }
       .zoom-control {
-        top: auto;
-        right: 12px;
-        bottom: 12px;
+        left: 12px;
+        top: 12px;
+        right: auto;
       }
     }
   </style>
@@ -868,6 +868,7 @@
       const viewer = OpenSeadragon({
         id: "viewer",
         prefixUrl: osdPrefixUrl,
+        showNavigationControl: false,
         showNavigator: true,
         navigatorPosition: "TOP_RIGHT",
         navigatorWidth: "260px",
