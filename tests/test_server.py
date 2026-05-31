@@ -75,6 +75,9 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     assert "selected slide" in page.text
     assert "sidebar-tabs" in page.text
     assert "language-toggle" in page.text
+    assert "zoom-control" in page.text
+    assert "equiv. magnification" in page.text
+    assert "zoomToImageScale" in page.text
     assert "data-i18n=\"slideMetadata\"" in page.text
     assert "flex-direction: column" in page.text
     assert "overflow-y: auto" in page.text

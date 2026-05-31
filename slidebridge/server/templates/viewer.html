@@ -435,6 +435,89 @@
       background: currentColor;
       box-sizing: border-box;
     }
+    .zoom-control {
+      position: absolute;
+      right: 18px;
+      top: 190px;
+      z-index: 8;
+      display: grid;
+      gap: 8px;
+      width: 86px;
+      padding: 9px;
+      border: 1px solid rgba(215, 224, 232, 0.9);
+      border-radius: 8px;
+      background: rgba(248, 251, 253, 0.94);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+      color: #1e2a35;
+      pointer-events: auto;
+      user-select: none;
+    }
+    .zoom-readout {
+      display: grid;
+      gap: 2px;
+      text-align: center;
+    }
+    .zoom-value {
+      font-size: 18px;
+      line-height: 1;
+      font-weight: 700;
+      color: #123f4a;
+    }
+    .zoom-label {
+      font-size: 10px;
+      line-height: 1.2;
+      color: #60717d;
+    }
+    .zoom-bar {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 3px 0 3px 15px;
+    }
+    .zoom-bar::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      border-radius: 999px;
+      background: #c7d3dc;
+    }
+    .zoom-button {
+      position: relative;
+      height: 24px;
+      padding: 0 7px;
+      border: 1px solid #cad6df;
+      border-radius: 6px;
+      background: #fff;
+      color: #2d3b46;
+      font: inherit;
+      font-size: 12px;
+      line-height: 22px;
+      cursor: pointer;
+    }
+    .zoom-button::before {
+      content: "";
+      position: absolute;
+      left: -13px;
+      top: 50%;
+      width: 8px;
+      height: 2px;
+      background: #94a5b0;
+      transform: translateY(-50%);
+    }
+    .zoom-button:hover {
+      border-color: #1f7a8c;
+      background: #eef8fa;
+    }
+    .zoom-button.active {
+      border-color: #1f7a8c;
+      background: #dff2f5;
+      color: #0f5260;
+      font-weight: 700;
+    }
     .hidden {
       display: none !important;
     }
@@ -457,6 +540,11 @@
       }
       .slide-list {
         max-height: 240px;
+      }
+      .zoom-control {
+        top: auto;
+        right: 12px;
+        bottom: 12px;
       }
     }
   </style>
@@ -576,6 +664,13 @@
       <div id="viewer">
         <div id="viewer-error">OpenSeadragon failed to load. Please check the bundled viewer asset or your network connection.</div>
       </div>
+      <div id="zoom-control" class="zoom-control" aria-label="Equivalent magnification control">
+        <div class="zoom-readout">
+          <div id="zoom-value" class="zoom-value">fit</div>
+          <div id="zoom-label" class="zoom-label" data-i18n="equivalentMagnification">equiv. magnification</div>
+        </div>
+        <div id="zoom-bar" class="zoom-bar"></div>
+      </div>
     </main>
   </div>
   <script>
@@ -621,6 +716,9 @@
         annotations: "annotations",
         shown: "shown",
         none: "none",
+        equivalentMagnification: "equiv. magnification",
+        fit: "Fit",
+        pixelScale: "pixel scale",
         footer: "Coordinates are level-0 pixels. Viewer is for research/debugging only."
       },
       zh: {
@@ -786,6 +884,8 @@
       let annotationPayload = null;
       let patchElements = [];
       let annotationElements = [];
+      let currentSlideInfo = null;
+      let currentZoomLevels = [];
       setupTabs(function () {
         refreshViewerLayout(false);
       });
@@ -800,12 +900,20 @@
         if (infoWarnings && infoWarnings.dataset.empty === "true") {
           infoWarnings.textContent = t("none");
         }
+        renderZoomControl();
+        updateZoomReadout();
       });
 
       viewer.addHandler("open", function () {
         isOpen = true;
+        renderZoomControl();
         refreshViewerLayout(true);
+        updateZoomReadout();
       });
+      viewer.addHandler("animation", updateZoomReadout);
+      viewer.addHandler("animation-finish", updateZoomReadout);
+      viewer.addHandler("zoom", updateZoomReadout);
+      viewer.addHandler("pan", updateZoomReadout);
 
       renderSlideList();
       const search = document.getElementById("slide-search");
@@ -898,6 +1006,9 @@
         document.getElementById("meta-mpp").textContent = `${info.mpp_x ?? "unknown"} x ${info.mpp_y ?? "unknown"}`;
         document.getElementById("meta-objective").textContent = info.objective_power ?? "unknown";
         document.getElementById("meta-vendor").textContent = info.vendor ?? "unknown";
+        currentSlideInfo = info;
+        renderZoomControl();
+        updateZoomReadout();
         const warnings = document.getElementById("meta-warnings");
         if (info.warnings && info.warnings.length) {
           warnings.textContent = info.warnings.join(", ");
@@ -906,6 +1017,176 @@
           warnings.textContent = t("none");
           warnings.dataset.empty = "true";
         }
+      }
+
+      function renderZoomControl() {
+        const bar = document.getElementById("zoom-bar");
+        if (!bar) {
+          return;
+        }
+        currentZoomLevels = zoomLevelsFor(currentSlideInfo);
+        bar.innerHTML = "";
+        currentZoomLevels.forEach((level) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "zoom-button";
+          button.textContent = level.fit ? t("fit") : level.label;
+          button.title = level.fit ? t("fit") : `${level.label} ${t("equivalentMagnification")}`;
+          if (level.fit) {
+            button.dataset.fit = "true";
+          } else {
+            button.dataset.scale = String(level.scale);
+          }
+          button.addEventListener("click", function () {
+            if (level.fit) {
+              viewer.viewport.goHome(false);
+            } else {
+              zoomToImageScale(level.scale);
+            }
+            window.setTimeout(updateZoomReadout, 50);
+          });
+          bar.appendChild(button);
+        });
+        updateZoomReadout();
+      }
+
+      function zoomLevelsFor(info) {
+        const base = magnificationBase(info);
+        if (!base) {
+          return [
+            {fit: false, label: "2:1", scale: 2},
+            {fit: false, label: "1:1", scale: 1},
+            {fit: false, label: "1:2", scale: 0.5},
+            {fit: false, label: "1:4", scale: 0.25},
+            {fit: true, label: t("fit")}
+          ];
+        }
+        const common = [1, 2, 5, 10, 20, 40, 60, 80];
+        const levels = common
+          .filter((value) => value <= base.value * 1.01)
+          .map((value) => ({fit: false, label: `${formatMagnification(value)}`, scale: value / base.value, mag: value}));
+        if (!levels.length || Math.abs((levels[levels.length - 1].mag || 0) - base.value) > 0.75) {
+          levels.push({fit: false, label: `${formatMagnification(base.value)}`, scale: 1, mag: base.value});
+        }
+        levels.sort((a, b) => Number(b.mag || 0) - Number(a.mag || 0));
+        levels.push({fit: true, label: t("fit")});
+        return levels;
+      }
+
+      function magnificationBase(info) {
+        if (!info) {
+          return null;
+        }
+        const objective = Number(info.objective_power);
+        if (Number.isFinite(objective) && objective > 0) {
+          return {value: objective, source: "objective"};
+        }
+        const mppValues = [Number(info.mpp_x), Number(info.mpp_y)].filter((value) => Number.isFinite(value) && value > 0);
+        if (mppValues.length) {
+          const mpp = mppValues.reduce((sum, value) => sum + value, 0) / mppValues.length;
+          return {value: 10 / mpp, source: "mpp"};
+        }
+        return null;
+      }
+
+      function currentImageScale() {
+        if (!viewer || !viewer.viewport || !isOpen) {
+          return null;
+        }
+        const sample = Math.max(1, Math.min(1000, Number(currentSlideInfo?.width || 1000)));
+        try {
+          const p0 = viewer.viewport.imageToViewportCoordinates(0, 0);
+          const p1 = viewer.viewport.imageToViewportCoordinates(sample, 0);
+          const s0 = viewer.viewport.pixelFromPoint(p0, true);
+          const s1 = viewer.viewport.pixelFromPoint(p1, true);
+          const scale = Math.abs(Number(s1.x) - Number(s0.x)) / sample;
+          return Number.isFinite(scale) && scale > 0 ? scale : null;
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function zoomToImageScale(targetScale) {
+        const currentScale = currentImageScale();
+        const currentZoom = viewer.viewport.getZoom(true);
+        const scale = Number(targetScale);
+        if (!Number.isFinite(scale) || scale <= 0 || !currentScale || !Number.isFinite(currentZoom) || currentZoom <= 0) {
+          return;
+        }
+        const targetZoom = currentZoom * (scale / currentScale);
+        viewer.viewport.zoomTo(targetZoom, viewer.viewport.getCenter(true), false);
+      }
+
+      function updateZoomReadout() {
+        const value = document.getElementById("zoom-value");
+        if (!value) {
+          return;
+        }
+        const scale = currentImageScale();
+        if (!scale) {
+          value.textContent = t("fit");
+          setActiveZoomButton(null);
+          return;
+        }
+        const base = magnificationBase(currentSlideInfo);
+        if (base) {
+          value.textContent = formatMagnification(base.value * scale);
+          const label = document.getElementById("zoom-label");
+          if (label) {
+            label.textContent = t("equivalentMagnification");
+          }
+        } else {
+          value.textContent = `${scale.toFixed(scale >= 1 ? 1 : 2)}x`;
+          const label = document.getElementById("zoom-label");
+          if (label) {
+            label.textContent = t("pixelScale");
+          }
+        }
+        setActiveZoomButton(scale);
+      }
+
+      function setActiveZoomButton(scale) {
+        const buttons = Array.from(document.querySelectorAll(".zoom-button"));
+        buttons.forEach((button) => button.classList.remove("active"));
+        if (!scale || !currentZoomLevels.length) {
+          return;
+        }
+        const numericLevels = currentZoomLevels.filter((level) => !level.fit && Number.isFinite(Number(level.scale)));
+        if (!numericLevels.length) {
+          return;
+        }
+        const minScale = Math.min(...numericLevels.map((level) => Number(level.scale)));
+        if (scale < minScale * 0.65) {
+          const fitButton = buttons.find((button) => button.dataset.fit === "true");
+          if (fitButton) {
+            fitButton.classList.add("active");
+          }
+          return;
+        }
+        let best = null;
+        let bestDistance = Infinity;
+        numericLevels.forEach((level) => {
+          const distance = Math.abs(Math.log(scale / Number(level.scale)));
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            best = level;
+          }
+        });
+        if (best && bestDistance < 0.28) {
+          const button = buttons.find((item) => Number(item.dataset.scale) === Number(best.scale));
+          if (button) {
+            button.classList.add("active");
+          }
+        }
+      }
+
+      function formatMagnification(value) {
+        const mag = Number(value);
+        if (!Number.isFinite(mag) || mag <= 0) {
+          return "unknown";
+        }
+        const digits = mag >= 10 ? 0 : mag >= 2 ? 1 : 2;
+        return `${mag.toFixed(digits).replace(/\.0+$/, "")}x`;
       }
 
       function updatePatchHeader(payload) {
