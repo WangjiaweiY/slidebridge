@@ -722,13 +722,16 @@ def remote_view(
                     webbrowser.open(local_url)
             else:
                 raise RuntimeError(f"Viewer did not become reachable at {local_url} within {wait_timeout} seconds.")
-            process.wait()
+            returncode = process.wait()
+            if returncode != 0:
+                _cleanup_remote_viewer(remote_path, remote_port, ssh_port, identity_file, ssh_option)
         except KeyboardInterrupt:
             console.print("Stopping SSH tunnel...")
-            process.terminate()
-            process.wait(timeout=10)
+            _stop_process(process)
+            _cleanup_remote_viewer(remote_path, remote_port, ssh_port, identity_file, ssh_option)
         except Exception:
-            process.terminate()
+            _stop_process(process)
+            _cleanup_remote_viewer(remote_path, remote_port, ssh_port, identity_file, ssh_option)
             raise
     except Exception as exc:
         _fail(exc)
@@ -873,6 +876,56 @@ def _ensure_remote_port_available(
         return
     _print_remote_result(result)
     raise RuntimeError("Remote port preflight check failed before starting the viewer.")
+
+
+def _remote_view_cleanup_command(port: int) -> str:
+    checked_port = int(port)
+    return (
+        "user_name=$(id -un 2>/dev/null || whoami); "
+        "pids=$(ps -u \"$user_name\" -o pid=,args= 2>/dev/null | "
+        f"awk -v port='--port {checked_port}' "
+        "'index($0, \"slidebridge view\") && index($0, port) {print $1}'); "
+        "if [ -n \"$pids\" ]; then "
+        "kill $pids 2>/dev/null || true; "
+        "sleep 1; "
+        "kill -9 $pids 2>/dev/null || true; "
+        "fi"
+    )
+
+
+def _cleanup_remote_viewer(
+    remote: RemotePath,
+    remote_port: int,
+    ssh_port: Optional[int],
+    identity_file: Optional[Path],
+    ssh_options: list[str],
+) -> None:
+    console.print(f"Stopping remote SlideBridge viewer on port {int(remote_port)}...")
+    command = _ssh_command_for_remote(
+        remote,
+        _remote_view_cleanup_command(remote_port),
+        ssh_port,
+        identity_file,
+        ssh_options,
+    )
+    result = run_ssh_command(command, timeout=20)
+    if result.returncode != 0:
+        _print_remote_result(result)
+        console.print(
+            "[yellow]Remote cleanup did not complete. If the remote port is still occupied, run "
+            f"`pkill -f 'slidebridge view .*--port {int(remote_port)}'` on the remote server.[/yellow]"
+        )
+
+
+def _stop_process(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=10)
 
 
 def _remote_view_args(

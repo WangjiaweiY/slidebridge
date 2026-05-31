@@ -16,6 +16,7 @@ def test_remote_view_default_localhost_binding():
     assert result.exit_code == 0
     assert "http://127.0.0.1:7860" in result.stdout
     assert "127.0.0.1:7860:127.0.0.1:7860" in result.stdout
+    assert "ServerAliveInterval=30" in result.stdout
 
 
 def test_remote_view_public_local_bind_warns():

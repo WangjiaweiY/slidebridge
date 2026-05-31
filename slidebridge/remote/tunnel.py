@@ -34,7 +34,20 @@ def build_tunnel_command(
         ssh_options=ssh_options,
     )
     target = command.pop()
-    command.extend(["-L", f"{local_host}:{int(local_port)}:{remote_host}:{int(remote_port)}", target, remote_command])
+    command.extend(
+        [
+            "-o",
+            "ExitOnForwardFailure=yes",
+            "-o",
+            "ServerAliveInterval=30",
+            "-o",
+            "ServerAliveCountMax=3",
+            "-L",
+            f"{local_host}:{int(local_port)}:{remote_host}:{int(remote_port)}",
+            target,
+            remote_command,
+        ]
+    )
     return command
 
 

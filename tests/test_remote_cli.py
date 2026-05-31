@@ -23,7 +23,8 @@ def test_remote_view_dry_run_prints_tunnel_and_remote_command():
 
     assert result.exit_code == 0
     assert "Local URL" in result.stdout
-    assert "ssh -L 127.0.0.1:7860:127.0.0.1:7860 user@example.org" in result.stdout
+    assert "ExitOnForwardFailure=yes" in result.stdout
+    assert "-L 127.0.0.1:7860:127.0.0.1:7860 user@example.org" in result.stdout
     assert "conda run -n slidebridge slidebridge view /data/slides/demo.svs" in result.stdout
     assert "--no-open-browser" in result.stdout
     assert "--viewer-context remote" in result.stdout
@@ -164,3 +165,51 @@ def test_remote_view_remote_port_preflight_failure_stops_before_start(monkeypatc
 
     assert result.exit_code == 1
     assert "Remote port preflight check failed" in result.stdout
+
+
+def test_remote_view_keyboard_interrupt_cleans_remote_viewer(monkeypatch):
+    calls = []
+
+    def fake_require_ssh_available() -> None:
+        return None
+
+    def fake_run_ssh_command(command, timeout=None):
+        calls.append(command[-1])
+        if "ss -ltn" in command[-1]:
+            return RemoteCommandResult(command=command, returncode=1, stdout="", stderr="")
+        if "slidebridge view" in command[-1] and "kill" in command[-1]:
+            return RemoteCommandResult(command=command, returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected remote command: {command[-1]}")
+
+    class FakeProcess:
+        def __init__(self, command):
+            self.command = command
+            self.terminated = False
+
+        def wait(self, timeout=None):
+            if timeout is None:
+                raise KeyboardInterrupt()
+            return 0
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.terminated = True
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr("slidebridge.cli.require_ssh_available", fake_require_ssh_available)
+    monkeypatch.setattr("slidebridge.cli.is_local_port_available", lambda host, port: True)
+    monkeypatch.setattr("slidebridge.cli.wait_for_http", lambda url, timeout=30.0: True)
+    monkeypatch.setattr("slidebridge.cli.webbrowser.open", lambda url: None)
+    monkeypatch.setattr("slidebridge.cli.run_ssh_command", fake_run_ssh_command)
+    monkeypatch.setattr("slidebridge.cli.subprocess.Popen", FakeProcess)
+
+    result = runner.invoke(app, ["remote-view", "user@example.org:/data/slides/demo.svs"])
+
+    assert result.exit_code == 0
+    assert "Stopping SSH tunnel" in result.stdout
+    assert "Stopping remote SlideBridge viewer on port 7860" in result.stdout
+    assert any("kill $pids" in command for command in calls)
