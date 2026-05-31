@@ -45,6 +45,11 @@
       font-size: 13px;
       white-space: nowrap;
     }
+    .right-panel {
+      display: grid;
+      gap: 8px;
+      justify-items: end;
+    }
     .controls {
       display: flex;
       flex-wrap: wrap;
@@ -102,6 +107,18 @@
       border: 0;
       mix-blend-mode: multiply;
     }
+    .annotation-overlay {
+      pointer-events: auto;
+      overflow: visible;
+    }
+    .annotation-point {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      background: currentColor;
+      box-sizing: border-box;
+    }
   </style>
 </head>
 <body>
@@ -119,13 +136,21 @@
       {% if patch_warning %}
       <div class="warning">{{ patch_warning }}</div>
       {% endif %}
+      {% if annotation_warning %}
+      <div class="warning">{{ annotation_warning }}</div>
+      {% endif %}
     </div>
-    <div>
+    <div class="right-panel">
       <div class="pill" id="patch-count">{{ patch_count }} patches</div>
+      <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
       <div class="controls">
-        <label><input id="overlay-toggle" type="checkbox" checked> overlay</label>
+        <label><input id="overlay-toggle" type="checkbox" checked> model/debug overlay</label>
         <label>opacity <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}"></label>
         <div class="legend" id="score-legend" hidden><span>low</span><span class="legend-bar"></span><span>high</span></div>
+      </div>
+      <div class="controls">
+        <label><input id="annotation-toggle" type="checkbox" checked> annotation overlay for research/debugging</label>
+        <label>opacity <input id="annotation-opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ annotation_opacity }}"></label>
       </div>
     </div>
   </header>
@@ -179,8 +204,6 @@
       throw new Error("OpenSeadragon failed to load");
     }
 
-    const imageWidth = {{ width }};
-    const imageHeight = {{ height }};
     async function initializeViewer() {
       await loadOpenSeadragon();
       const viewer = OpenSeadragon({
@@ -193,49 +216,106 @@
         maxZoomPixelRatio: 2
       });
 
-      async function loadPatches() {
-        const response = await fetch("/api/patches");
-        const payload = await response.json();
-        const patches = payload.patches || [];
-        const hasScores = Boolean(payload.has_scores);
-        const renderLimit = patches.length;
+      let isOpen = false;
+      let patchPayload = null;
+      let annotationPayload = null;
+      let patchElements = [];
+      let annotationElements = [];
+
+      viewer.addHandler("open", function () {
+        isOpen = true;
+        renderPatches();
+        renderAnnotations();
+      });
+
+      fetch("/api/patches")
+        .then((response) => response.json())
+        .then((payload) => {
+          patchPayload = payload;
+          updatePatchHeader(payload);
+          renderPatches();
+        })
+        .catch((error) => console.error("Failed to load patches", error));
+
+      fetch("/api/annotations")
+        .then((response) => response.json())
+        .then((payload) => {
+          annotationPayload = payload;
+          updateAnnotationHeader(payload);
+          renderAnnotations();
+        })
+        .catch((error) => console.error("Failed to load annotations", error));
+
+      function updatePatchHeader(payload) {
         document.getElementById("patch-count").textContent =
           payload.count > payload.returned ? `${payload.count} patches (${payload.returned} shown)` : `${payload.count} patches`;
-        document.getElementById("score-legend").hidden = !hasScores;
-        if (payload.warnings && payload.warnings.length) {
-          const warning = document.createElement("div");
-          warning.className = "warning";
-          warning.textContent = payload.warnings.join("; ");
-          document.querySelector("header > div").appendChild(warning);
+        document.getElementById("score-legend").hidden = !payload.has_scores;
+        appendWarnings(payload.warnings || []);
+      }
+
+      function updateAnnotationHeader(payload) {
+        const labels = payload.labels && payload.labels.length ? ` (${payload.labels.join(", ")})` : "";
+        document.getElementById("annotation-count").textContent =
+          payload.count > payload.returned ? `${payload.count} annotations (${payload.returned} shown)${labels}` : `${payload.count} annotations${labels}`;
+        appendWarnings(payload.warnings || []);
+      }
+
+      function appendWarnings(warnings) {
+        if (!warnings.length) {
+          return;
         }
-        viewer.addHandler("open", function () {
-          patches.slice(0, renderLimit).forEach(function (patch) {
-            const element = document.createElement("div");
-            element.className = hasScores ? "patch-overlay heatmap" : "patch-overlay";
-            const score = patch.score === undefined || patch.score === null ? null : Number(patch.score);
-            if (score !== null && Number.isFinite(score)) {
-              element.style.background = scoreColor(score, Number(document.getElementById("opacity-slider").value));
-              element.dataset.score = String(score);
-            }
-            if (patch.score !== undefined) {
-              element.title = patchTitle(patch, score);
-            } else {
-              element.title = patchTitle(patch, null);
-            }
-            const rect = viewer.viewport.imageToViewportRectangle(
-              patch.x,
-              patch.y,
-              patch.width,
-              patch.height
-            );
-            viewer.addOverlay({
-              element: element,
-              location: rect,
-              checkResize: false
-            });
+        const warning = document.createElement("div");
+        warning.className = "warning";
+        warning.textContent = warnings.join("; ");
+        document.querySelector("header > div").appendChild(warning);
+      }
+
+      function renderPatches() {
+        if (!isOpen || !patchPayload) {
+          return;
+        }
+        patchElements.forEach((element) => viewer.removeOverlay(element));
+        patchElements = [];
+        const patches = patchPayload.patches || [];
+        const hasScores = Boolean(patchPayload.has_scores);
+        patches.forEach(function (patch) {
+          const element = document.createElement("div");
+          element.className = hasScores ? "patch-overlay heatmap" : "patch-overlay";
+          const score = patch.score === undefined || patch.score === null ? null : Number(patch.score);
+          if (score !== null && Number.isFinite(score)) {
+            element.style.background = scoreColor(score, Number(document.getElementById("opacity-slider").value));
+            element.dataset.score = String(score);
+          }
+          element.title = patchTitle(patch, score);
+          viewer.addOverlay({
+            element: element,
+            location: viewer.viewport.imageToViewportRectangle(patch.x, patch.y, patch.width, patch.height),
+            checkResize: false
           });
+          patchElements.push(element);
         });
-        bindOverlayControls();
+        updatePatchOverlayStyle();
+      }
+
+      function renderAnnotations() {
+        if (!isOpen || !annotationPayload) {
+          return;
+        }
+        annotationElements.forEach((element) => viewer.removeOverlay(element));
+        annotationElements = [];
+        (annotationPayload.annotations || []).forEach(function (annotation) {
+          const overlay = annotationElement(annotation);
+          if (!overlay) {
+            return;
+          }
+          viewer.addOverlay({
+            element: overlay.element,
+            location: viewer.viewport.imageToViewportRectangle(overlay.x, overlay.y, overlay.width, overlay.height),
+            checkResize: false
+          });
+          annotationElements.push(overlay.element);
+        });
+        updateAnnotationOverlayStyle();
       }
 
       function patchTitle(patch, score) {
@@ -244,10 +324,104 @@
           `x/y: ${patch.x}, ${patch.y}`,
           `size: ${patch.width} x ${patch.height}`
         ];
+        if (patch.label) {
+          parts.push(`label: ${patch.label}`);
+        }
         if (score !== null && Number.isFinite(score)) {
           parts.push(`score: ${score.toFixed(3)}`);
         }
         return parts.join("\n");
+      }
+
+      function annotationTitle(annotation) {
+        const bbox = annotation.bbox || [];
+        return [
+          `label: ${annotation.label ?? ""}`,
+          `type: ${annotation.type ?? ""}`,
+          `id: ${annotation.id ?? ""}`,
+          `bbox: ${bbox.join(", ")}`
+        ].join("\n");
+      }
+
+      function annotationElement(annotation) {
+        const bbox = annotation.bbox || annotationBbox(annotation);
+        if (!bbox) {
+          return null;
+        }
+        let x = Number(bbox[0]);
+        let y = Number(bbox[1]);
+        let width = Math.max(1, Number(bbox[2]) - x);
+        let height = Math.max(1, Number(bbox[3]) - y);
+        const color = annotation.color || "#e41a1c";
+        if (annotation.type === "point") {
+          const px = Number(annotation.coordinates.x);
+          const py = Number(annotation.coordinates.y);
+          x = px - 6;
+          y = py - 6;
+          width = 12;
+          height = 12;
+          const point = document.createElement("div");
+          point.className = "annotation-overlay annotation-point";
+          point.style.color = color;
+          point.title = annotationTitle(annotation);
+          point.dataset.annotation = "true";
+          return {element: point, x, y, width, height};
+        }
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "annotation-overlay");
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        svg.setAttribute("preserveAspectRatio", "none");
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        title.textContent = annotationTitle(annotation);
+        svg.appendChild(title);
+        svg.dataset.annotation = "true";
+        if (annotation.type === "polygon") {
+          svg.appendChild(polygonPath(annotation.coordinates, x, y, color));
+        } else if (annotation.type === "multipolygon") {
+          (annotation.coordinates || []).forEach((polygon) => svg.appendChild(polygonPath(polygon, x, y, color)));
+        } else if (annotation.type === "rectangle") {
+          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.setAttribute("x", "0");
+          rect.setAttribute("y", "0");
+          rect.setAttribute("width", String(width));
+          rect.setAttribute("height", String(height));
+          rect.setAttribute("fill", color);
+          rect.setAttribute("stroke", color);
+          rect.setAttribute("stroke-width", "3");
+          svg.appendChild(rect);
+        } else if (annotation.type === "line") {
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+          line.setAttribute("points", (annotation.coordinates || []).map((p) => `${Number(p[0]) - x},${Number(p[1]) - y}`).join(" "));
+          line.setAttribute("fill", "none");
+          line.setAttribute("stroke", color);
+          line.setAttribute("stroke-width", "4");
+          svg.appendChild(line);
+        } else {
+          return null;
+        }
+        return {element: svg, x, y, width, height};
+      }
+
+      function polygonPath(rings, x0, y0, color) {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const data = (rings || []).map((ring) => {
+          const commands = (ring || []).map((p, index) => `${index === 0 ? "M" : "L"} ${Number(p[0]) - x0} ${Number(p[1]) - y0}`);
+          return commands.length ? `${commands.join(" ")} Z` : "";
+        }).join(" ");
+        path.setAttribute("d", data);
+        path.setAttribute("fill", color);
+        path.setAttribute("fill-rule", "evenodd");
+        path.setAttribute("stroke", color);
+        path.setAttribute("stroke-width", "3");
+        return path;
+      }
+
+      function annotationBbox(annotation) {
+        if (annotation.type === "rectangle") {
+          const rect = annotation.coordinates;
+          return [rect.x, rect.y, rect.x + rect.width, rect.y + rect.height];
+        }
+        return null;
       }
 
       function scoreColor(score, opacity) {
@@ -266,28 +440,39 @@
         return `rgba(${r}, ${g}, ${b}, ${opacity})`;
       }
 
-      function bindOverlayControls() {
+      function updatePatchOverlayStyle() {
         const toggle = document.getElementById("overlay-toggle");
         const slider = document.getElementById("opacity-slider");
-        const update = function () {
-          const opacity = Number(slider.value);
-          document.querySelectorAll(".patch-overlay").forEach(function (element) {
-            element.style.display = toggle.checked ? "block" : "none";
-            if (element.dataset.score !== undefined) {
-              element.style.background = scoreColor(Number(element.dataset.score), opacity);
-            } else {
-              element.style.opacity = String(opacity);
-            }
-          });
-        };
-        toggle.addEventListener("change", update);
-        slider.addEventListener("input", update);
-        update();
+        const opacity = Number(slider.value);
+        document.querySelectorAll(".patch-overlay").forEach(function (element) {
+          element.style.display = toggle.checked ? "block" : "none";
+          if (element.dataset.score !== undefined) {
+            element.style.background = scoreColor(Number(element.dataset.score), opacity);
+          } else {
+            element.style.opacity = String(opacity);
+          }
+        });
       }
 
-      loadPatches().catch(function (error) {
-        console.error("Failed to load patches", error);
-      });
+      function updateAnnotationOverlayStyle() {
+        const toggle = document.getElementById("annotation-toggle");
+        const slider = document.getElementById("annotation-opacity-slider");
+        const opacity = Number(slider.value);
+        document.querySelectorAll(".annotation-overlay").forEach(function (element) {
+          element.style.display = toggle.checked ? "block" : "none";
+          if (element.tagName.toLowerCase() === "svg") {
+            element.querySelectorAll("[fill]").forEach((shape) => shape.setAttribute("fill-opacity", String(opacity)));
+            element.querySelectorAll("[stroke]").forEach((shape) => shape.setAttribute("stroke-opacity", "0.95"));
+          } else {
+            element.style.opacity = String(opacity);
+          }
+        });
+      }
+
+      document.getElementById("overlay-toggle").addEventListener("change", updatePatchOverlayStyle);
+      document.getElementById("opacity-slider").addEventListener("input", updatePatchOverlayStyle);
+      document.getElementById("annotation-toggle").addEventListener("change", updateAnnotationOverlayStyle);
+      document.getElementById("annotation-opacity-slider").addEventListener("input", updateAnnotationOverlayStyle);
     }
 
     initializeViewer().catch(function (error) {

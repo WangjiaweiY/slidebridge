@@ -2,7 +2,7 @@
 
 Theme: annotation overlay and conversion.
 
-This is a planning document only. It does not add v0.2.1 code.
+This is the v0.2.1 implementation plan for annotation debugging.
 
 ## 1. AnnotationTable Abstraction
 

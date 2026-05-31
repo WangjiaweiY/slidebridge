@@ -11,11 +11,11 @@ from slidebridge.cli import app
 runner = CliRunner()
 
 
-def test_release_version_output_contains_020():
+def test_release_version_output_contains_021():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "0.2.0" in result.stdout
+    assert "0.2.1" in result.stdout
 
 
 def test_cli_render_overlay(tmp_path):
@@ -46,4 +46,3 @@ def test_cli_render_overlay_without_scores(tmp_path):
 
     assert result.exit_code == 0
     assert overlay.exists()
-

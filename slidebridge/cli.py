@@ -16,6 +16,9 @@ from rich.console import Console
 from rich.table import Table
 
 from slidebridge import __version__
+from slidebridge.annotations.demo import create_demo_annotations as create_synthetic_annotations
+from slidebridge.annotations.io import load_annotation_table, save_annotation_table
+from slidebridge.annotations.label_patches import label_patch_table, save_labeled_patches
 from slidebridge.core.diagnostics import environment_report, reader_statuses
 from slidebridge.core.metadata import summary
 from slidebridge.core.registry import SlideOpenError, get_registered_readers, open_slide
@@ -256,6 +259,100 @@ def create_demo(
         _fail(exc)
 
 
+@app.command("create-demo-annotations")
+def create_demo_annotations_command(
+    out: Path = typer.Option(Path("outputs/demo_annotations.geojson"), "--out", help="Output annotation path."),
+    width: int = typer.Option(4096, "--width", help="Coordinate-space width."),
+    height: int = typer.Option(3072, "--height", help="Coordinate-space height."),
+    seed: int = typer.Option(42, "--seed", help="Random seed."),
+    output_format: str = typer.Option("geojson", "--format", help="Output format: geojson, slidebridge-json, asap-xml."),
+    count: int = typer.Option(6, "--count", help="Number of synthetic annotations."),
+    labels: str = typer.Option("Tumor,Stroma,Necrosis", "--labels", help="Comma-separated synthetic labels."),
+) -> None:
+    """Create synthetic annotation files for demos and tests."""
+
+    try:
+        output = create_synthetic_annotations(
+            out,
+            width=width,
+            height=height,
+            seed=seed,
+            count=count,
+            labels=_split_labels(labels),
+            output_format=output_format.lower(),
+        )
+        console.print(f"Saved demo annotations: {output}")
+    except Exception as exc:
+        _fail(exc)
+
+
+@app.command("inspect-annotations")
+def inspect_annotations(
+    annotations: Path = typer.Argument(..., help="Annotation file."),
+    annotation_format: Optional[str] = typer.Option(None, "--format", help="Annotation format override."),
+    slide_path: Optional[Path] = typer.Option(None, "--slide", help="Optional slide for bounds validation."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+    labels_only: bool = typer.Option(False, "--labels", help="Only list labels."),
+    verbose: bool = typer.Option(False, "--verbose", help="Include examples in console output."),
+    max_examples: int = typer.Option(5, "--max-examples", help="Maximum example records to display."),
+    reader: Optional[str] = typer.Option(None, "--reader", help="Specify a slide reader by name."),
+) -> None:
+    """Inspect an annotation file and optional slide alignment."""
+
+    slide = None
+    try:
+        table = load_annotation_table(annotations, format=annotation_format).compute_bboxes().normalize_colors()
+        slide_dimensions = None
+        if slide_path is not None:
+            slide = open_slide(slide_path, reader=reader)
+            slide_dimensions = slide.dimensions
+            table = table.validate(slide.dimensions[0], slide.dimensions[1], mode="warn")
+        info = table.summary()
+        if slide_dimensions is not None:
+            info["slide_dimensions"] = list(slide_dimensions)
+        if labels_only:
+            if json_output:
+                print(json.dumps({"labels": table.labels()}, ensure_ascii=False, indent=2))
+            else:
+                for label in table.labels():
+                    console.print(label)
+            return
+        if json_output:
+            payload = dict(info)
+            payload["examples"] = table.to_list()[: max(0, int(max_examples))]
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return
+        _print_annotation_summary(info)
+        if verbose:
+            console.print(json.dumps(table.to_list()[: max(0, int(max_examples))], ensure_ascii=False, indent=2))
+    except Exception as exc:
+        _fail(exc)
+    finally:
+        if slide is not None:
+            slide.close()
+
+
+@app.command("convert-annotations")
+def convert_annotations(
+    input_path: Path = typer.Argument(..., help="Input annotation file."),
+    out: Path = typer.Option(..., "--out", help="Output annotation file."),
+    input_format: Optional[str] = typer.Option(None, "--input-format", help="Input format override."),
+    output_format: Optional[str] = typer.Option(None, "--output-format", help="slidebridge-json or geojson."),
+    labels: Optional[str] = typer.Option(None, "--labels", help="Comma-separated labels to export."),
+    pretty: bool = typer.Option(True, "--pretty/--compact", help="Pretty-print JSON output."),
+) -> None:
+    """Convert public annotation formats to SlideBridge JSON or GeoJSON."""
+
+    try:
+        table = load_annotation_table(input_path, format=input_format)
+        if labels:
+            table = table.filter_labels(_split_labels(labels))
+        output = save_annotation_table(table, out, format=output_format, pretty=pretty)
+        console.print(f"Saved converted annotations: {output}")
+    except Exception as exc:
+        _fail(exc)
+
+
 @app.command()
 def view(
     path: Path = typer.Argument(..., help="Path to a WSI or image."),
@@ -271,6 +368,11 @@ def view(
     heatmap_opacity: float = typer.Option(0.45, "--heatmap-opacity", min=0.0, max=1.0, help="Heatmap opacity."),
     score_normalization: str = typer.Option("minmax", "--score-normalization", help="minmax, percentile, or none."),
     max_overlay_patches: int = typer.Option(50_000, "--max-overlay-patches", help="Maximum overlays returned to the browser."),
+    annotations: Optional[Path] = typer.Option(None, "--annotations", help="Optional annotation file."),
+    annotation_format: Optional[str] = typer.Option(None, "--annotation-format", help="Annotation format override."),
+    annotation_opacity: float = typer.Option(0.35, "--annotation-opacity", min=0.0, max=1.0, help="Annotation overlay opacity."),
+    max_annotations: int = typer.Option(10_000, "--max-annotations", help="Maximum annotations returned to the browser."),
+    annotation_labels: Optional[str] = typer.Option(None, "--annotation-labels", help="Comma-separated annotation label filter."),
 ) -> None:
     try:
         viewer_app = create_app(
@@ -284,6 +386,11 @@ def view(
             heatmap_opacity=heatmap_opacity,
             score_normalization=score_normalization,
             max_overlay_patches=max_overlay_patches,
+            annotations_path=annotations,
+            annotation_format=annotation_format,
+            annotation_opacity=annotation_opacity,
+            max_annotations=max_annotations,
+            annotation_labels=_split_labels(annotation_labels),
         )
         url = f"http://{host}:{port}"
         console.print(f"Starting SlideBridge viewer: {url}")
@@ -333,10 +440,54 @@ def export_patches_command(
             slide.close()
 
 
+@app.command("label-patches")
+def label_patches_command(
+    patches: Path = typer.Argument(..., help="Patch coordinate file."),
+    annotations: Path = typer.Option(..., "--annotations", help="Annotation file."),
+    out: Path = typer.Option(..., "--out", help="Output labeled coordinate file."),
+    slide_path: Optional[Path] = typer.Option(None, "--slide", help="Optional slide for patch bounds validation."),
+    annotation_format: Optional[str] = typer.Option(None, "--annotation-format", help="Annotation format override."),
+    default_patch_size: int = typer.Option(256, "--default-patch-size", help="Default patch size."),
+    method: str = typer.Option("center", "--method", help="center or bbox."),
+    labels: Optional[str] = typer.Option(None, "--labels", help="Comma-separated annotation labels to consider."),
+    background_label: str = typer.Option("background", "--background-label", help="Label for unmatched patches."),
+    multi_label: bool = typer.Option(False, "--multi-label/--single-label", help="Allow multiple matched labels."),
+    output_format: Optional[str] = typer.Option(None, "--output-format", help="csv, json, or h5. Defaults to output suffix."),
+    include_score: bool = typer.Option(True, "--include-score/--no-include-score", help="Include patch score in output."),
+    reader: Optional[str] = typer.Option(None, "--reader", help="Specify a slide reader by name."),
+) -> None:
+    """Assign annotation-derived labels to patch coordinates for debugging."""
+
+    slide = None
+    try:
+        table = load_patch_table(patches, default_patch_size=default_patch_size)
+        if slide_path is not None:
+            slide = open_slide(slide_path, reader=reader)
+            table = table.validate(slide.dimensions[0], slide.dimensions[1], mode="clip")
+        annotation_table = load_annotation_table(annotations, format=annotation_format)
+        if labels:
+            annotation_table = annotation_table.filter_labels(_split_labels(labels))
+        labeled, info = label_patch_table(
+            table,
+            annotation_table,
+            method=method.lower(),  # type: ignore[arg-type]
+            background_label=background_label,
+            multi_label=multi_label,
+        )
+        output = save_labeled_patches(labeled, out, output_format=output_format, include_score=include_score)
+        info["output"] = str(output)
+        print(json.dumps(info, ensure_ascii=False, indent=2))
+    except Exception as exc:
+        _fail(exc)
+    finally:
+        if slide is not None:
+            slide.close()
+
+
 @app.command("render-overlay")
 def render_overlay_command(
     slide_path: Path = typer.Argument(..., help="Path to a WSI or image."),
-    patches: Path = typer.Option(..., "--patches", help="Patch coordinate file."),
+    patches: Optional[Path] = typer.Option(None, "--patches", help="Patch coordinate file."),
     out: Path = typer.Option(..., "--out", help="Output PNG/JPG path."),
     heatmap: Optional[Path] = typer.Option(None, "--heatmap", help="Optional score/attention file."),
     reader: Optional[str] = typer.Option(None, "--reader", help="Specify a reader by name."),
@@ -346,23 +497,43 @@ def render_overlay_command(
     score_normalization: str = typer.Option("minmax", "--score-normalization", help="minmax, percentile, or none."),
     show_labels: bool = typer.Option(False, "--show-labels/--no-labels", help="Draw patch labels or indices."),
     image_format: Optional[str] = typer.Option(None, "--format", help="Output format: png or jpg. Defaults to output suffix."),
+    annotations: Optional[Path] = typer.Option(None, "--annotations", help="Optional annotation file."),
+    annotation_format: Optional[str] = typer.Option(None, "--annotation-format", help="Annotation format override."),
+    annotation_opacity: float = typer.Option(0.35, "--annotation-opacity", min=0.0, max=1.0, help="Annotation opacity."),
+    annotation_labels: Optional[str] = typer.Option(None, "--annotation-labels", help="Comma-separated annotation label filter."),
+    draw_annotation_labels: bool = typer.Option(False, "--draw-annotation-labels/--no-draw-annotation-labels", help="Draw annotation labels."),
 ) -> None:
     slide = None
     try:
         if score_normalization not in {"minmax", "percentile", "none"}:
             raise ValueError("--score-normalization must be one of: minmax, percentile, none")
+        if patches is None and annotations is None:
+            raise ValueError("render-overlay requires --patches, --annotations, or both")
         slide = open_slide(slide_path, reader=reader)
-        table = load_patch_table(patches, default_patch_size=default_patch_size, score_path=heatmap)
-        table = table.validate(slide.dimensions[0], slide.dimensions[1], mode="clip")
-        if score_normalization != "none":
+        table = None
+        if patches is not None:
+            table = load_patch_table(patches, default_patch_size=default_patch_size, score_path=heatmap)
+            table = table.validate(slide.dimensions[0], slide.dimensions[1], mode="clip")
+        elif heatmap is not None:
+            raise ValueError("--heatmap requires --patches")
+        if table is not None and score_normalization != "none":
             table = table.normalize_scores(score_normalization)  # type: ignore[arg-type]
+        annotation_table = None
+        if annotations is not None:
+            annotation_table = load_annotation_table(annotations, format=annotation_format).compute_bboxes().normalize_colors()
+            if annotation_labels:
+                annotation_table = annotation_table.filter_labels(_split_labels(annotation_labels))
+            annotation_table = annotation_table.validate(slide.dimensions[0], slide.dimensions[1], mode="warn")
         result = render_overlay(
             slide,
             table,
             out,
+            annotation_table=annotation_table,
             max_size=max_size,
             opacity=opacity,
             show_labels=show_labels,
+            annotation_opacity=annotation_opacity,
+            draw_annotation_labels=draw_annotation_labels,
             image_format=image_format,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -438,6 +609,35 @@ def _print_patch_summary(info: dict) -> None:
             value = info[key]
             table.add_row(key, json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else str(value))
     console.print(table)
+
+
+def _print_annotation_summary(info: dict) -> None:
+    table = Table(title="AnnotationTable Inspect")
+    table.add_column("Field")
+    table.add_column("Value")
+    for key in [
+        "count",
+        "source",
+        "source_format",
+        "coordinate_space",
+        "type_counts",
+        "label_counts",
+        "labels",
+        "global_bbox",
+        "colors_present",
+        "slide_dimensions",
+        "warnings",
+    ]:
+        if key in info:
+            value = info[key]
+            table.add_row(key, json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else str(value))
+    console.print(table)
+
+
+def _split_labels(labels: Optional[str]) -> list[str]:
+    if not labels:
+        return []
+    return [item.strip() for item in labels.split(",") if item.strip()]
 
 
 def _write_sample_patches(

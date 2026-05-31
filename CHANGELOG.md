@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.1
+
+Added:
+
+- AnnotationTable abstraction
+- QuPath GeoJSON annotation loading
+- ASAP XML annotation loading
+- SlideBridge JSON annotation format
+- annotation inspection command
+- annotation overlay in viewer
+- static annotation rendering
+- annotation conversion
+- patch labeling from annotations
+
+Compliance:
+
+- no proprietary annotation formats
+- no real patient data included
+- research/debugging only
+
 ## 0.2.0
 
 Added:

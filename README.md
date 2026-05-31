@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.0`
+Current version: `0.2.1`
 
 ## Quick Demo
 
@@ -63,6 +63,9 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - Score/attention heatmap overlay
 - Patch image export
 - Static overlay rendering
+- AnnotationTable abstraction
+- QuPath GeoJSON, ASAP XML, and SlideBridge JSON annotation loading
+- Annotation overlay, conversion, and patch labeling
 
 ## Installation
 
@@ -136,6 +139,31 @@ If scores are stored separately:
 slidebridge view C:\path\to\your\slide.svs --patches outputs\coords.h5 --heatmap outputs\attention.npy
 ```
 
+## Annotation Debugging
+
+Use synthetic annotations to test the annotation workflow without patient data:
+
+```powershell
+slidebridge create-demo --out outputs\demo_slide.png
+slidebridge create-demo-annotations --out outputs\demo_annotations.geojson
+slidebridge inspect-annotations outputs\demo_annotations.geojson --slide outputs\demo_slide.png
+slidebridge render-overlay outputs\demo_slide.png --annotations outputs\demo_annotations.geojson --out outputs\demo_annotation_overlay.png
+slidebridge view outputs\demo_slide.png --annotations outputs\demo_annotations.geojson --port 7860 --open-browser
+```
+
+SlideBridge Core can load QuPath GeoJSON, ASAP XML, and SlideBridge JSON
+annotations. Annotation coordinates use level-0 image pixels.
+
+## Label Patches from Annotations
+
+Annotation-based patch labeling is a debugging and weak-labeling helper. It is
+not a clinical or gold-standard labeling workflow.
+
+```powershell
+slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
+slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --out outputs\demo_coords_labeled.csv
+```
+
 ## Export Patches
 
 ```powershell
@@ -162,10 +190,14 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 - `slidebridge sample-patches PATH --out COORDS.csv`: create random patch coordinates for overlay testing.
 - `slidebridge inspect-patches PATCHES --slide PATH`: inspect coordinate files and optional slide bounds.
 - `slidebridge export-patches PATH --patches PATCHES --out DIR`: export patch images and a manifest.
-- `slidebridge render-overlay PATH --patches PATCHES --out OUTPUT`: render a static patch/score overlay image.
+- `slidebridge render-overlay PATH --patches PATCHES --annotations ANNOTATIONS --out OUTPUT`: render a static overlay image.
 - `slidebridge create-demo --out outputs\demo_slide.png`: create a synthetic H&E-like demo image.
+- `slidebridge create-demo-annotations --out outputs\demo_annotations.geojson`: create synthetic demo annotations.
+- `slidebridge inspect-annotations ANNOTATIONS --slide PATH`: inspect annotation files and optional slide bounds.
+- `slidebridge convert-annotations INPUT --out OUTPUT`: convert public annotation formats.
+- `slidebridge label-patches PATCHES --annotations ANNOTATIONS --out OUTPUT`: assign annotation-derived patch labels.
 - `slidebridge view PATH --patches COORDS.csv --heatmap SCORES.npy`: start the
-  local pan/zoom viewer with optional model/debug score overlay.
+  local pan/zoom viewer with optional model/debug score and annotation overlays.
 - `slidebridge readers`: list registered readers and dependency availability.
 - `slidebridge env`: show Python, package, and reader dependency diagnostics.
 - `slidebridge version`: show version and runtime information.
@@ -177,6 +209,7 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 - Patch `width` and `height` are in level-0 pixels unless otherwise stated.
 - `Slide.read_region(x, y, width, height, level=0)` uses level-0 `x/y` coordinates.
 - Viewer overlays are aligned to level-0 coordinate space.
+- Annotation overlays are also aligned to level-0 coordinate space.
 
 Patch CSV example:
 
@@ -228,6 +261,7 @@ v0.2.1:
 - QuPath GeoJSON overlay
 - ASAP XML overlay
 - annotation conversion
+- patch labeling from annotations
 
 v0.3:
 
