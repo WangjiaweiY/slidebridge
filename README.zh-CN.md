@@ -1,6 +1,10 @@
 # SlideBridge Core
 
-[English README](README.md)
+[![CI](https://github.com/WangjiaweiY/slidebridge/actions/workflows/ci.yml/badge.svg)](https://github.com/WangjiaweiY/slidebridge/actions/workflows/ci.yml)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+
+[English README](README.en.md)
 
 SlideBridge Core 是一个面向计算病理和病理 AI 的轻量 WSI 检查、调试和可视化工具箱。
 
@@ -159,6 +163,11 @@ slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_ann
 ```
 
 `label-patches` 是 debugging / weak-labeling helper，不是 gold-standard labeling 工作流。
+
+## 工程记录
+
+已知问题、修复方案和后续优化方向会持续记录在
+[Issues and Improvements](docs/ISSUES_AND_IMPROVEMENTS.md)。
 
 ## 坐标约定
 

@@ -4,25 +4,34 @@
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 
-[中文 README](README.zh-CN.md)
+[English README](README.en.md)
 
-A lightweight WSI inspection and debugging toolkit for computational pathology.
+SlideBridge Core 是一个面向计算病理和病理 AI 的轻量 WSI 检查、调试和可视化工具箱。
 
 Debug whole-slide images like a developer.
 
 ![SlideBridge demo overlay](docs/assets/demo_overlay.png)
 
-> The demo image above is synthetic and contains no patient data.
+> 上图是 synthetic demo，不包含任何患者数据。
 
-## What is SlideBridge Core?
+## 这是什么？
 
-SlideBridge Core helps computational pathology researchers and AI engineers
-inspect whole-slide images, normalize metadata, visualize patch coordinates, and
-generate lightweight QC reports.
+SlideBridge Core 帮助计算病理研究者和 AI 工程师完成常见调试任务：
 
-Current version: `0.2.2`
+- 检查 WSI metadata、尺寸、level、MPP、objective 和 reader。
+- 导出缩略图。
+- 在本地浏览器里查看 slide。
+- 叠加 patch 坐标。
+- 可视化模型 score / attention。
+- 生成轻量 QC 报告。
+- 根据坐标导出 patch 图像和 manifest。
+- 加载、转换和可视化 annotation 文件。
+- 根据 annotation 给 patch 打调试标签。
+- 通过 SSH tunnel 浏览远端服务器上的 WSI。
 
-## Quick Demo
+当前版本：`0.2.2`
+
+## 30 秒 Demo
 
 ```powershell
 git clone https://github.com/WangjiaweiY/slidebridge.git
@@ -34,49 +43,24 @@ slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.
 slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
 ```
 
-## Important Notice
+## 重要声明
 
-- Research and algorithm development only.
-- Not for clinical diagnosis.
-- This project does not include proprietary vendor SDKs.
-- This project does not include proprietary vendor format implementations.
-- Vendor-specific readers should be integrated only through separately licensed
-  private plugins.
-- This project is not affiliated with, endorsed by, or certified by any scanner
-  vendor.
+- 仅用于 research 和 algorithm development。
+- 不用于临床诊断。
+- 本项目不包含任何厂商私有 SDK。
+- 本项目不包含任何厂商私有格式实现。
+- 如需特定 reader，应在单独授权的私有插件中实现。
+- 本项目不隶属于、不代表、不背书任何扫描仪厂商。
 
-## Features
+## 安装
 
-- Unified slide reader interface
-- OpenSlide / TiffSlide based public readers
-- Metadata inspection
-- Thumbnail export
-- Local browser-based WSI viewer
-- Bundled local OpenSeadragon viewer asset with CDN fallback
-- Patch coordinate overlay
-- Lightweight QC report
-- Plugin-friendly architecture
-- Environment and reader diagnostics
-- Synthetic demo image generation
-- PatchTable coordinate abstraction
-- CSV/NPY/H5/JSON/PT optional coordinate loading
-- Score/attention heatmap overlay
-- Patch image export
-- Static overlay rendering
-- AnnotationTable abstraction
-- QuPath GeoJSON, ASAP XML, and SlideBridge JSON annotation loading
-- Annotation overlay, conversion, and patch labeling
-- Remote WSI viewing over SSH tunnel
-
-## Installation
-
-### From GitHub
+### 从 GitHub 安装
 
 ```powershell
 pip install git+https://github.com/WangjiaweiY/slidebridge.git
 ```
 
-### Development Install
+### 开发安装
 
 ```powershell
 git clone https://github.com/WangjiaweiY/slidebridge.git
@@ -84,65 +68,46 @@ cd slidebridge
 pip install -e .[dev]
 ```
 
-## Windows Notes
-
-Create and activate an environment:
+### Windows 说明
 
 ```powershell
 conda create -n slidebridge python=3.11 -y
 conda activate slidebridge
-```
-
-If you are setting up a fresh Windows environment, install dependencies first:
-
-```powershell
-pip install tiffslide openslide-python openslide-bin pillow numpy pandas fastapi uvicorn typer rich jinja2 pytest h5py
+pip install tiffslide openslide-python openslide-bin pillow numpy pandas `
+  fastapi uvicorn typer rich jinja2 pytest h5py
 pip install -e .
 ```
 
-Windows note: `openslide-bin` can provide the OpenSlide DLLs needed by
-`openslide-python`. If OpenSlide is unavailable, SlideBridge can still run
-supported workflows through TiffSlide or the image reader where applicable.
+`openslide-bin` 可以在 Windows 上补齐 `openslide-python` 需要的 OpenSlide
+运行时。即使 OpenSlide 不可用，SlideBridge 仍可通过 TiffSlide 或普通 image
+reader 运行部分工作流。
 
-## Quick Start with Synthetic Demo
+## 常用命令
 
 ```powershell
-slidebridge create-demo --out outputs\demo_slide.png
+slidebridge version
+slidebridge env
+slidebridge readers
+```
+
+```powershell
 slidebridge inspect outputs\demo_slide.png
 slidebridge thumbnail outputs\demo_slide.png --out outputs\demo_thumbnail.jpg
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --patch-size 256 --count 100
 slidebridge doctor outputs\demo_slide.png --out outputs\demo_report.html
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
 ```
 
-## Model Output Debugging
-
-Generate coordinates in an interoperable H5 format and inspect model/debug scores in the viewer:
-
 ```powershell
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.h5 --format h5 --count 200
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.h5 --port 7860 --open-browser
-```
-
-## Attention / Score Heatmap
-
-If the coordinate file contains `score` or `attention`, SlideBridge can render a model/debug score overlay:
-
-```powershell
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
+slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 100 --with-scores
+slidebridge inspect-patches outputs\demo_coords.csv --slide outputs\demo_slide.png
 slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\demo_overlay.png
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
+slidebridge export-patches outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\patches --limit 20
 ```
 
-If scores are stored separately:
-
 ```powershell
-slidebridge view C:\path\to\your\slide.svs --patches outputs\coords.h5 --heatmap outputs\attention.npy
+slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
 ```
 
 ## Annotation Debugging
-
-Use synthetic annotations to test the annotation workflow without patient data:
 
 ```powershell
 slidebridge create-demo --out outputs\demo_slide.png
@@ -152,36 +117,30 @@ slidebridge render-overlay outputs\demo_slide.png --annotations outputs\demo_ann
 slidebridge view outputs\demo_slide.png --annotations outputs\demo_annotations.geojson --port 7860 --open-browser
 ```
 
-SlideBridge Core can load QuPath GeoJSON, ASAP XML, and SlideBridge JSON
-annotations. Annotation coordinates use level-0 image pixels.
+支持的公开 annotation 输入：
 
-## Label Patches from Annotations
+- QuPath GeoJSON
+- ASAP XML
+- SlideBridge JSON
 
-Annotation-based patch labeling is a debugging and weak-labeling helper. It is
-not a clinical or gold-standard labeling workflow.
+这些 annotation 只用于 research/debugging，不是临床诊断结果。
 
-```powershell
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
-slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --out outputs\demo_coords_labeled.csv
-```
+## 通过 SSH 浏览服务器上的切片
 
-## Remote WSI Viewing over SSH
-
-View slides stored on a remote server from your local browser. The slide remains
-on the server; SlideBridge runs the tile server remotely and forwards it to
-localhost over SSH.
+切片文件保留在服务器上，SlideBridge 在服务器上读取切片，本地浏览器通过 SSH
+tunnel 访问 viewer。
 
 ```powershell
 slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
 ```
 
-You can also pass a remote directory and choose slides in the browser:
+也可以传远端目录，在浏览器左侧选择要看的切片：
 
 ```powershell
 slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
 ```
 
-With remote patch coordinates and annotations:
+带远端 patch 和 annotation：
 
 ```powershell
 slidebridge remote-view user@server:/data/slides/case.svs `
@@ -190,118 +149,48 @@ slidebridge remote-view user@server:/data/slides/case.svs `
   --remote-runner "conda run -n slidebridge slidebridge"
 ```
 
-Use `slidebridge remote-view --dry-run` to inspect the SSH tunnel and remote
-command before connecting. See [Remote WSI Viewing](docs/REMOTE_VIEWING.md).
-
-## Export Patches
+先用 `--dry-run` 检查 SSH tunnel 和远端命令：
 
 ```powershell
-slidebridge export-patches C:\path\to\your\slide.svs --patches outputs\coords.csv --out outputs\patches --limit 50
+slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge" --dry-run
 ```
 
-## Use Your Own WSI
+## 从 Annotation 给 Patch 打标签
 
-```bat
-set SLIDE=C:\path\to\your\slide.svs
-
-slidebridge inspect "%SLIDE%"
-slidebridge thumbnail "%SLIDE%" --out outputs\thumbnail.jpg --max-size 2048
-slidebridge doctor "%SLIDE%" --out outputs\qc_report.html
-slidebridge sample-patches "%SLIDE%" --out outputs\coords.csv --patch-size 512 --count 100
-slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-browser
+```powershell
+slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
+slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --out outputs\demo_coords_labeled.csv
 ```
 
-## CLI Commands
+`label-patches` 是 debugging / weak-labeling helper，不是 gold-standard labeling 工作流。
 
-- `slidebridge inspect PATH`: inspect reader, dimensions, levels, MPP, objective, vendor, metadata, and warnings.
-- `slidebridge thumbnail PATH --out OUTPUT`: export an RGB thumbnail.
-- `slidebridge doctor PATH_OR_DIR --out REPORT.html --json-out REPORT.json`: generate HTML and optional JSON QC reports.
-- `slidebridge sample-patches PATH --out COORDS.csv`: create random patch coordinates for overlay testing.
-- `slidebridge inspect-patches PATCHES --slide PATH`: inspect coordinate files and optional slide bounds.
-- `slidebridge export-patches PATH --patches PATCHES --out DIR`: export patch images and a manifest.
-- `slidebridge render-overlay PATH --patches PATCHES --annotations ANNOTATIONS --out OUTPUT`: render a static overlay image.
-- `slidebridge create-demo --out outputs\demo_slide.png`: create a synthetic H&E-like demo image.
-- `slidebridge create-demo-annotations --out outputs\demo_annotations.geojson`: create synthetic demo annotations.
-- `slidebridge inspect-annotations ANNOTATIONS --slide PATH`: inspect annotation files and optional slide bounds.
-- `slidebridge convert-annotations INPUT --out OUTPUT`: convert public annotation formats.
-- `slidebridge label-patches PATCHES --annotations ANNOTATIONS --out OUTPUT`: assign annotation-derived patch labels.
-- `slidebridge remote-check REMOTE`: check remote SSH and SlideBridge availability.
-- `slidebridge remote-ls REMOTE_DIR`: list likely slide files on a remote server.
-- `slidebridge remote-inspect REMOTE_SLIDE`: inspect a remote slide over SSH.
-- `slidebridge remote-view REMOTE_SLIDE_OR_DIR`: view a remote slide or slide directory through an SSH localhost tunnel.
-- `slidebridge view PATH --patches COORDS.csv --heatmap SCORES.npy`: start the
-  local pan/zoom viewer with optional model/debug score and annotation overlays.
-- `slidebridge readers`: list registered readers and dependency availability.
-- `slidebridge env`: show Python, package, and reader dependency diagnostics.
-- `slidebridge version`: show version and runtime information.
-- `slidebridge --version`: print the package version.
+## 工程记录
 
-## Coordinate Convention
+已知问题、修复方案和后续优化方向会持续记录在
+[Issues and Improvements](docs/ISSUES_AND_IMPROVEMENTS.md)。
 
-- `x` and `y` are level-0 pixel coordinates.
-- Patch `width` and `height` are in level-0 pixels unless otherwise stated.
-- `Slide.read_region(x, y, width, height, level=0)` uses level-0 `x/y` coordinates.
-- Viewer overlays are aligned to level-0 coordinate space.
-- Annotation overlays are also aligned to level-0 coordinate space.
+## 坐标约定
 
-Patch CSV example:
+- `x` / `y` 是 level-0 pixel coordinate。
+- patch `width` / `height` 默认也是 level-0 pixel size。
+- annotation 坐标也使用 level-0 pixel coordinate。
+- `read_region` 的 `x` / `y` 使用 level-0 坐标。
+- viewer overlay 按 level-0 coordinate space 对齐。
 
-```csv
-x,y,width,height,score
-10000,20000,512,512,0.82
-```
+## 插件机制
 
-## Plugin Architecture
+公开 core 只定义 reader interface 和 registry。私有 reader 应放在单独的私有包中，
+并通过 `slidebridge.core.registry.register_reader` 注册。
 
-The public core defines the reader interface and registry. Private readers
-should live in separate private packages and register a reader object with
-`slidebridge.core.registry.register_reader`.
-
-Minimal fake reader sketch:
-
-```python
-from slidebridge.core.registry import register_reader
-
-
-class FakeReader:
-    name = "fake"
-    priority = 1
-
-    def can_open(self, path):
-        return False
-
-    def open(self, path):
-        raise RuntimeError("FakeReader is only an example.")
-
-
-register_reader(FakeReader())
-```
-
-No proprietary reader is included in SlideBridge Core.
+SlideBridge Core 不包含任何私有 reader。
 
 ## Roadmap
-
-v0.2.0:
-
-- interoperable patch coordinate loading
-- model/debug score heatmap overlay
-- patch image export
-- patch coordinate inspection
-
-v0.2.1:
-
-- annotation overlay
-- QuPath GeoJSON overlay
-- ASAP XML overlay
-- annotation conversion
-- patch labeling from annotations
 
 v0.2.2:
 
 - remote WSI viewing over SSH tunnel
-- remote-check, remote-ls, remote-inspect, and remote-view
-- dry-run remote command diagnostics
-- local and remote directory viewer mode
+- remote-check / remote-ls / remote-inspect / remote-view
+- 本地和远端目录阅片模式
 
 v0.3:
 

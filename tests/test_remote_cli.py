@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from slidebridge.cli import app
+from slidebridge.cli import _remote_view_cleanup_command, app
 from slidebridge.remote.diagnostics import RemoteCommandResult
 
 
@@ -260,3 +260,14 @@ def test_remote_view_cleanup_success_uses_port_state_not_kill_returncode(monkeyp
     assert result.exit_code == 0
     assert "Remote viewer stopped" in result.stdout
     assert "Remote cleanup could not confirm" not in result.stdout
+
+
+def test_remote_view_cleanup_command_prefers_port_pid_and_excludes_self():
+    command = _remote_view_cleanup_command(7860)
+
+    assert "ss -ltnp 'sport = :7860'" in command
+    assert "pid=" in command
+    assert "self=$$" in command
+    assert "$1 != self" in command
+    assert "conda run" in command
+    assert "kill $pids" in command

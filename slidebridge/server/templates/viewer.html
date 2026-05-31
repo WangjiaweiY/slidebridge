@@ -675,6 +675,7 @@
   </div>
   <script>
     const slideEntries = {{ slides_json | safe }};
+    const tileCacheKey = "{{ tile_cache_key }}";
     let selectedSlideId = slideEntries.length ? slideEntries[0].id : 0;
     const i18n = {
       en: {
@@ -931,7 +932,7 @@
         clearOverlays();
         setActiveSlideButton();
         document.getElementById("dynamic-warnings").innerHTML = "";
-        viewer.open(`/slides/${selectedSlideId}/dzi.dzi`);
+        viewer.open(`/slides/${selectedSlideId}/${tileCacheKey}/dzi.dzi`);
         await Promise.all([loadInfo(), loadPatches(), loadAnnotations()]);
       }
 
@@ -976,13 +977,13 @@
       }
 
       async function loadInfo() {
-        const response = await fetch(`/api/info?slide_id=${selectedSlideId}`);
+        const response = await fetch(apiUrl("info"), {cache: "no-store"});
         const info = await response.json();
         updateInfo(info);
       }
 
       async function loadPatches() {
-        const response = await fetch(`/api/patches?slide_id=${selectedSlideId}`);
+        const response = await fetch(apiUrl("patches"), {cache: "no-store"});
         const payload = await response.json();
         patchPayload = payload;
         updatePatchHeader(payload);
@@ -990,11 +991,15 @@
       }
 
       async function loadAnnotations() {
-        const response = await fetch(`/api/annotations?slide_id=${selectedSlideId}`);
+        const response = await fetch(apiUrl("annotations"), {cache: "no-store"});
         const payload = await response.json();
         annotationPayload = payload;
         updateAnnotationHeader(payload);
         renderAnnotations();
+      }
+
+      function apiUrl(name) {
+        return `/api/${name}?slide_id=${selectedSlideId}&v=${tileCacheKey}`;
       }
 
       function updateInfo(info) {
