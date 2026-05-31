@@ -6,6 +6,7 @@ import platform
 import random
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 from typing import Optional
@@ -878,6 +879,28 @@ def _ensure_remote_port_available(
     raise RuntimeError("Remote port preflight check failed before starting the viewer.")
 
 
+def _remote_port_is_listening(
+    remote: RemotePath,
+    remote_port: int,
+    ssh_port: Optional[int],
+    identity_file: Optional[Path],
+    ssh_options: list[str],
+) -> bool | None:
+    command = _ssh_command_for_remote(
+        remote,
+        _remote_port_check_command(remote_port),
+        ssh_port,
+        identity_file,
+        ssh_options,
+    )
+    result = run_ssh_command(command, timeout=15)
+    if result.returncode == 0:
+        return True
+    if result.returncode == 1:
+        return False
+    return None
+
+
 def _remote_view_cleanup_command(port: int) -> str:
     checked_port = int(port)
     return (
@@ -909,12 +932,20 @@ def _cleanup_remote_viewer(
         ssh_options,
     )
     result = run_ssh_command(command, timeout=20)
+    for _ in range(5):
+        listening = _remote_port_is_listening(remote, remote_port, ssh_port, identity_file, ssh_options)
+        if listening is False:
+            console.print("Remote viewer stopped.")
+            return
+        if listening is None:
+            break
+        time.sleep(0.5)
     if result.returncode != 0:
         _print_remote_result(result)
-        console.print(
-            "[yellow]Remote cleanup did not complete. If the remote port is still occupied, run "
-            f"`pkill -f 'slidebridge view .*--port {int(remote_port)}'` on the remote server.[/yellow]"
-        )
+    console.print(
+        "[yellow]Remote cleanup could not confirm that the viewer stopped. If the remote port is still occupied, run "
+        f"`pkill -f 'slidebridge view .*--port {int(remote_port)}'` on the remote server.[/yellow]"
+    )
 
 
 def _stop_process(process: subprocess.Popen) -> None:

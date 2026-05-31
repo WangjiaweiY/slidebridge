@@ -212,4 +212,51 @@ def test_remote_view_keyboard_interrupt_cleans_remote_viewer(monkeypatch):
     assert result.exit_code == 0
     assert "Stopping SSH tunnel" in result.stdout
     assert "Stopping remote SlideBridge viewer on port 7860" in result.stdout
+    assert "Remote viewer stopped" in result.stdout
     assert any("kill $pids" in command for command in calls)
+
+
+def test_remote_view_cleanup_success_uses_port_state_not_kill_returncode(monkeypatch):
+    calls = []
+
+    def fake_require_ssh_available() -> None:
+        return None
+
+    def fake_run_ssh_command(command, timeout=None):
+        calls.append(command[-1])
+        if "ss -ltn" in command[-1]:
+            return RemoteCommandResult(command=command, returncode=1, stdout="", stderr="")
+        if "slidebridge view" in command[-1] and "kill" in command[-1]:
+            return RemoteCommandResult(command=command, returncode=255, stdout="", stderr="terminated")
+        raise AssertionError(f"unexpected remote command: {command[-1]}")
+
+    class FakeProcess:
+        def __init__(self, command):
+            self.command = command
+
+        def wait(self, timeout=None):
+            if timeout is None:
+                raise KeyboardInterrupt()
+            return 0
+
+        def terminate(self):
+            return None
+
+        def kill(self):
+            return None
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr("slidebridge.cli.require_ssh_available", fake_require_ssh_available)
+    monkeypatch.setattr("slidebridge.cli.is_local_port_available", lambda host, port: True)
+    monkeypatch.setattr("slidebridge.cli.wait_for_http", lambda url, timeout=30.0: True)
+    monkeypatch.setattr("slidebridge.cli.webbrowser.open", lambda url: None)
+    monkeypatch.setattr("slidebridge.cli.run_ssh_command", fake_run_ssh_command)
+    monkeypatch.setattr("slidebridge.cli.subprocess.Popen", FakeProcess)
+
+    result = runner.invoke(app, ["remote-view", "user@example.org:/data/slides/demo.svs"])
+
+    assert result.exit_code == 0
+    assert "Remote viewer stopped" in result.stdout
+    assert "Remote cleanup could not confirm" not in result.stdout
