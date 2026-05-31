@@ -124,3 +124,43 @@ def test_remote_inspect_mocked_execution(monkeypatch):
 
     assert result.exit_code == 0
     assert "inspect-ok" in result.stdout
+
+
+def test_remote_view_reports_occupied_remote_port(monkeypatch):
+    def fake_require_ssh_available() -> None:
+        return None
+
+    def fake_run_ssh_command(command, timeout=None):
+        assert "ss -ltn" in command[-1]
+        return RemoteCommandResult(command=command, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("slidebridge.cli.require_ssh_available", fake_require_ssh_available)
+    monkeypatch.setattr("slidebridge.cli.is_local_port_available", lambda host, port: True)
+    monkeypatch.setattr("slidebridge.cli.run_ssh_command", fake_run_ssh_command)
+
+    result = runner.invoke(app, ["remote-view", "user@example.org:/data/slides/demo.svs", "--no-open-browser"])
+
+    assert result.exit_code == 1
+    assert "Remote port 7860" in result.stdout
+    assert "already in use" in result.stdout
+
+
+def test_remote_view_remote_port_preflight_failure_stops_before_start(monkeypatch):
+    def fake_require_ssh_available() -> None:
+        return None
+
+    def fake_run_ssh_command(command, timeout=None):
+        return RemoteCommandResult(command=command, returncode=255, stdout="", stderr="ssh failed")
+
+    def fail_if_started(command):
+        raise AssertionError("remote-view should not start SSH tunnel when preflight fails")
+
+    monkeypatch.setattr("slidebridge.cli.require_ssh_available", fake_require_ssh_available)
+    monkeypatch.setattr("slidebridge.cli.is_local_port_available", lambda host, port: True)
+    monkeypatch.setattr("slidebridge.cli.run_ssh_command", fake_run_ssh_command)
+    monkeypatch.setattr("slidebridge.cli.subprocess.Popen", fail_if_started)
+
+    result = runner.invoke(app, ["remote-view", "user@example.org:/data/slides/demo.svs", "--no-open-browser"])
+
+    assert result.exit_code == 1
+    assert "Remote port preflight check failed" in result.stdout

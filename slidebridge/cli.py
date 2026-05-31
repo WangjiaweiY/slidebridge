@@ -710,6 +710,7 @@ def remote_view(
         require_ssh_available()
         if not is_local_port_available("127.0.0.1" if local_host == "0.0.0.0" else local_host, local_port):
             raise RuntimeError(f"Local port {local_port} is already in use. Choose another --local-port.")
+        _ensure_remote_port_available(remote_path, remote_port, ssh_port, identity_file, ssh_option)
         if verbose:
             _print_remote_dry_run(local_url, [("view", remote_command)], [("tunnel", ssh_command)])
         console.print(f"Starting remote SlideBridge viewer through SSH: {local_url}")
@@ -825,6 +826,53 @@ def _ssh_command_for_remote(
     )
     command.append(remote_command)
     return command
+
+
+def _remote_port_check_command(port: int) -> str:
+    checked_port = int(port)
+    return (
+        "if command -v ss >/dev/null 2>&1; then "
+        f"ss -ltn 'sport = :{checked_port}' 2>/dev/null | grep -q LISTEN; "
+        "elif command -v netstat >/dev/null 2>&1; then "
+        "netstat -ltn 2>/dev/null | awk '{print $4}' | "
+        f"grep -Eq '(^|[.:]){checked_port}$'; "
+        "else "
+        "exit 2; "
+        "fi"
+    )
+
+
+def _ensure_remote_port_available(
+    remote: RemotePath,
+    remote_port: int,
+    ssh_port: Optional[int],
+    identity_file: Optional[Path],
+    ssh_options: list[str],
+) -> None:
+    command = _ssh_command_for_remote(
+        remote,
+        _remote_port_check_command(remote_port),
+        ssh_port,
+        identity_file,
+        ssh_options,
+    )
+    result = run_ssh_command(command, timeout=15)
+    if result.returncode == 0:
+        raise RuntimeError(
+            f"Remote port {int(remote_port)} on {remote.target} is already in use. "
+            "A previous SlideBridge viewer may still be running. Stop it on the remote server "
+            "or choose another --remote-port."
+        )
+    if result.returncode == 1:
+        return
+    if result.returncode == 2:
+        console.print(
+            "[yellow]Could not verify the remote port because neither ss nor netstat was found. "
+            "Continuing with viewer startup.[/yellow]"
+        )
+        return
+    _print_remote_result(result)
+    raise RuntimeError("Remote port preflight check failed before starting the viewer.")
 
 
 def _remote_view_args(
