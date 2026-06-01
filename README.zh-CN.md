@@ -14,7 +14,7 @@ Debug whole-slide images like a developer.
 
 > 上图是 synthetic demo，不包含任何患者数据。
 
-当前版本：`0.2.12`
+当前版本：`0.2.13`
 
 ## 这是什么？
 
@@ -223,6 +223,11 @@ v0.2.12:
 - viewer URL 记录当前切片、视野、tab 和 overlay 过滤状态
 - 刷新页面后恢复当前 viewer 状态
 - viewer 内复制可复现的 viewer URL
+
+v0.2.13:
+
+- viewer 玻璃拟态视觉优化
+- Playwright viewer 视觉/交互回归测试
 
 v0.2.x:
 

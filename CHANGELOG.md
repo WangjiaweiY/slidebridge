@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.13
+
+Added:
+
+- Playwright-based viewer visual regression tests for synthetic slides
+- CI browser smoke coverage for viewer rendering, sidebar scrolling, and URL state restore
+
+Changed:
+
+- viewer styling now uses a restrained glassmorphism treatment for panels, controls, tooltips, and zoom controls
+
 ## 0.2.12
 
 Added:
