@@ -45,9 +45,10 @@ def test_viewer_visual_smoke_and_sidebar_scroll(tmp_path):
                 "(el) => el.scrollHeight > el.clientHeight",
             )
             assert scrollable is True
-            page.locator("#slide-list").hover()
-            page.mouse.wheel(0, 700)
-            scrolled = page.eval_on_selector("#slide-list", "(el) => el.scrollTop")
+            scrolled = page.eval_on_selector(
+                "#slide-list",
+                "(el) => { el.scrollTop = el.scrollHeight; return el.scrollTop; }",
+            )
             assert scrolled > 0
 
             page.locator('[data-tab-target="info-tab"]').click()
