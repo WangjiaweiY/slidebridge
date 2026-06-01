@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.12`
+Current version: `0.2.13`
 
 ## Quick Demo
 
@@ -443,6 +443,11 @@ v0.2.12:
 
 - shareable viewer URLs for selected slide, viewport, panel, and overlay filters
 - refresh-safe viewer state restoration
+
+v0.2.13:
+
+- restrained glassmorphism viewer styling
+- Playwright viewer visual and interaction regression tests
 
 v0.3:
 

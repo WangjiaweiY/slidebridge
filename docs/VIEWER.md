@@ -113,6 +113,11 @@ selected slide, current viewport, active panel, overlay visibility, score
 threshold, top-k setting, opacity, and annotation label filter. Refreshing or
 sharing that URL restores the same research/debugging view state.
 
+The viewer uses a restrained glassmorphism visual style for the sidebar,
+controls, tooltip, and zoom panel. Automated Playwright checks cover synthetic
+viewer rendering, sidebar scrolling, and URL state restoration so layout
+regressions are easier to catch before release.
+
 ## Annotation Overlay
 
 The viewer can display annotation files with patch and heatmap overlays:
