@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.7
+
+Added:
+
+- canvas-based viewer overlay rendering for patches and annotations
+- viewport culling so the viewer draws only visible overlay items during pan/zoom
+- overlay tooltip support from the canvas hit index
+- overlay draw count in the viewer sidebar
+
+Changed:
+
+- patch and annotation overlays no longer create one DOM/SVG node per record during normal viewer rendering
+
 ## 0.2.6
 
 Added:

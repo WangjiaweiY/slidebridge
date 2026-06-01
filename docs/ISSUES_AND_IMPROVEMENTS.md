@@ -25,6 +25,7 @@ do not describe clinical diagnosis workflows.
 | Heatmap examples | Users may not have ready model attention files while testing the viewer. | Real model outputs vary by project and are often unavailable during UI testing. | Synthetic CSV/H5/NPY patch-score examples can be generated on a remote or local machine for visual debugging. Raster PNG/JPG heatmaps are also supported as full-slide overlays. | Add a first-class command for synthetic heatmap fixtures. |
 | Tile request pressure | Fast zooming and panning can send many tile requests and repeatedly read/encode the same regions. | OpenSeadragon requests visible tiles aggressively, and the server previously regenerated repeated tile URLs. | The viewer now has an in-memory LRU tile cache, byte-aware cache limits, `/api/cache-stats`, `/api/performance`, and a tile generation concurrency limit. | Use the timing metrics to decide whether the next bottleneck is reading, resizing, JPEG encoding, network, or overlays. |
 | Remote command length | Repeated remote viewing commands can become long and error-prone. | SSH port, remote runner, root path, and viewer ports were passed manually on every command. | `remote-profile` stores reusable local SSH viewer settings, and remote commands accept `--profile` plus profile-relative paths. | Add optional profile import/export once the profile format stabilizes. |
+| Large overlay DOM pressure | Large patch and annotation overlays can make browser pan/zoom feel heavy. | The early viewer created many DOM/SVG overlay nodes through OpenSeadragon. | Patch and annotation overlays are now rendered on a single canvas with viewport culling and a lightweight hit index for tooltips. | Add Playwright visual tests and consider spatial indexing for extremely large overlay payloads. |
 | Local shell noise | Some PowerShell sessions may print stale conda initialization errors. | The user shell profile may reference an old conda installation. | Development commands use the known Python executable or environment-specific `slidebridge.exe` directly. | Document shell-profile cleanup in Windows troubleshooting. |
 
 ## Improvement Backlog
@@ -46,12 +47,10 @@ do not describe clinical diagnosis workflows.
 
 ### Overlay Performance
 
-- Replace large DOM patch overlays with a canvas overlay.
-- Add spatial culling so only visible overlays are drawn at the current viewport.
-- Keep DOM/SVG overlays for small annotation counts where hover and click behavior
-  are useful.
-- Add a configurable threshold where the viewer switches from DOM overlays to
-  canvas rendering.
+- Add Playwright smoke tests for canvas overlay visibility and tooltip behavior.
+- Add optional spatial indexing for very large overlay payloads.
+- Add user-facing filters for score thresholds, top-k patch selection, and label
+  visibility.
 
 ### Heatmap Interoperability
 

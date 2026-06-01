@@ -50,6 +50,10 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "maxImageCacheCount: 200" in page.text
     assert "blendTime: 0" in page.text
     assert "immediateRender: false" in page.text
+    assert 'id="overlay-canvas"' in page.text
+    assert "drawCanvasOverlays" in page.text
+    assert "currentImageBounds(0.12)" in page.text
+    assert "overlay-render-count" in page.text
     cache_key = match.group(1)
     keyed_dzi = client.get(f"/slides/0/{cache_key}/dzi.dzi")
     assert keyed_dzi.status_code == 200

@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.6`
+Current version: `0.2.7`
 
 ## Quick Demo
 
@@ -381,10 +381,14 @@ v0.2.6:
 - reusable remote profiles for SSH viewer settings
 - profile-relative remote paths for shorter commands
 
+v0.2.7:
+
+- canvas overlay rendering
+- viewport culling for large patch and annotation overlays
+- overlay draw count and canvas tooltip
+
 v0.3:
 
-- canvas overlay performance
-- spatial culling for large overlays
 - plugin template
 
 ## License
