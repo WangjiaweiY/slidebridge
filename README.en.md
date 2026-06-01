@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.11`
+Current version: `0.2.12`
 
 ## Quick Demo
 
@@ -186,6 +186,8 @@ slidebridge render-view outputs\demo_slide.png `
 
 The viewer information panel can also copy a `render-view` command for the
 current viewport or download the current viewport as a PNG.
+It can also copy a viewer URL that restores the selected slide, viewport, panel,
+overlay toggles, and overlay filters after refresh.
 
 ## Annotation Debugging
 
@@ -436,6 +438,11 @@ v0.2.11:
 
 - copy current viewer viewport as a reproducible `render-view` command
 - download current viewer viewport as a PNG
+
+v0.2.12:
+
+- shareable viewer URLs for selected slide, viewport, panel, and overlay filters
+- refresh-safe viewer state restoration
 
 v0.3:
 

@@ -14,7 +14,7 @@ Debug whole-slide images like a developer.
 
 > 上图是 synthetic demo，不包含任何患者数据。
 
-当前版本：`0.2.11`
+当前版本：`0.2.12`
 
 ## 这是什么？
 
@@ -217,6 +217,12 @@ v0.2.11:
 
 - viewer 内复制当前视野的 `render-view` 命令
 - viewer 内直接下载当前视野 PNG
+
+v0.2.12:
+
+- viewer URL 记录当前切片、视野、tab 和 overlay 过滤状态
+- 刷新页面后恢复当前 viewer 状态
+- viewer 内复制可复现的 viewer URL
 
 v0.2.x:
 

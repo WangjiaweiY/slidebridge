@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.12
+
+Added:
+
+- viewer URL state for the selected slide, viewport, active panel, overlay toggles, and overlay filters
+- refresh-safe viewer restoration from URL parameters
+- viewer control to copy a reproducible viewer URL
+
+Changed:
+
+- viewer state is now kept in the browser URL with `history.replaceState`
+
 ## 0.2.11
 
 Added:

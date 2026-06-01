@@ -55,8 +55,12 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "currentImageBounds(0.12)" in page.text
     assert "overlay-render-count" in page.text
     assert "snapshotOptions" in page.text
+    assert "copy-viewer-url" in page.text
     assert "copy-render-command" in page.text
     assert "download-render-view" in page.text
+    assert "parseViewerStateFromUrl" in page.text
+    assert "buildViewerUrl" in page.text
+    assert "scheduleViewerStateUrlUpdate" in page.text
     assert "buildRenderViewCommand" in page.text
     assert "buildSnapshotDownloadUrl" in page.text
     cache_key = match.group(1)
