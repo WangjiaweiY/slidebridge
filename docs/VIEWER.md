@@ -108,6 +108,11 @@ Use **Copy render-view command** to copy a reproducible CLI command for the
 current viewport, or **Download PNG** to export the current viewport directly
 from the running tile server.
 
+The same panel also provides **Copy viewer URL**. The copied URL records the
+selected slide, current viewport, active panel, overlay visibility, score
+threshold, top-k setting, opacity, and annotation label filter. Refreshing or
+sharing that URL restores the same research/debugging view state.
+
 ## Annotation Overlay
 
 The viewer can display annotation files with patch and heatmap overlays:

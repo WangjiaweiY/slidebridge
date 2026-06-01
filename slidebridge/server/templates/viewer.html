@@ -756,6 +756,7 @@
               <div class="key" data-i18n="viewportOutput">output</div><div class="value" id="snapshot-output">unknown</div>
             </div>
             <div class="control-actions" style="margin-top: 10px;">
+              <button id="copy-viewer-url" class="small-button" type="button" data-i18n="copyViewerUrl">Copy viewer URL</button>
               <button id="copy-render-command" class="small-button" type="button" data-i18n="copyRenderCommand">Copy render-view command</button>
               <button id="download-render-view" class="small-button" type="button" data-i18n="downloadViewportPng">Download PNG</button>
             </div>
@@ -871,7 +872,8 @@
     const initialTileCacheStats = {{ tile_cache_stats | safe }};
     const initialTilePerformanceStats = {{ tile_performance_stats | safe }};
     const snapshotOptions = {{ snapshot_options | safe }};
-    let selectedSlideId = slideEntries.length ? slideEntries[0].id : 0;
+    const initialViewerState = parseViewerStateFromUrl();
+    let selectedSlideId = initialViewerState.slideId !== null ? initialViewerState.slideId : (slideEntries.length ? slideEntries[0].id : 0);
     const i18n = {
       en: {
         modeLibrary: "Library",
@@ -919,8 +921,10 @@
         viewportCenter: "center",
         viewportWindow: "window",
         viewportOutput: "output",
+        copyViewerUrl: "Copy viewer URL",
         copyRenderCommand: "Copy render-view command",
         downloadViewportPng: "Download PNG",
+        viewerUrlCopied: "viewer URL copied.",
         snapshotCopied: "render-view command copied.",
         snapshotDownloaded: "Viewport PNG requested.",
         snapshotUnavailable: "Viewport is not ready yet.",
@@ -995,8 +999,10 @@
         viewportCenter: "中心",
         viewportWindow: "窗口",
         viewportOutput: "输出",
+        copyViewerUrl: "复制 viewer URL",
         copyRenderCommand: "复制 render-view 命令",
         downloadViewportPng: "下载 PNG",
+        viewerUrlCopied: "已复制 viewer URL。",
         snapshotCopied: "已复制 render-view 命令。",
         snapshotDownloaded: "已请求导出当前视野 PNG。",
         snapshotUnavailable: "视野尚未准备好。",
@@ -1050,19 +1056,130 @@
     function setupTabs(onChange) {
       const buttons = Array.from(document.querySelectorAll(".tab-button"));
       const panels = Array.from(document.querySelectorAll(".tab-panel"));
+      function activateTab(target, emitChange = true) {
+        const targetButton = buttons.find((button) => button.dataset.tabTarget === target && !button.classList.contains("hidden"));
+        if (!targetButton) {
+          return activeTabId();
+        }
+        buttons.forEach((item) => item.classList.toggle("active", item === targetButton));
+        panels.forEach((panel) => panel.classList.toggle("active", panel.id === target));
+        if (emitChange && onChange) {
+          onChange(target);
+        }
+        return target;
+      }
       buttons.forEach((button) => {
         button.addEventListener("click", function () {
           if (button.classList.contains("hidden")) {
             return;
           }
-          const target = button.dataset.tabTarget;
-          buttons.forEach((item) => item.classList.toggle("active", item === button));
-          panels.forEach((panel) => panel.classList.toggle("active", panel.id === target));
-          if (onChange) {
-            onChange();
-          }
+          activateTab(button.dataset.tabTarget, true);
         });
       });
+      return activateTab;
+    }
+
+    function activeTabId() {
+      const active = document.querySelector(".tab-panel.active");
+      return active ? active.id : "";
+    }
+
+    function parseViewerStateFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const slideId = parseSlideIdParam(params.get("slide_id") || params.get("slide"));
+      const centerX = finiteNumberParam(params.get("center_x") || params.get("cx"));
+      const centerY = finiteNumberParam(params.get("center_y") || params.get("cy"));
+      const windowWidth = positiveNumberParam(params.get("window_width") || params.get("ww"));
+      const windowHeight = positiveNumberParam(params.get("window_height") || params.get("wh"));
+      const labelParam = params.get("annotation_labels");
+      return {
+        slideId,
+        centerX,
+        centerY,
+        windowWidth,
+        windowHeight,
+        hasViewport: centerX !== null && centerY !== null && windowWidth !== null && windowHeight !== null,
+        tab: sanitizeTabParam(params.get("tab")),
+        overlay: boolParam(params.get("overlay")),
+        annotationOverlay: boolParam(params.get("annotation_overlay")),
+        opacity: clampNumberParam(params.get("opacity"), 0, 1),
+        annotationOpacity: clampNumberParam(params.get("annotation_opacity"), 0, 1),
+        scoreThreshold: clampNumberParam(params.get("score_threshold"), 0, 1),
+        topK: nonNegativeIntegerParam(params.get("top_k")),
+        annotationLabels: parseAnnotationLabelsParam(labelParam)
+      };
+    }
+
+    function parseSlideIdParam(value) {
+      if (value === null || value === undefined || value === "") {
+        return null;
+      }
+      const numeric = Number(value);
+      if (!Number.isInteger(numeric) || numeric < 0) {
+        return null;
+      }
+      return slideEntries.some((entry) => Number(entry.id) === numeric) ? numeric : null;
+    }
+
+    function sanitizeTabParam(value) {
+      if (!value) {
+        return "";
+      }
+      const normalized = String(value).trim();
+      return ["library-tab", "info-tab", "overlays-tab"].includes(normalized) ? normalized : "";
+    }
+
+    function boolParam(value) {
+      if (value === null || value === undefined || value === "") {
+        return null;
+      }
+      const normalized = String(value).toLowerCase();
+      if (["1", "true", "yes", "on"].includes(normalized)) {
+        return true;
+      }
+      if (["0", "false", "no", "off"].includes(normalized)) {
+        return false;
+      }
+      return null;
+    }
+
+    function finiteNumberParam(value) {
+      if (value === null || value === undefined || value === "") {
+        return null;
+      }
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    function positiveNumberParam(value) {
+      const numeric = finiteNumberParam(value);
+      return numeric !== null && numeric > 0 ? numeric : null;
+    }
+
+    function clampNumberParam(value, minValue, maxValue) {
+      const numeric = finiteNumberParam(value);
+      if (numeric === null) {
+        return null;
+      }
+      return Math.max(minValue, Math.min(maxValue, numeric));
+    }
+
+    function nonNegativeIntegerParam(value) {
+      const numeric = finiteNumberParam(value);
+      if (numeric === null || numeric < 0) {
+        return null;
+      }
+      return Math.floor(numeric);
+    }
+
+    function parseAnnotationLabelsParam(value) {
+      if (value === null || value === undefined) {
+        return null;
+      }
+      if (value === "__none__") {
+        return [];
+      }
+      return String(value).split(",").map((item) => item.trim()).filter(Boolean);
     }
 
     function showViewerLoadError() {
@@ -1148,9 +1265,18 @@
       let overlayRedrawPending = false;
       let selectedAnnotationLabels = new Set();
       let annotationFilterSignature = "";
-      setupTabs(function () {
+      let pendingInitialViewport = initialViewerState.hasViewport;
+      let pendingInitialAnnotationLabels = initialViewerState.annotationLabels;
+      let urlStateUpdateTimer = null;
+      let lastViewerStateUrl = "";
+      const activateTab = setupTabs(function () {
         refreshViewerLayout(false);
+        scheduleViewerStateUrlUpdate();
       });
+      applyInitialControlState();
+      if (initialViewerState.tab) {
+        activateTab(initialViewerState.tab, false);
+      }
       updateCacheStats(cacheStatsPayload);
       updatePerformanceStats(performanceStatsPayload);
       window.setInterval(loadPerformanceStats, 5000);
@@ -1175,9 +1301,11 @@
       viewer.addHandler("open", function () {
         isOpen = true;
         renderZoomControl();
-        refreshViewerLayout(true);
+        const restored = restoreInitialViewportIfNeeded();
+        refreshViewerLayout(!restored);
         updateZoomReadout();
         updateSnapshotReadout();
+        scheduleViewerStateUrlUpdate();
         scheduleCanvasOverlayRedraw();
       });
       viewer.addHandler("animation", function () {
@@ -1188,6 +1316,7 @@
       viewer.addHandler("animation-finish", function () {
         updateZoomReadout();
         updateSnapshotReadout();
+        scheduleViewerStateUrlUpdate();
         scheduleCanvasOverlayRedraw();
       });
       viewer.addHandler("zoom", function () {
@@ -1212,10 +1341,13 @@
       if (search) {
         search.addEventListener("input", renderSlideList);
       }
-      await selectSlide(selectedSlideId);
+      await selectSlide(selectedSlideId, {initial: true});
 
-      async function selectSlide(slideId) {
+      async function selectSlide(slideId, options = {}) {
         selectedSlideId = Number(slideId);
+        if (!options.initial) {
+          pendingInitialViewport = false;
+        }
         isOpen = false;
         patchPayload = null;
         annotationPayload = null;
@@ -1230,6 +1362,7 @@
         renderPatches();
         renderAnnotations();
         updateSnapshotReadout();
+        scheduleViewerStateUrlUpdate();
       }
 
       function refreshViewerLayout(goHome) {
@@ -1243,6 +1376,113 @@
           renderPatches();
           renderAnnotations();
         });
+      }
+
+      function applyInitialControlState() {
+        setCheckedValue("overlay-toggle", initialViewerState.overlay);
+        setCheckedValue("annotation-toggle", initialViewerState.annotationOverlay);
+        setNumericControlValue("opacity-slider", initialViewerState.opacity);
+        setNumericControlValue("annotation-opacity-slider", initialViewerState.annotationOpacity);
+        setNumericControlValue("score-threshold-slider", initialViewerState.scoreThreshold);
+        if (initialViewerState.topK !== null) {
+          const topK = document.getElementById("top-k-input");
+          if (topK) {
+            topK.value = String(initialViewerState.topK);
+          }
+        }
+        updateScoreThresholdValue();
+      }
+
+      function setCheckedValue(id, value) {
+        if (value === null) {
+          return;
+        }
+        const element = document.getElementById(id);
+        if (element) {
+          element.checked = Boolean(value);
+        }
+      }
+
+      function setNumericControlValue(id, value) {
+        if (value === null) {
+          return;
+        }
+        const element = document.getElementById(id);
+        if (element) {
+          element.value = String(value);
+        }
+      }
+
+      function restoreInitialViewportIfNeeded() {
+        if (!pendingInitialViewport || !initialViewerState.hasViewport || !viewer.viewport) {
+          return false;
+        }
+        pendingInitialViewport = false;
+        window.requestAnimationFrame(function () {
+          const rect = viewer.viewport.imageToViewportRectangle(
+            initialViewerState.centerX - initialViewerState.windowWidth / 2,
+            initialViewerState.centerY - initialViewerState.windowHeight / 2,
+            initialViewerState.windowWidth,
+            initialViewerState.windowHeight
+          );
+          viewer.viewport.fitBounds(rect, true);
+          viewer.forceRedraw();
+          updateZoomReadout();
+          updateSnapshotReadout();
+          scheduleCanvasOverlayRedraw();
+          scheduleViewerStateUrlUpdate();
+        });
+        return true;
+      }
+
+      function scheduleViewerStateUrlUpdate() {
+        if (urlStateUpdateTimer) {
+          window.clearTimeout(urlStateUpdateTimer);
+        }
+        urlStateUpdateTimer = window.setTimeout(updateViewerStateUrl, 160);
+      }
+
+      function updateViewerStateUrl() {
+        const url = buildViewerUrl();
+        if (!url || url === lastViewerStateUrl || url === window.location.href) {
+          lastViewerStateUrl = url || lastViewerStateUrl;
+          return;
+        }
+        window.history.replaceState(null, "", url);
+        lastViewerStateUrl = url;
+      }
+
+      function buildViewerUrl() {
+        const snapshot = currentViewportSnapshot();
+        const url = new URL(window.location.href);
+        const params = new URLSearchParams();
+        params.set("slide_id", String(selectedSlideId));
+        if (snapshot) {
+          params.set("center_x", String(snapshot.centerX));
+          params.set("center_y", String(snapshot.centerY));
+          params.set("window_width", String(snapshot.windowWidth));
+          params.set("window_height", String(snapshot.windowHeight));
+        }
+        const tabId = activeTabId();
+        if (tabId) {
+          params.set("tab", tabId);
+        }
+        params.set("overlay", document.getElementById("overlay-toggle").checked ? "1" : "0");
+        params.set("annotation_overlay", document.getElementById("annotation-toggle").checked ? "1" : "0");
+        params.set("opacity", Number(document.getElementById("opacity-slider").value || 0.45).toFixed(2));
+        params.set("annotation_opacity", Number(document.getElementById("annotation-opacity-slider").value || 0.35).toFixed(2));
+        params.set("score_threshold", scoreThreshold().toFixed(2));
+        const topK = topKValue();
+        if (topK > 0) {
+          params.set("top_k", String(topK));
+        }
+        const labels = selectedAnnotationLabelList();
+        if (labels !== null) {
+          params.set("annotation_labels", labels.length ? labels.join(",") : "__none__");
+        }
+        url.search = params.toString();
+        url.hash = "";
+        return url.toString();
       }
 
       function renderSlideList() {
@@ -1509,8 +1749,20 @@
       }
 
       function setupSnapshotControls() {
+        const copyViewerUrlButton = document.getElementById("copy-viewer-url");
         const copyButton = document.getElementById("copy-render-command");
         const downloadButton = document.getElementById("download-render-view");
+        if (copyViewerUrlButton) {
+          copyViewerUrlButton.addEventListener("click", async function () {
+            const url = buildViewerUrl();
+            if (!url) {
+              setSnapshotStatus(t("snapshotUnavailable"), "error");
+              return;
+            }
+            await copyText(url);
+            setSnapshotStatus(t("viewerUrlCopied"), "ok");
+          });
+        }
         if (copyButton) {
           copyButton.addEventListener("click", async function () {
             const command = buildRenderViewCommand();
@@ -1895,7 +2147,12 @@
         const signature = labels.join("\u001f");
         if (signature !== annotationFilterSignature) {
           annotationFilterSignature = signature;
-          selectedAnnotationLabels = new Set(labels);
+          if (pendingInitialAnnotationLabels !== null) {
+            selectedAnnotationLabels = new Set(pendingInitialAnnotationLabels.filter((label) => labels.includes(label)));
+            pendingInitialAnnotationLabels = null;
+          } else {
+            selectedAnnotationLabels = new Set(labels);
+          }
         }
         container.innerHTML = "";
         if (!labels.length) {
@@ -1917,6 +2174,7 @@
             }
             document.getElementById("annotation-count").textContent = annotationCountLabel(annotationPayload);
             scheduleCanvasOverlayRedraw();
+            scheduleViewerStateUrlUpdate();
           });
           const text = document.createElement("span");
           text.textContent = `${label} (${counts.get(label) || 0})`;
@@ -2590,13 +2848,23 @@
         return `${current.toFixed(current >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
       }
 
-      document.getElementById("overlay-toggle").addEventListener("change", updatePatchOverlayStyle);
-      document.getElementById("opacity-slider").addEventListener("input", updatePatchOverlayStyle);
+      document.getElementById("overlay-toggle").addEventListener("change", function () {
+        updatePatchOverlayStyle();
+        scheduleViewerStateUrlUpdate();
+      });
+      document.getElementById("opacity-slider").addEventListener("input", function () {
+        updatePatchOverlayStyle();
+        scheduleViewerStateUrlUpdate();
+      });
       document.getElementById("score-threshold-slider").addEventListener("input", function () {
         updateScoreThresholdValue();
         refreshOverlayCountsAndCanvas();
+        scheduleViewerStateUrlUpdate();
       });
-      document.getElementById("top-k-input").addEventListener("input", refreshOverlayCountsAndCanvas);
+      document.getElementById("top-k-input").addEventListener("input", function () {
+        refreshOverlayCountsAndCanvas();
+        scheduleViewerStateUrlUpdate();
+      });
       document.getElementById("clear-overlay-filters").addEventListener("click", function () {
         document.getElementById("score-threshold-slider").value = "0";
         document.getElementById("top-k-input").value = "";
@@ -2606,6 +2874,7 @@
           updateAnnotationLabelFilter(annotationPayload);
         }
         refreshOverlayCountsAndCanvas();
+        scheduleViewerStateUrlUpdate();
       });
       document.getElementById("select-all-labels").addEventListener("click", function () {
         if (!annotationPayload) {
@@ -2614,14 +2883,22 @@
         selectedAnnotationLabels = new Set((annotationPayload.annotations || []).map((annotation) => String(annotation.label || "unlabeled")));
         updateAnnotationLabelFilter(annotationPayload);
         refreshOverlayCountsAndCanvas();
+        scheduleViewerStateUrlUpdate();
       });
       document.getElementById("select-no-labels").addEventListener("click", function () {
         selectedAnnotationLabels = new Set();
         updateAnnotationLabelFilter(annotationPayload);
         refreshOverlayCountsAndCanvas();
+        scheduleViewerStateUrlUpdate();
       });
-      document.getElementById("annotation-toggle").addEventListener("change", updateAnnotationOverlayStyle);
-      document.getElementById("annotation-opacity-slider").addEventListener("input", updateAnnotationOverlayStyle);
+      document.getElementById("annotation-toggle").addEventListener("change", function () {
+        updateAnnotationOverlayStyle();
+        scheduleViewerStateUrlUpdate();
+      });
+      document.getElementById("annotation-opacity-slider").addEventListener("input", function () {
+        updateAnnotationOverlayStyle();
+        scheduleViewerStateUrlUpdate();
+      });
     }
 
     initializeViewer().catch(function (error) {
