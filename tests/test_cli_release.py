@@ -11,11 +11,11 @@ from slidebridge.cli import app
 runner = CliRunner()
 
 
-def test_release_version_output_contains_029():
+def test_release_version_output_contains_0210():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "0.2.9" in result.stdout
+    assert "0.2.10" in result.stdout
 
 
 def test_cli_render_overlay(tmp_path):
@@ -33,6 +33,46 @@ def test_cli_render_overlay(tmp_path):
     assert overlay.exists()
     with Image.open(overlay) as image:
         assert max(image.size) <= 256
+
+
+def test_cli_render_view(tmp_path):
+    slide = tmp_path / "demo.png"
+    coords = tmp_path / "coords.csv"
+    view = tmp_path / "view.png"
+
+    assert runner.invoke(app, ["create-demo", "--out", str(slide), "--width", "512", "--height", "384"]).exit_code == 0
+    assert runner.invoke(app, ["sample-patches", str(slide), "--out", str(coords), "--count", "20", "--with-scores"]).exit_code == 0
+    result = runner.invoke(
+        app,
+        [
+            "render-view",
+            str(slide),
+            "--patches",
+            str(coords),
+            "--center-x",
+            "256",
+            "--center-y",
+            "192",
+            "--window-width",
+            "256",
+            "--window-height",
+            "192",
+            "--out-width",
+            "320",
+            "--out-height",
+            "240",
+            "--out",
+            str(view),
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["out_width"] == 320
+    assert payload["out_height"] == 240
+    assert view.exists()
+    with Image.open(view) as image:
+        assert image.size == (320, 240)
 
 
 def test_cli_render_overlay_without_scores(tmp_path):

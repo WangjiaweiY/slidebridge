@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.9`
+Current version: `0.2.10`
 
 ## Quick Demo
 
@@ -31,6 +31,7 @@ pip install -e .
 slidebridge create-demo --out outputs\demo_slide.png
 slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
 slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\demo_overlay.png
+slidebridge render-view outputs\demo_slide.png --patches outputs\demo_coords.csv --center-x 2048 --center-y 1536 --window-width 1200 --window-height 900 --out outputs\demo_view.png
 slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
 ```
 
@@ -63,6 +64,7 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - Score/attention heatmap overlay
 - Patch image export
 - Static overlay rendering
+- Static viewport rendering with `render-view`
 - AnnotationTable abstraction
 - QuPath GeoJSON, ASAP XML, and SlideBridge JSON annotation loading
 - Annotation overlay, conversion, and patch labeling
@@ -165,6 +167,21 @@ Useful tuning options:
 ```powershell
 slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --raster-heatmap-threshold 0.4 --raster-heatmap-colormap score
 slidebridge render-overlay outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --raster-heatmap-invert --out outputs\demo_raster_heatmap.png
+```
+
+## Static View Snapshots
+
+Use `render-view` to export a reproducible viewport snapshot without opening a
+browser:
+
+```powershell
+slidebridge render-view outputs\demo_slide.png `
+  --patches outputs\demo_coords.csv `
+  --annotations outputs\demo_annotations.geojson `
+  --raster-heatmap outputs\demo_heatmap.png `
+  --center-x 2048 --center-y 1536 `
+  --window-width 1200 --window-height 900 `
+  --out outputs\demo_view.png
 ```
 
 ## Annotation Debugging

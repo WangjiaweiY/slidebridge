@@ -80,6 +80,29 @@ Optional raster controls:
 - `--raster-heatmap-invert` flips normalized intensity before display.
 - `--raster-heatmap-colormap score` forces the SlideBridge score colormap.
 
+## Static View Snapshots
+
+Use `render-view` when you want a reproducible viewport image without opening a
+browser. The command reads a level-0 window around a requested center point,
+rescales it to a fixed output size, and draws the same debug overlays used by
+the viewer:
+
+```powershell
+slidebridge render-view C:\path\to\your\slide.svs `
+  --patches outputs\coords.csv `
+  --annotations outputs\annotations.geojson `
+  --raster-heatmap outputs\heatmap.png `
+  --center-x 50000 --center-y 30000 `
+  --window-width 4000 --window-height 3000 `
+  --out outputs\viewport.png
+```
+
+All viewport coordinates are level-0 pixels. `--window-width` and
+`--window-height` define the field of view in level-0 pixels. `--out-width` and
+`--out-height` define the exported image size. This is useful for reports,
+debugging screenshots, and comparing model outputs without relying on browser
+state.
+
 ## Annotation Overlay
 
 The viewer can display annotation files with patch and heatmap overlays:

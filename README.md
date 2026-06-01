@@ -14,34 +14,20 @@ Debug whole-slide images like a developer.
 
 > 上图是 synthetic demo，不包含任何患者数据。
 
+当前版本：`0.2.10`
+
 ## 这是什么？
 
 SlideBridge Core 帮助计算病理研究者和 AI 工程师完成常见调试任务：
 
 - 检查 WSI metadata、尺寸、level、MPP、objective 和 reader。
-- 导出缩略图。
-- 在本地浏览器里查看 slide。
-- 叠加 patch 坐标。
-- 可视化模型 score / attention。
-- 生成轻量 QC 报告。
-- 根据坐标导出 patch 图像和 manifest。
-- 加载、转换和可视化 annotation 文件。
-- 根据 annotation 给 patch 打调试标签。
+- 导出缩略图和 QC 报告。
+- 在本地浏览器中查看 slide。
+- 叠加 patch 坐标、score/attention heatmap 和 annotation。
+- 从 annotation 给 patch 生成调试标签。
+- 导出 patch 图像和 manifest。
 - 通过 SSH tunnel 浏览远端服务器上的 WSI。
-
-当前版本：`0.2.9`
-
-## 30 秒 Demo
-
-```powershell
-git clone https://github.com/WangjiaweiY/slidebridge.git
-cd slidebridge
-pip install -e .
-slidebridge create-demo --out outputs\demo_slide.png
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
-slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\demo_overlay.png
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
-```
+- 生成静态 overlay 图和指定视野截图，便于报告和复现。
 
 ## 重要声明
 
@@ -49,8 +35,9 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - 不用于临床诊断。
 - 本项目不包含任何厂商私有 SDK。
 - 本项目不包含任何厂商私有格式实现。
-- 如需特定 reader，应在单独授权的私有插件中实现。
+- 特定 reader 应在单独授权的私有插件中实现。
 - 本项目不隶属于、不代表、不背书任何扫描仪厂商。
+- 示例图片、坐标和 annotation 均为 synthetic demo，不包含患者数据。
 
 ## 安装
 
@@ -68,19 +55,23 @@ cd slidebridge
 pip install -e .[dev]
 ```
 
-### Windows 说明
+Windows 上如果需要 OpenSlide 运行时，可以安装：
 
 ```powershell
-conda create -n slidebridge python=3.11 -y
-conda activate slidebridge
-pip install tiffslide openslide-python openslide-bin pillow numpy pandas `
-  fastapi uvicorn typer rich jinja2 pytest h5py
-pip install -e .
+pip install tiffslide openslide-python openslide-bin pillow numpy pandas fastapi uvicorn typer rich jinja2 pytest h5py
 ```
 
-`openslide-bin` 可以在 Windows 上补齐 `openslide-python` 需要的 OpenSlide
-运行时。即使 OpenSlide 不可用，SlideBridge 仍可通过 TiffSlide 或普通 image
-reader 运行部分工作流。
+如果 OpenSlide 不可用，SlideBridge 仍可通过 TiffSlide 或普通 image reader 运行部分工作流。
+
+## 30 秒 Demo
+
+```powershell
+slidebridge create-demo --out outputs\demo_slide.png
+slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
+slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\demo_overlay.png
+slidebridge render-view outputs\demo_slide.png --patches outputs\demo_coords.csv --center-x 2048 --center-y 1536 --window-width 1200 --window-height 900 --out outputs\demo_view.png
+slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
+```
 
 ## 常用命令
 
@@ -88,48 +79,52 @@ reader 运行部分工作流。
 slidebridge version
 slidebridge env
 slidebridge readers
-```
 
-```powershell
 slidebridge inspect outputs\demo_slide.png
 slidebridge thumbnail outputs\demo_slide.png --out outputs\demo_thumbnail.jpg
-slidebridge doctor outputs\demo_slide.png --out outputs\demo_report.html
-```
+slidebridge doctor outputs\demo_slide.png --out outputs\demo_report.html --json-out outputs\demo_report.json
 
-```powershell
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 100 --with-scores
+slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
 slidebridge inspect-patches outputs\demo_coords.csv --slide outputs\demo_slide.png
-slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\demo_overlay.png
 slidebridge export-patches outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\patches --limit 20
 ```
 
+## Heatmap 调试
+
+Patch score / attention:
+
 ```powershell
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
+slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.h5 --format h5 --count 200 --with-scores
+slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.h5 --port 7860 --open-browser
 ```
 
-## 整图 Heatmap PNG/JPG
-
-如果模型输出的是一整张 PNG/JPG 热图，可以直接作为 full-slide overlay 查看：
+整图 PNG/JPG heatmap:
 
 ```powershell
 slidebridge create-demo-heatmap --out outputs\demo_heatmap.png
-slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --port 7860 --open-browser
 slidebridge inspect-heatmap outputs\demo_heatmap.png --slide outputs\demo_slide.png
+slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --port 7860 --open-browser
+slidebridge render-overlay outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --out outputs\demo_raster_heatmap.png
 ```
 
-也可以用 `--heatmap` 自动识别图片热图：
+这些 heatmap 只用于 model/debug visualization，不是诊断结果。
+
+## 静态视野截图
+
+`render-view` 可以在不打开浏览器的情况下，导出某个 level-0 中心点附近的固定视野，适合保存模型输出、annotation 和 patch 对齐结果。
 
 ```powershell
-slidebridge render-overlay outputs\demo_slide.png --heatmap outputs\demo_heatmap.png --out outputs\demo_raster_heatmap.png
+slidebridge render-view outputs\demo_slide.png `
+  --patches outputs\demo_coords.csv `
+  --raster-heatmap outputs\demo_heatmap.png `
+  --center-x 2048 --center-y 1536 `
+  --window-width 1200 --window-height 900 `
+  --out outputs\demo_view.png
 ```
-
-当前 raster heatmap 默认覆盖整张 slide，并拉伸到 level-0 全图坐标系。它只用于
-model/debug visualization，不是诊断结果。
 
 ## Annotation Debugging
 
 ```powershell
-slidebridge create-demo --out outputs\demo_slide.png
 slidebridge create-demo-annotations --out outputs\demo_annotations.geojson
 slidebridge inspect-annotations outputs\demo_annotations.geojson --slide outputs\demo_slide.png
 slidebridge render-overlay outputs\demo_slide.png --annotations outputs\demo_annotations.geojson --out outputs\demo_annotation_overlay.png
@@ -144,38 +139,29 @@ slidebridge view outputs\demo_slide.png --annotations outputs\demo_annotations.g
 
 这些 annotation 只用于 research/debugging，不是临床诊断结果。
 
+## 从 Annotation 给 Patch 打标签
+
+```powershell
+slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --out outputs\demo_coords_labeled.csv
+```
+
+`label-patches` 是 debugging / weak-labeling helper，不是 gold-standard labeling 工作流。
+
 ## 通过 SSH 浏览服务器上的切片
 
-切片文件保留在服务器上，SlideBridge 在服务器上读取切片，本地浏览器通过 SSH
-tunnel 访问 viewer。
+切片文件保留在服务器上，SlideBridge 在服务器上读取切片，本地浏览器通过 SSH tunnel 访问 viewer。
 
 ```powershell
 slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
 ```
 
-也可以传远端目录，在浏览器左侧选择要看的切片：
+也可以传远端目录，在浏览器左侧选择切片：
 
 ```powershell
 slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
 ```
 
-带远端 patch 和 annotation：
-
-```powershell
-slidebridge remote-view user@server:/data/slides/case.svs `
-  --patches /data/features/case_coords.h5 `
-  --annotations /data/annotations/case.geojson `
-  --remote-runner "conda run -n slidebridge slidebridge"
-```
-
-先用 `--dry-run` 检查 SSH tunnel 和远端命令：
-
-```powershell
-slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge" --dry-run
-```
-
-如果经常连接同一台服务器，可以先保存一个本地 profile，后续命令就不用反复输入 SSH 端口和
-`--remote-runner`：
+如果经常连接同一台服务器，可以保存本地 profile：
 
 ```powershell
 slidebridge remote-profile add lab `
@@ -192,28 +178,12 @@ slidebridge remote-ls lab:
 
 ## Viewer 性能参数
 
-Viewer 默认启用进程内 tile cache，并限制同时生成 tile 的数量，减少重复缩放和平移时的服务端压力：
-
 ```powershell
 slidebridge view outputs\demo_slide.png --tile-cache-size 512 --tile-cache-mb 256 --tile-workers 4
 slidebridge remote-view user@server:/data/slides/case.svs --tile-cache-size 512 --tile-cache-mb 256 --tile-workers 4
 ```
 
 `--tile-cache-size 0` 可以关闭服务端 tile cache。Viewer 信息页会显示 cache entries、内存占用、hits、misses、evictions、生成 tile 数、缓存返回数、平均 tile 耗时和 p95 tile 耗时。
-
-## 从 Annotation 给 Patch 打标签
-
-```powershell
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
-slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --out outputs\demo_coords_labeled.csv
-```
-
-`label-patches` 是 debugging / weak-labeling helper，不是 gold-standard labeling 工作流。
-
-## 工程记录
-
-已知问题、修复方案和后续优化方向会持续记录在
-[Issues and Improvements](docs/ISSUES_AND_IMPROVEMENTS.md)。
 
 ## 坐标约定
 
@@ -225,59 +195,29 @@ slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_ann
 
 ## 插件机制
 
-公开 core 只定义 reader interface 和 registry。私有 reader 应放在单独的私有包中，
-并通过 `slidebridge.core.registry.register_reader` 注册。
+公开 core 只定义 reader interface 和 registry。私有 reader 应放在单独的私有包中，并通过 `slidebridge.core.registry.register_reader` 注册。SlideBridge Core 不包含任何私有 reader。
 
-SlideBridge Core 不包含任何私有 reader。
+## 文档
+
+- [Remote WSI Viewing](docs/REMOTE_VIEWING.md)
+- [Annotations](docs/ANNOTATIONS.md)
+- [Heatmaps](docs/HEATMAPS.md)
+- [Coordinates](docs/COORDINATES.md)
+- [Viewer](docs/VIEWER.md)
+- [Issues and Improvements](docs/ISSUES_AND_IMPROVEMENTS.md)
 
 ## Roadmap
 
-v0.2.2:
+v0.2.10:
 
-- remote WSI viewing over SSH tunnel
-- remote-check / remote-ls / remote-inspect / remote-view
-- 本地和远端目录阅片模式
+- `render-view` 静态视野截图
+- viewport-level patch / heatmap / annotation overlay 导出
 
-v0.2.3:
+v0.2.x:
 
-- PNG/JPG 整图 heatmap overlay
-- `view` / `remote-view` / `render-overlay` 支持 `--raster-heatmap`
-- viewer tile/API cache 加固
-
-v0.2.4:
-
-- 内存 LRU tile cache
-- tile 生成并发限制
-- viewer cache stats 诊断
-
-v0.2.5:
-
-- `--tile-cache-mb` 按内存大小限制 tile cache
-- `/api/performance` tile 性能诊断
-- read / resize / JPEG / total tile 生成耗时统计
-
-v0.2.6:
-
-- `remote-profile` 保存常用 SSH viewer 配置
-- 支持 profile-relative 远端路径，减少重复命令参数
-
-v0.2.7:
-
-- canvas overlay rendering
-- viewport culling for large patch / annotation overlays
-- overlay draw count and canvas tooltip
-
-v0.2.8:
-
-- heatmap inspection command
-- raster heatmap threshold / invert / colormap controls
-- slide-aspect synthetic heatmap generation
-
-v0.2.9:
-
-- viewer-side score threshold and top-k patch filters
-- annotation label filters
-- click-to-inspect overlay details and zoom-to-item
+- viewer 交互体验继续打磨
+- heatmap / annotation 对齐诊断
+- 更好的远端 viewer 生命周期管理
 
 v0.3:
 

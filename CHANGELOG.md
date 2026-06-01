@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.10
+
+Added:
+
+- `render-view` command for static viewport snapshots
+- viewport snapshots with patch, score, raster heatmap, and annotation overlays
+- JSON summary output with rendered bbox, center, scale, and overlay counts
+
+Changed:
+
+- static rendering can now target a specific level-0 center and field of view
+
 ## 0.2.9
 
 Added:
