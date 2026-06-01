@@ -25,8 +25,10 @@ x,y,width,height,score
 10000,20000,512,512,0.82
 ```
 
-If more than 10000 patches are provided, the viewer displays a warning and
-renders the first 10000 rectangles to keep the browser responsive.
+Patch overlays are drawn on a browser canvas instead of one DOM node per patch.
+During pan and zoom the viewer culls records outside the current viewport and
+draws only visible items. The overlay panel reports how many records were drawn
+on the current canvas frame.
 
 ## Heatmap Overlay
 
@@ -44,6 +46,7 @@ The viewer includes:
 - score legend
 - patch count
 - hover text with index, coordinates, size, and score
+- canvas draw count
 
 For large overlays, the server can limit returned patches with
 `--max-overlay-patches`, and the browser displays a performance warning.
@@ -82,6 +85,7 @@ Annotation overlays use level-0 image coordinates and support:
 - label summary
 - hover text with label, type, id, and bbox
 - polygon, rectangle, point, and line display
+- canvas viewport culling
 
 If the annotation count exceeds `--max-annotations`, the server returns the
 first subset and reports a warning.

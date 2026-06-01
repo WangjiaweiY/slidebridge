@@ -401,6 +401,31 @@
       height: auto;
       background: #111820;
     }
+    #overlay-canvas {
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      mix-blend-mode: normal;
+    }
+    #overlay-tooltip {
+      display: none;
+      position: absolute;
+      z-index: 9;
+      max-width: min(360px, calc(100vw - 32px));
+      padding: 7px 9px;
+      border: 1px solid rgba(25, 55, 68, 0.18);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.96);
+      color: #17202a;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: pre-line;
+      pointer-events: none;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);
+    }
     #viewer-error {
       display: none;
       position: absolute;
@@ -653,6 +678,7 @@
               <div class="pill" id="patch-count">{{ patch_count }} patches</div>
               <div class="pill" id="raster-heatmap-count" {% if not raster_heatmap_available %}hidden{% endif %}>raster heatmap</div>
               <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
+              <div class="pill" id="overlay-render-count">canvas 0</div>
             </div>
             {% if patch_warning %}
             <div class="warning">{{ patch_warning }}</div>
@@ -690,6 +716,8 @@
       <div id="viewer">
         <div id="viewer-error">OpenSeadragon failed to load. Please check the bundled viewer asset or your network connection.</div>
       </div>
+      <canvas id="overlay-canvas" aria-hidden="true"></canvas>
+      <div id="overlay-tooltip"></div>
       <div id="zoom-control" class="zoom-control" aria-label="Equivalent magnification control">
         <div class="zoom-readout">
           <div id="zoom-value" class="zoom-value">fit</div>
@@ -756,6 +784,7 @@
         patches: "patches",
         annotations: "annotations",
         shown: "shown",
+        canvasDrawn: "canvas drawn",
         none: "none",
         equivalentMagnification: "equiv. magnification",
         fit: "Fit",
@@ -942,11 +971,14 @@
       let rasterHeatmapPayload = null;
       let cacheStatsPayload = initialTileCacheStats;
       let performanceStatsPayload = initialTilePerformanceStats;
-      let patchElements = [];
-      let annotationElements = [];
       let rasterHeatmapElement = null;
       let currentSlideInfo = null;
       let currentZoomLevels = [];
+      const overlayCanvas = document.getElementById("overlay-canvas");
+      const overlayContext = overlayCanvas.getContext("2d");
+      const overlayTooltip = document.getElementById("overlay-tooltip");
+      let overlayHitItems = [];
+      let overlayRedrawPending = false;
       setupTabs(function () {
         refreshViewerLayout(false);
       });
@@ -976,11 +1008,26 @@
         renderZoomControl();
         refreshViewerLayout(true);
         updateZoomReadout();
+        scheduleCanvasOverlayRedraw();
       });
-      viewer.addHandler("animation", updateZoomReadout);
-      viewer.addHandler("animation-finish", updateZoomReadout);
-      viewer.addHandler("zoom", updateZoomReadout);
-      viewer.addHandler("pan", updateZoomReadout);
+      viewer.addHandler("animation", function () {
+        updateZoomReadout();
+        scheduleCanvasOverlayRedraw();
+      });
+      viewer.addHandler("animation-finish", function () {
+        updateZoomReadout();
+        scheduleCanvasOverlayRedraw();
+      });
+      viewer.addHandler("zoom", function () {
+        updateZoomReadout();
+        scheduleCanvasOverlayRedraw();
+      });
+      viewer.addHandler("pan", function () {
+        updateZoomReadout();
+        scheduleCanvasOverlayRedraw();
+      });
+      viewer.addHandler("resize", scheduleCanvasOverlayRedraw);
+      setupCanvasTooltip();
 
       renderSlideList();
       const search = document.getElementById("slide-search");
@@ -1385,10 +1432,8 @@
           viewer.removeOverlay(rasterHeatmapElement);
           rasterHeatmapElement = null;
         }
-        patchElements.forEach((element) => viewer.removeOverlay(element));
-        annotationElements.forEach((element) => viewer.removeOverlay(element));
-        patchElements = [];
-        annotationElements = [];
+        overlayHitItems = [];
+        clearCanvasOverlay();
       }
 
       function renderRasterHeatmap() {
@@ -1413,51 +1458,348 @@
       }
 
       function renderPatches() {
-        if (!isOpen || !patchPayload) {
-          return;
-        }
-        patchElements.forEach((element) => viewer.removeOverlay(element));
-        patchElements = [];
-        const patches = patchPayload.patches || [];
-        const hasScores = Boolean(patchPayload.has_scores);
-        patches.forEach(function (patch) {
-          const element = document.createElement("div");
-          element.className = hasScores ? "patch-overlay heatmap" : "patch-overlay";
-          const score = patch.score === undefined || patch.score === null ? null : Number(patch.score);
-          if (score !== null && Number.isFinite(score)) {
-            element.style.background = scoreColor(score, Number(document.getElementById("opacity-slider").value));
-            element.dataset.score = String(score);
-          }
-          element.title = patchTitle(patch, score);
-          viewer.addOverlay({
-            element: element,
-            location: viewer.viewport.imageToViewportRectangle(patch.x, patch.y, patch.width, patch.height),
-            checkResize: false
-          });
-          patchElements.push(element);
-        });
-        updatePatchOverlayStyle();
+        scheduleCanvasOverlayRedraw();
       }
 
       function renderAnnotations() {
-        if (!isOpen || !annotationPayload) {
+        scheduleCanvasOverlayRedraw();
+      }
+
+      function scheduleCanvasOverlayRedraw() {
+        if (overlayRedrawPending) {
           return;
         }
-        annotationElements.forEach((element) => viewer.removeOverlay(element));
-        annotationElements = [];
-        (annotationPayload.annotations || []).forEach(function (annotation) {
-          const overlay = annotationElement(annotation);
-          if (!overlay) {
+        overlayRedrawPending = true;
+        window.requestAnimationFrame(function () {
+          overlayRedrawPending = false;
+          drawCanvasOverlays();
+        });
+      }
+
+      function clearCanvasOverlay() {
+        resizeOverlayCanvas();
+        overlayContext.clearRect(0, 0, overlayCanvas.clientWidth || 0, overlayCanvas.clientHeight || 0);
+        updateOverlayRenderCount(0, 0);
+      }
+
+      function resizeOverlayCanvas() {
+        const rect = overlayCanvas.getBoundingClientRect();
+        const ratio = window.devicePixelRatio || 1;
+        const width = Math.max(1, Math.round(rect.width * ratio));
+        const height = Math.max(1, Math.round(rect.height * ratio));
+        if (overlayCanvas.width !== width || overlayCanvas.height !== height) {
+          overlayCanvas.width = width;
+          overlayCanvas.height = height;
+        }
+        overlayContext.setTransform(ratio, 0, 0, ratio, 0, 0);
+        return {width: rect.width, height: rect.height};
+      }
+
+      function drawCanvasOverlays() {
+        const size = resizeOverlayCanvas();
+        overlayContext.clearRect(0, 0, size.width, size.height);
+        overlayHitItems = [];
+        if (!isOpen || !currentSlideInfo) {
+          updateOverlayRenderCount(0, 0);
+          return;
+        }
+        const viewBounds = currentImageBounds(0.12);
+        let drawn = 0;
+        let total = 0;
+        if (patchPayload && document.getElementById("overlay-toggle").checked) {
+          const patches = patchPayload.patches || [];
+          total += patches.length;
+          drawn += drawPatchCanvasOverlays(patches, viewBounds);
+        }
+        if (annotationPayload && document.getElementById("annotation-toggle").checked) {
+          const annotations = annotationPayload.annotations || [];
+          total += annotations.length;
+          drawn += drawAnnotationCanvasOverlays(annotations, viewBounds);
+        }
+        updateOverlayRenderCount(drawn, total);
+      }
+
+      function drawPatchCanvasOverlays(patches, viewBounds) {
+        const opacity = Number(document.getElementById("opacity-slider").value);
+        const hasScores = Boolean(patchPayload && patchPayload.has_scores);
+        let drawn = 0;
+        patches.forEach(function (patch) {
+          const bbox = [Number(patch.x), Number(patch.y), Number(patch.x) + Number(patch.width), Number(patch.y) + Number(patch.height)];
+          if (!bboxIntersects(bbox, viewBounds)) {
             return;
           }
-          viewer.addOverlay({
-            element: overlay.element,
-            location: viewer.viewport.imageToViewportRectangle(overlay.x, overlay.y, overlay.width, overlay.height),
-            checkResize: false
-          });
-          annotationElements.push(overlay.element);
+          const rect = imageRectToScreenRect(bbox);
+          if (!rect) {
+            return;
+          }
+          const score = patch.score === undefined || patch.score === null ? null : Number(patch.score);
+          overlayContext.save();
+          if (hasScores && score !== null && Number.isFinite(score)) {
+            overlayContext.fillStyle = scoreColor(score, opacity);
+            overlayContext.fillRect(rect.x, rect.y, rect.width, rect.height);
+          } else {
+            overlayContext.globalAlpha = Math.max(0, Math.min(1, opacity));
+            overlayContext.fillStyle = "rgba(255, 80, 80, 0.08)";
+            overlayContext.strokeStyle = "rgba(255, 80, 80, 0.95)";
+            overlayContext.lineWidth = Math.max(1, Math.min(2, Math.max(rect.width, rect.height) / 64));
+            overlayContext.fillRect(rect.x, rect.y, rect.width, rect.height);
+            overlayContext.strokeRect(rect.x, rect.y, rect.width, rect.height);
+          }
+          overlayContext.restore();
+          overlayHitItems.push({screen: rect, title: patchTitle(patch, score)});
+          drawn += 1;
         });
-        updateAnnotationOverlayStyle();
+        return drawn;
+      }
+
+      function drawAnnotationCanvasOverlays(annotations, viewBounds) {
+        const opacity = Number(document.getElementById("annotation-opacity-slider").value);
+        let drawn = 0;
+        annotations.forEach(function (annotation) {
+          const bbox = normalizedAnnotationBbox(annotation);
+          if (!bbox || !bboxIntersects(bbox, viewBounds)) {
+            return;
+          }
+          overlayContext.save();
+          overlayContext.globalAlpha = 1;
+          const color = annotation.color || "#c2415d";
+          overlayContext.strokeStyle = color;
+          overlayContext.fillStyle = colorToRgba(color, opacity);
+          overlayContext.lineWidth = 2;
+          const didDraw = drawAnnotationShape(annotation, bbox, color, opacity);
+          overlayContext.restore();
+          if (!didDraw) {
+            return;
+          }
+          const rect = annotationScreenHitRect(annotation, bbox);
+          if (rect) {
+            overlayHitItems.push({screen: rect, title: annotationTitle(annotation)});
+          }
+          drawn += 1;
+        });
+        return drawn;
+      }
+
+      function drawAnnotationShape(annotation, bbox, color, opacity) {
+        if (annotation.type === "point") {
+          const point = annotation.coordinates || {};
+          const screen = imagePointToScreen(Number(point.x), Number(point.y));
+          if (!screen) {
+            return false;
+          }
+          overlayContext.beginPath();
+          overlayContext.arc(screen.x, screen.y, 5, 0, Math.PI * 2);
+          overlayContext.fillStyle = colorToRgba(color, Math.max(opacity, 0.45));
+          overlayContext.fill();
+          overlayContext.strokeStyle = color;
+          overlayContext.stroke();
+          return true;
+        }
+        if (annotation.type === "rectangle") {
+          const rect = imageRectToScreenRect(bbox);
+          if (!rect) {
+            return false;
+          }
+          overlayContext.fillRect(rect.x, rect.y, rect.width, rect.height);
+          overlayContext.strokeRect(rect.x, rect.y, rect.width, rect.height);
+          return true;
+        }
+        if (annotation.type === "line") {
+          drawPolyline(annotation.coordinates || [], false);
+          return true;
+        }
+        if (annotation.type === "polygon") {
+          drawPolygonRings(annotation.coordinates || []);
+          return true;
+        }
+        if (annotation.type === "multipolygon") {
+          (annotation.coordinates || []).forEach((polygon) => drawPolygonRings(polygon || []));
+          return true;
+        }
+        return false;
+      }
+
+      function drawPolygonRings(rings) {
+        overlayContext.beginPath();
+        (rings || []).forEach(function (ring) {
+          (ring || []).forEach(function (point, index) {
+            const screen = imagePointToScreen(Number(point[0]), Number(point[1]));
+            if (!screen) {
+              return;
+            }
+            if (index === 0) {
+              overlayContext.moveTo(screen.x, screen.y);
+            } else {
+              overlayContext.lineTo(screen.x, screen.y);
+            }
+          });
+          overlayContext.closePath();
+        });
+        overlayContext.fill("evenodd");
+        overlayContext.stroke();
+      }
+
+      function drawPolyline(points, closePath) {
+        overlayContext.beginPath();
+        (points || []).forEach(function (point, index) {
+          const screen = imagePointToScreen(Number(point[0]), Number(point[1]));
+          if (!screen) {
+            return;
+          }
+          if (index === 0) {
+            overlayContext.moveTo(screen.x, screen.y);
+          } else {
+            overlayContext.lineTo(screen.x, screen.y);
+          }
+        });
+        if (closePath) {
+          overlayContext.closePath();
+        }
+        overlayContext.stroke();
+      }
+
+      function currentImageBounds(paddingFraction) {
+        if (!currentSlideInfo || !viewer.viewport) {
+          return [0, 0, 0, 0];
+        }
+        const bounds = viewer.viewport.getBounds(true);
+        const topLeft = viewer.viewport.viewportToImageCoordinates(bounds.x, bounds.y);
+        const bottomRight = viewer.viewport.viewportToImageCoordinates(bounds.x + bounds.width, bounds.y + bounds.height);
+        const minX = Math.min(topLeft.x, bottomRight.x);
+        const minY = Math.min(topLeft.y, bottomRight.y);
+        const maxX = Math.max(topLeft.x, bottomRight.x);
+        const maxY = Math.max(topLeft.y, bottomRight.y);
+        const padX = (maxX - minX) * Number(paddingFraction || 0);
+        const padY = (maxY - minY) * Number(paddingFraction || 0);
+        return [
+          Math.max(0, minX - padX),
+          Math.max(0, minY - padY),
+          Math.min(Number(currentSlideInfo.width || maxX), maxX + padX),
+          Math.min(Number(currentSlideInfo.height || maxY), maxY + padY)
+        ];
+      }
+
+      function imagePointToScreen(x, y) {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          return null;
+        }
+        const viewportPoint = viewer.viewport.imageToViewportCoordinates(x, y);
+        const pixel = viewer.viewport.pixelFromPoint(viewportPoint, true);
+        return {x: Number(pixel.x), y: Number(pixel.y)};
+      }
+
+      function imageRectToScreenRect(bbox) {
+        const p0 = imagePointToScreen(Number(bbox[0]), Number(bbox[1]));
+        const p1 = imagePointToScreen(Number(bbox[2]), Number(bbox[3]));
+        if (!p0 || !p1) {
+          return null;
+        }
+        const x = Math.min(p0.x, p1.x);
+        const y = Math.min(p0.y, p1.y);
+        return {
+          x,
+          y,
+          width: Math.max(1, Math.abs(p1.x - p0.x)),
+          height: Math.max(1, Math.abs(p1.y - p0.y))
+        };
+      }
+
+      function bboxIntersects(a, b) {
+        return Number(a[0]) <= Number(b[2])
+          && Number(a[2]) >= Number(b[0])
+          && Number(a[1]) <= Number(b[3])
+          && Number(a[3]) >= Number(b[1]);
+      }
+
+      function normalizedAnnotationBbox(annotation) {
+        const bbox = annotation.bbox || annotationBbox(annotation);
+        if (!bbox || bbox.length < 4) {
+          return null;
+        }
+        return [Number(bbox[0]), Number(bbox[1]), Number(bbox[2]), Number(bbox[3])];
+      }
+
+      function annotationScreenHitRect(annotation, bbox) {
+        if (annotation.type === "point") {
+          const point = annotation.coordinates || {};
+          const screen = imagePointToScreen(Number(point.x), Number(point.y));
+          if (!screen) {
+            return null;
+          }
+          return {x: screen.x - 8, y: screen.y - 8, width: 16, height: 16};
+        }
+        return imageRectToScreenRect(bbox);
+      }
+
+      function colorToRgba(color, opacity) {
+        const parsed = parseHexColor(color);
+        const alpha = Math.max(0, Math.min(1, Number(opacity)));
+        if (!parsed) {
+          return `rgba(194, 65, 93, ${alpha})`;
+        }
+        return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${alpha})`;
+      }
+
+      function parseHexColor(color) {
+        const text = String(color || "").trim();
+        const match = text.match(/^#?([0-9a-fA-F]{6})$/);
+        if (!match) {
+          return null;
+        }
+        const value = match[1];
+        return {
+          r: parseInt(value.slice(0, 2), 16),
+          g: parseInt(value.slice(2, 4), 16),
+          b: parseInt(value.slice(4, 6), 16)
+        };
+      }
+
+      function updateOverlayRenderCount(drawn, total) {
+        const element = document.getElementById("overlay-render-count");
+        if (!element) {
+          return;
+        }
+        element.textContent = `${t("canvasDrawn")} ${drawn} / ${total}`;
+      }
+
+      function setupCanvasTooltip() {
+        const container = document.querySelector("main");
+        if (!container) {
+          return;
+        }
+        container.addEventListener("mousemove", function (event) {
+          if (event.target && event.target.closest && event.target.closest(".zoom-control")) {
+            hideOverlayTooltip();
+            return;
+          }
+          const rect = container.getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          const y = event.clientY - rect.top;
+          const item = hitCanvasOverlay(x, y);
+          if (!item) {
+            hideOverlayTooltip();
+            return;
+          }
+          overlayTooltip.textContent = item.title;
+          overlayTooltip.style.left = `${Math.min(x + 14, rect.width - 24)}px`;
+          overlayTooltip.style.top = `${Math.min(y + 14, rect.height - 24)}px`;
+          overlayTooltip.style.display = "block";
+        });
+        container.addEventListener("mouseleave", hideOverlayTooltip);
+      }
+
+      function hitCanvasOverlay(x, y) {
+        for (let index = overlayHitItems.length - 1; index >= 0; index -= 1) {
+          const rect = overlayHitItems[index].screen;
+          if (x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height) {
+            return overlayHitItems[index];
+          }
+        }
+        return null;
+      }
+
+      function hideOverlayTooltip() {
+        overlayTooltip.style.display = "none";
       }
 
       function patchTitle(patch, score) {
@@ -1586,33 +1928,15 @@
         const toggle = document.getElementById("overlay-toggle");
         const slider = document.getElementById("opacity-slider");
         const opacity = Number(slider.value);
-        document.querySelectorAll(".patch-overlay").forEach(function (element) {
-          element.style.display = toggle.checked ? "block" : "none";
-          if (element.dataset.score !== undefined) {
-            element.style.background = scoreColor(Number(element.dataset.score), opacity);
-          } else {
-            element.style.opacity = String(opacity);
-          }
-        });
         document.querySelectorAll(".raster-heatmap-overlay").forEach(function (element) {
           element.style.display = toggle.checked ? "block" : "none";
           element.style.opacity = String(opacity);
         });
+        scheduleCanvasOverlayRedraw();
       }
 
       function updateAnnotationOverlayStyle() {
-        const toggle = document.getElementById("annotation-toggle");
-        const slider = document.getElementById("annotation-opacity-slider");
-        const opacity = Number(slider.value);
-        document.querySelectorAll(".annotation-overlay").forEach(function (element) {
-          element.style.display = toggle.checked ? "block" : "none";
-          if (element.tagName.toLowerCase() === "svg") {
-            element.querySelectorAll("[fill]").forEach((shape) => shape.setAttribute("fill-opacity", String(opacity)));
-            element.querySelectorAll("[stroke]").forEach((shape) => shape.setAttribute("stroke-opacity", "0.95"));
-          } else {
-            element.style.opacity = String(opacity);
-          }
-        });
+        scheduleCanvasOverlayRedraw();
       }
 
       function escapeHtml(value) {
