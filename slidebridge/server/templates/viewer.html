@@ -630,6 +630,16 @@
               <div class="key" data-i18n="warnings">warnings</div><div class="value" id="meta-warnings">{{ warnings|join(", ") if warnings else "none" }}</div>
             </div>
           </section>
+          <section>
+            <div class="section-title"><span data-i18n="tileCache">Tile Cache</span></div>
+            <div class="meta-grid">
+              <div class="key" data-i18n="cacheEnabled">enabled</div><div class="value" id="cache-enabled">unknown</div>
+              <div class="key" data-i18n="cacheEntries">entries</div><div class="value" id="cache-entries">0 / 0</div>
+              <div class="key" data-i18n="cacheHitsMisses">hits / misses</div><div class="value" id="cache-hits-misses">0 / 0</div>
+              <div class="key" data-i18n="cacheEvictions">evictions</div><div class="value" id="cache-evictions">0</div>
+              <div class="key" data-i18n="tileWorkers">tile workers</div><div class="value" id="cache-workers">0</div>
+            </div>
+          </section>
         </div>
         <div id="overlays-tab" class="tab-panel">
           <section>
@@ -687,6 +697,7 @@
   <script>
     const slideEntries = {{ slides_json | safe }};
     const tileCacheKey = "{{ tile_cache_key }}";
+    const initialTileCacheStats = {{ tile_cache_stats | safe }};
     let selectedSlideId = slideEntries.length ? slideEntries[0].id : 0;
     const i18n = {
       en: {
@@ -720,6 +731,12 @@
         objective: "objective",
         vendor: "vendor",
         warnings: "warnings",
+        tileCache: "Tile Cache",
+        cacheEnabled: "enabled",
+        cacheEntries: "entries",
+        cacheHitsMisses: "hits / misses",
+        cacheEvictions: "evictions",
+        tileWorkers: "tile workers",
         modelOverlay: "model/debug overlay",
         rasterHeatmap: "raster heatmap",
         annotationOverlay: "annotation overlay for research/debugging",
@@ -765,6 +782,12 @@
         objective: "物镜倍率",
         vendor: "厂商",
         warnings: "警告",
+        tileCache: "Tile 缓存",
+        cacheEnabled: "启用",
+        cacheEntries: "条目",
+        cacheHitsMisses: "命中 / 未命中",
+        cacheEvictions: "淘汰",
+        tileWorkers: "tile 并发",
         modelOverlay: "模型/调试叠加层",
         rasterHeatmap: "整图热图",
         annotationOverlay: "标注叠加层（研究/调试）",
@@ -890,7 +913,10 @@
         navigatorMaintainSizeRatio: true,
         preserveViewport: false,
         animationTime: 0.15,
-        blendTime: 0.05,
+        blendTime: 0,
+        immediateRender: false,
+        imageLoaderLimit: 4,
+        maxImageCacheCount: 200,
         maxZoomPixelRatio: 2
       });
 
@@ -898,6 +924,7 @@
       let patchPayload = null;
       let annotationPayload = null;
       let rasterHeatmapPayload = null;
+      let cacheStatsPayload = initialTileCacheStats;
       let patchElements = [];
       let annotationElements = [];
       let rasterHeatmapElement = null;
@@ -906,6 +933,8 @@
       setupTabs(function () {
         refreshViewerLayout(false);
       });
+      updateCacheStats(cacheStatsPayload);
+      window.setInterval(loadCacheStats, 5000);
       setupLanguage(function () {
         if (patchPayload) {
           document.getElementById("patch-count").textContent = patchCountLabel(patchPayload);
@@ -952,7 +981,7 @@
         setActiveSlideButton();
         document.getElementById("dynamic-warnings").innerHTML = "";
         viewer.open(`/slides/${selectedSlideId}/${tileCacheKey}/dzi.dzi`);
-        await Promise.all([loadInfo(), loadPatches(false), loadRasterHeatmap(false), loadAnnotations(false)]);
+        await Promise.all([loadInfo(), loadPatches(false), loadRasterHeatmap(false), loadAnnotations(false), loadCacheStats()]);
         renderRasterHeatmap();
         renderPatches();
         renderAnnotations();
@@ -1035,6 +1064,13 @@
         }
       }
 
+      async function loadCacheStats() {
+        const response = await fetch(`/api/cache-stats?v=${tileCacheKey}`, {cache: "no-store"});
+        const payload = await response.json();
+        cacheStatsPayload = payload;
+        updateCacheStats(payload);
+      }
+
       function apiUrl(name) {
         return `/api/${name}?slide_id=${selectedSlideId}&v=${tileCacheKey}`;
       }
@@ -1060,6 +1096,17 @@
           warnings.textContent = t("none");
           warnings.dataset.empty = "true";
         }
+      }
+
+      function updateCacheStats(payload) {
+        if (!payload) {
+          return;
+        }
+        document.getElementById("cache-enabled").textContent = payload.enabled ? "yes" : "no";
+        document.getElementById("cache-entries").textContent = `${payload.entries || 0} / ${payload.max_entries || 0}`;
+        document.getElementById("cache-hits-misses").textContent = `${payload.hits || 0} / ${payload.misses || 0}`;
+        document.getElementById("cache-evictions").textContent = String(payload.evictions || 0);
+        document.getElementById("cache-workers").textContent = String(payload.tile_workers || 0);
       }
 
       function renderZoomControl() {

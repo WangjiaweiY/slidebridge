@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import math
 import secrets
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from threading import RLock
+from threading import RLock, Semaphore
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
@@ -82,6 +83,59 @@ class RasterHeatmapContext:
     warning: str
 
 
+class TileCache:
+    def __init__(self, max_entries: int) -> None:
+        self.max_entries = max(0, int(max_entries))
+        self._items: OrderedDict[tuple[Any, ...], bytes] = OrderedDict()
+        self._lock = RLock()
+        self.hits = 0
+        self.misses = 0
+        self.evictions = 0
+
+    @property
+    def enabled(self) -> bool:
+        return self.max_entries > 0
+
+    def get(self, key: tuple[Any, ...]) -> bytes | None:
+        if not self.enabled:
+            return None
+        with self._lock:
+            if key not in self._items:
+                self.misses += 1
+                return None
+            self.hits += 1
+            value = self._items.pop(key)
+            self._items[key] = value
+            return value
+
+    def set(self, key: tuple[Any, ...], value: bytes) -> None:
+        if not self.enabled:
+            return
+        with self._lock:
+            if key in self._items:
+                self._items.pop(key)
+            self._items[key] = value
+            while len(self._items) > self.max_entries:
+                self._items.popitem(last=False)
+                self.evictions += 1
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+
+    def stats(self, tile_workers: int) -> dict[str, int | bool]:
+        with self._lock:
+            return {
+                "enabled": self.enabled,
+                "max_entries": self.max_entries,
+                "entries": len(self._items),
+                "hits": self.hits,
+                "misses": self.misses,
+                "evictions": self.evictions,
+                "tile_workers": int(tile_workers),
+            }
+
+
 def create_app(
     slide_path: str | Path,
     patches_path: str | Path | None = None,
@@ -107,13 +161,21 @@ def create_app(
     viewer_remote_host: str | None = None,
     viewer_remote_ssh_port: int | None = None,
     viewer_source: str | None = None,
+    tile_cache_size: int = 512,
+    tile_workers: int = 4,
 ) -> FastAPI:
     tile_size = int(tile_size)
     jpeg_quality = int(jpeg_quality)
+    tile_cache_size = int(tile_cache_size)
+    tile_workers = int(tile_workers)
     if tile_size <= 0:
         raise ValueError("tile_size must be a positive integer")
     if jpeg_quality < 1 or jpeg_quality > 100:
         raise ValueError("jpeg_quality must be between 1 and 100")
+    if tile_cache_size < 0:
+        raise ValueError("tile_cache_size must be zero or a positive integer")
+    if tile_workers < 1 or tile_workers > 64:
+        raise ValueError("tile_workers must be between 1 and 64")
     if score_normalization not in {"minmax", "percentile", "none"}:
         raise ValueError("score_normalization must be one of: minmax, percentile, none")
     max_overlay_patches = max(0, int(max_overlay_patches))
@@ -148,6 +210,8 @@ def create_app(
     patch_cache: dict[int, OverlayContext] = {}
     annotation_cache: dict[int, AnnotationContext] = {}
     raster_heatmap_cache: dict[int, RasterHeatmapContext] = {}
+    tile_cache = TileCache(tile_cache_size)
+    tile_semaphore = Semaphore(tile_workers)
 
     def get_entry(slide_id: int) -> SlideEntry:
         if slide_id < 0 or slide_id >= len(entries):
@@ -239,6 +303,7 @@ def create_app(
                 for session in sessions.values():
                     session.slide.close()
                 sessions.clear()
+                tile_cache.clear()
 
     app = FastAPI(title="SlideBridge Viewer", lifespan=lifespan)
     static_dir = Path(__file__).parent / "static"
@@ -284,6 +349,7 @@ def create_app(
                 viewer_remote_host=viewer_remote_host,
                 viewer_remote_ssh_port=viewer_remote_ssh_port,
                 viewer_source=viewer_source,
+                tile_cache_stats=json.dumps(tile_cache.stats(tile_workers), ensure_ascii=False),
             ),
             headers=NO_STORE_HEADERS,
         )
@@ -356,6 +422,10 @@ def create_app(
             payload["url"] = f"/slides/{int(slide_id)}/{tile_cache_key}/raster_heatmap.png"
         return _json_response(payload)
 
+    @app.get("/api/cache-stats")
+    def api_cache_stats() -> JSONResponse:
+        return _json_response(tile_cache.stats(tile_workers))
+
     @app.get("/dzi.dzi")
     def dzi(slide_id: int = Query(0, ge=0)) -> Response:
         return _dzi_response(get_session(slide_id), tile_size)
@@ -375,20 +445,53 @@ def create_app(
 
     @app.get("/dzi_files/{level}/{col}_{row}.jpeg")
     def tile(level: int, col: int, row: int, slide_id: int = Query(0, ge=0)) -> Response:
-        return _tile_response(get_session(slide_id), level, col, row, tile_size, jpeg_quality, cacheable=False)
+        return _tile_response(
+            get_session(slide_id),
+            level,
+            col,
+            row,
+            tile_size,
+            jpeg_quality,
+            cacheable=False,
+            tile_cache=tile_cache,
+            tile_semaphore=tile_semaphore,
+            tile_cache_key=tile_cache_key,
+        )
 
     @app.get("/slides/{slide_id}/dzi_files/{level}/{col}_{row}.jpeg")
     def slide_tile(slide_id: int, level: int, col: int, row: int) -> Response:
         if slide_id < 0:
             raise HTTPException(status_code=404, detail="Slide id must be non-negative")
-        return _tile_response(get_session(slide_id), level, col, row, tile_size, jpeg_quality, cacheable=False)
+        return _tile_response(
+            get_session(slide_id),
+            level,
+            col,
+            row,
+            tile_size,
+            jpeg_quality,
+            cacheable=False,
+            tile_cache=tile_cache,
+            tile_semaphore=tile_semaphore,
+            tile_cache_key=tile_cache_key,
+        )
 
     @app.get("/slides/{slide_id}/{cache_key}/dzi_files/{level}/{col}_{row}.jpeg")
     def slide_tile_with_cache_key(slide_id: int, cache_key: str, level: int, col: int, row: int) -> Response:
         _validate_cache_key(cache_key, tile_cache_key)
         if slide_id < 0:
             raise HTTPException(status_code=404, detail="Slide id must be non-negative")
-        return _tile_response(get_session(slide_id), level, col, row, tile_size, jpeg_quality, cacheable=True)
+        return _tile_response(
+            get_session(slide_id),
+            level,
+            col,
+            row,
+            tile_size,
+            jpeg_quality,
+            cacheable=True,
+            tile_cache=tile_cache,
+            tile_semaphore=tile_semaphore,
+            tile_cache_key=tile_cache_key,
+        )
 
     @app.get("/slides/{slide_id}/{cache_key}/raster_heatmap.png")
     def slide_raster_heatmap(slide_id: int, cache_key: str) -> Response:
@@ -456,6 +559,9 @@ def _tile_response(
     tile_size: int,
     jpeg_quality: int,
     cacheable: bool,
+    tile_cache: TileCache,
+    tile_semaphore: Semaphore,
+    tile_cache_key: str,
 ) -> Response:
     if level < 0:
         raise HTTPException(status_code=404, detail="Tile level must be non-negative")
@@ -487,15 +593,33 @@ def _tile_response(
     read_w = max(1, int(math.ceil(region_w0 / best_downsample)))
     read_h = max(1, int(math.ceil(region_h0 / best_downsample)))
 
-    image = session.slide.read_region(x0, y0, read_w, read_h, level=best_level)
-    image = ensure_rgb(image)
-    if image.size != (tile_w_l, tile_h_l):
-        image = image.resize((tile_w_l, tile_h_l), Image.Resampling.LANCZOS)
+    cache_key = (
+        tile_cache_key,
+        int(session.entry.id),
+        int(level),
+        int(col),
+        int(row),
+        int(tile_size),
+        int(jpeg_quality),
+    )
+    if cacheable:
+        cached = tile_cache.get(cache_key)
+        if cached is not None:
+            return Response(content=cached, media_type="image/jpeg", headers=CACHEABLE_TILE_HEADERS)
 
-    buffer = BytesIO()
-    image.save(buffer, format="JPEG", quality=jpeg_quality)
+    with tile_semaphore:
+        image = session.slide.read_region(x0, y0, read_w, read_h, level=best_level)
+        image = ensure_rgb(image)
+        if image.size != (tile_w_l, tile_h_l):
+            image = image.resize((tile_w_l, tile_h_l), Image.Resampling.LANCZOS)
+
+        buffer = BytesIO()
+        image.save(buffer, format="JPEG", quality=jpeg_quality)
+        content = buffer.getvalue()
+    if cacheable:
+        tile_cache.set(cache_key, content)
     return Response(
-        content=buffer.getvalue(),
+        content=content,
         media_type="image/jpeg",
         headers=CACHEABLE_TILE_HEADERS if cacheable else NO_STORE_HEADERS,
     )

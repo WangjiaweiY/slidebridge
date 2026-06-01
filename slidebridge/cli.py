@@ -388,6 +388,8 @@ def view(
     reader: Optional[str] = typer.Option(None, "--reader", help="Specify a reader by name."),
     tile_size: int = typer.Option(256, "--tile-size", min=64, max=1024, help="Deep Zoom tile size."),
     jpeg_quality: int = typer.Option(85, "--jpeg-quality", min=1, max=100, help="JPEG tile quality."),
+    tile_cache_size: int = typer.Option(512, "--tile-cache-size", min=0, help="Maximum in-memory JPEG tiles cached by the viewer. Use 0 to disable."),
+    tile_workers: int = typer.Option(4, "--tile-workers", min=1, max=64, help="Maximum concurrent tile generation workers."),
     heatmap: Optional[Path] = typer.Option(None, "--heatmap", help="Optional score/attention file."),
     raster_heatmap: Optional[Path] = typer.Option(None, "--raster-heatmap", help="Optional PNG/JPG heatmap covering the full slide."),
     default_patch_size: int = typer.Option(256, "--default-patch-size", help="Default patch size for coordinate files."),
@@ -416,6 +418,8 @@ def view(
             reader=reader,
             tile_size=tile_size,
             jpeg_quality=jpeg_quality,
+            tile_cache_size=tile_cache_size,
+            tile_workers=tile_workers,
             heatmap_path=patch_score_heatmap,
             raster_heatmap_path=full_slide_heatmap,
             default_patch_size=default_patch_size,
@@ -669,6 +673,8 @@ def remote_view(
     local_port: int = typer.Option(7860, "--local-port", help="Local tunnel port."),
     remote_host: str = typer.Option("127.0.0.1", "--remote-host", help="Remote viewer bind host. Defaults to localhost."),
     remote_port: int = typer.Option(7860, "--remote-port", help="Remote viewer port."),
+    tile_cache_size: int = typer.Option(512, "--tile-cache-size", min=0, help="Maximum in-memory JPEG tiles cached by the remote viewer. Use 0 to disable."),
+    tile_workers: int = typer.Option(4, "--tile-workers", min=1, max=64, help="Maximum concurrent tile generation workers on the remote viewer."),
     open_browser: bool = typer.Option(True, "--open-browser/--no-open-browser", help="Open local browser after tunnel is ready."),
     wait_timeout: float = typer.Option(30.0, "--wait-timeout", help="Seconds to wait for the forwarded viewer."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print commands without connecting over SSH."),
@@ -716,6 +722,8 @@ def remote_view(
                 viewer_remote_host=remote_path.host,
                 viewer_remote_ssh_port=ssh_port or remote_path.ssh_port,
                 viewer_source=remote_path.path,
+                tile_cache_size=tile_cache_size,
+                tile_workers=tile_workers,
             ),
             remote_workdir=remote_workdir,
         )
@@ -1023,6 +1031,8 @@ def _remote_view_args(
     viewer_remote_host: Optional[str] = None,
     viewer_remote_ssh_port: Optional[int] = None,
     viewer_source: Optional[str] = None,
+    tile_cache_size: int = 512,
+    tile_workers: int = 4,
 ) -> list[str]:
     args = [
         "view",
@@ -1048,6 +1058,10 @@ def _remote_view_args(
         str(int(max_slides)),
         "--viewer-context",
         viewer_context,
+        "--tile-cache-size",
+        str(int(tile_cache_size)),
+        "--tile-workers",
+        str(int(tile_workers)),
     ]
     if viewer_remote_user:
         args.extend(["--viewer-remote-user", viewer_remote_user])
