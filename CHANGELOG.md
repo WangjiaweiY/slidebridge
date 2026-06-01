@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.9
+
+Added:
+
+- viewer-side patch score threshold and top-k overlay filters
+- annotation label filter chips with all/none controls
+- click-to-inspect overlay details with zoom-to-item support
+
+Changed:
+
+- canvas overlay draw counts now reflect active overlay filters
+
 ## 0.2.8
 
 Added:
