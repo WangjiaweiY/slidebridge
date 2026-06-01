@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.5
+
+Added:
+
+- byte-aware tile cache limit with `--tile-cache-mb`
+- `/api/performance` endpoint for tile timing diagnostics
+- tile timing summaries for read, resize, JPEG encode, and total tile generation
+
+Changed:
+
+- viewer information panel now shows cache memory, generated tiles, cache-served tiles, average tile time, and p95 tile time
+
 ## 0.2.4
 
 Added:

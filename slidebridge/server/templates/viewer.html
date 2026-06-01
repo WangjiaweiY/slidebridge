@@ -635,9 +635,14 @@
             <div class="meta-grid">
               <div class="key" data-i18n="cacheEnabled">enabled</div><div class="value" id="cache-enabled">unknown</div>
               <div class="key" data-i18n="cacheEntries">entries</div><div class="value" id="cache-entries">0 / 0</div>
+              <div class="key" data-i18n="cacheMemory">memory</div><div class="value" id="cache-memory">0 / 0 MB</div>
               <div class="key" data-i18n="cacheHitsMisses">hits / misses</div><div class="value" id="cache-hits-misses">0 / 0</div>
               <div class="key" data-i18n="cacheEvictions">evictions</div><div class="value" id="cache-evictions">0</div>
               <div class="key" data-i18n="tileWorkers">tile workers</div><div class="value" id="cache-workers">0</div>
+              <div class="key" data-i18n="generatedTiles">generated tiles</div><div class="value" id="perf-generated">0</div>
+              <div class="key" data-i18n="cacheServedTiles">cache served</div><div class="value" id="perf-cache-served">0</div>
+              <div class="key" data-i18n="avgTileMs">avg tile ms</div><div class="value" id="perf-avg-tile">unknown</div>
+              <div class="key" data-i18n="p95TileMs">p95 tile ms</div><div class="value" id="perf-p95-tile">unknown</div>
             </div>
           </section>
         </div>
@@ -698,6 +703,7 @@
     const slideEntries = {{ slides_json | safe }};
     const tileCacheKey = "{{ tile_cache_key }}";
     const initialTileCacheStats = {{ tile_cache_stats | safe }};
+    const initialTilePerformanceStats = {{ tile_performance_stats | safe }};
     let selectedSlideId = slideEntries.length ? slideEntries[0].id : 0;
     const i18n = {
       en: {
@@ -734,9 +740,14 @@
         tileCache: "Tile Cache",
         cacheEnabled: "enabled",
         cacheEntries: "entries",
+        cacheMemory: "memory",
         cacheHitsMisses: "hits / misses",
         cacheEvictions: "evictions",
         tileWorkers: "tile workers",
+        generatedTiles: "generated tiles",
+        cacheServedTiles: "cache served",
+        avgTileMs: "avg tile ms",
+        p95TileMs: "p95 tile ms",
         modelOverlay: "model/debug overlay",
         rasterHeatmap: "raster heatmap",
         annotationOverlay: "annotation overlay for research/debugging",
@@ -785,9 +796,14 @@
         tileCache: "Tile 缓存",
         cacheEnabled: "启用",
         cacheEntries: "条目",
+        cacheMemory: "内存",
         cacheHitsMisses: "命中 / 未命中",
         cacheEvictions: "淘汰",
         tileWorkers: "tile 并发",
+        generatedTiles: "生成 tile",
+        cacheServedTiles: "缓存返回",
+        avgTileMs: "平均 tile 毫秒",
+        p95TileMs: "P95 tile 毫秒",
         modelOverlay: "模型/调试叠加层",
         rasterHeatmap: "整图热图",
         annotationOverlay: "标注叠加层（研究/调试）",
@@ -925,6 +941,7 @@
       let annotationPayload = null;
       let rasterHeatmapPayload = null;
       let cacheStatsPayload = initialTileCacheStats;
+      let performanceStatsPayload = initialTilePerformanceStats;
       let patchElements = [];
       let annotationElements = [];
       let rasterHeatmapElement = null;
@@ -934,7 +951,8 @@
         refreshViewerLayout(false);
       });
       updateCacheStats(cacheStatsPayload);
-      window.setInterval(loadCacheStats, 5000);
+      updatePerformanceStats(performanceStatsPayload);
+      window.setInterval(loadPerformanceStats, 5000);
       setupLanguage(function () {
         if (patchPayload) {
           document.getElementById("patch-count").textContent = patchCountLabel(patchPayload);
@@ -981,7 +999,7 @@
         setActiveSlideButton();
         document.getElementById("dynamic-warnings").innerHTML = "";
         viewer.open(`/slides/${selectedSlideId}/${tileCacheKey}/dzi.dzi`);
-        await Promise.all([loadInfo(), loadPatches(false), loadRasterHeatmap(false), loadAnnotations(false), loadCacheStats()]);
+        await Promise.all([loadInfo(), loadPatches(false), loadRasterHeatmap(false), loadAnnotations(false), loadPerformanceStats()]);
         renderRasterHeatmap();
         renderPatches();
         renderAnnotations();
@@ -1071,6 +1089,15 @@
         updateCacheStats(payload);
       }
 
+      async function loadPerformanceStats() {
+        const response = await fetch(`/api/performance?v=${tileCacheKey}`, {cache: "no-store"});
+        const payload = await response.json();
+        cacheStatsPayload = payload.cache;
+        performanceStatsPayload = payload.tiles;
+        updateCacheStats(payload.cache);
+        updatePerformanceStats(payload.tiles);
+      }
+
       function apiUrl(name) {
         return `/api/${name}?slide_id=${selectedSlideId}&v=${tileCacheKey}`;
       }
@@ -1104,9 +1131,27 @@
         }
         document.getElementById("cache-enabled").textContent = payload.enabled ? "yes" : "no";
         document.getElementById("cache-entries").textContent = `${payload.entries || 0} / ${payload.max_entries || 0}`;
+        document.getElementById("cache-memory").textContent = `${payload.mb || 0} / ${payload.max_mb || 0} MB`;
         document.getElementById("cache-hits-misses").textContent = `${payload.hits || 0} / ${payload.misses || 0}`;
         document.getElementById("cache-evictions").textContent = String(payload.evictions || 0);
         document.getElementById("cache-workers").textContent = String(payload.tile_workers || 0);
+      }
+
+      function updatePerformanceStats(payload) {
+        if (!payload) {
+          return;
+        }
+        document.getElementById("perf-generated").textContent = String(payload.generated_tiles || 0);
+        document.getElementById("perf-cache-served").textContent = String(payload.cache_served_tiles || 0);
+        document.getElementById("perf-avg-tile").textContent = metricValue(payload.total_tile_ms, "avg");
+        document.getElementById("perf-p95-tile").textContent = metricValue(payload.total_tile_ms, "p95");
+      }
+
+      function metricValue(metric, key) {
+        if (!metric || metric[key] === null || metric[key] === undefined) {
+          return "unknown";
+        }
+        return `${metric[key]} ms`;
       }
 
       function renderZoomControl() {

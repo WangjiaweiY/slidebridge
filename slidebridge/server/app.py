@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import secrets
+import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -84,10 +85,12 @@ class RasterHeatmapContext:
 
 
 class TileCache:
-    def __init__(self, max_entries: int) -> None:
+    def __init__(self, max_entries: int, max_bytes: int | None = None) -> None:
         self.max_entries = max(0, int(max_entries))
+        self.max_bytes = max(0, int(max_bytes or 0))
         self._items: OrderedDict[tuple[Any, ...], bytes] = OrderedDict()
         self._lock = RLock()
+        self._bytes = 0
         self.hits = 0
         self.misses = 0
         self.evictions = 0
@@ -113,26 +116,78 @@ class TileCache:
             return
         with self._lock:
             if key in self._items:
-                self._items.pop(key)
+                old = self._items.pop(key)
+                self._bytes -= len(old)
             self._items[key] = value
-            while len(self._items) > self.max_entries:
-                self._items.popitem(last=False)
+            self._bytes += len(value)
+            while self._over_limit():
+                _, evicted = self._items.popitem(last=False)
+                self._bytes -= len(evicted)
                 self.evictions += 1
 
     def clear(self) -> None:
         with self._lock:
             self._items.clear()
+            self._bytes = 0
+
+    def _over_limit(self) -> bool:
+        if not self._items:
+            return False
+        if self.max_entries > 0 and len(self._items) > self.max_entries:
+            return True
+        if self.max_bytes > 0 and self._bytes > self.max_bytes:
+            return True
+        return False
 
     def stats(self, tile_workers: int) -> dict[str, int | bool]:
         with self._lock:
             return {
                 "enabled": self.enabled,
                 "max_entries": self.max_entries,
+                "max_bytes": self.max_bytes,
+                "max_mb": round(self.max_bytes / (1024 * 1024), 3) if self.max_bytes else 0,
                 "entries": len(self._items),
+                "bytes": self._bytes,
+                "mb": round(self._bytes / (1024 * 1024), 3),
                 "hits": self.hits,
                 "misses": self.misses,
                 "evictions": self.evictions,
                 "tile_workers": int(tile_workers),
+            }
+
+
+class TileMetrics:
+    def __init__(self, max_samples: int = 2000) -> None:
+        self.max_samples = max(1, int(max_samples))
+        self._lock = RLock()
+        self._samples: OrderedDict[int, dict[str, float]] = OrderedDict()
+        self._next_id = 0
+        self.generated_tiles = 0
+        self.cache_served_tiles = 0
+
+    def record_generated(self, timings: dict[str, float]) -> None:
+        with self._lock:
+            self.generated_tiles += 1
+            self._samples[self._next_id] = timings
+            self._next_id += 1
+            while len(self._samples) > self.max_samples:
+                self._samples.popitem(last=False)
+
+    def record_cache_hit(self) -> None:
+        with self._lock:
+            self.cache_served_tiles += 1
+
+    def stats(self) -> dict[str, Any]:
+        with self._lock:
+            samples = list(self._samples.values())
+            return {
+                "generated_tiles": self.generated_tiles,
+                "cache_served_tiles": self.cache_served_tiles,
+                "sample_count": len(samples),
+                "read_region_ms": _metric_summary(samples, "read_region_ms"),
+                "resize_ms": _metric_summary(samples, "resize_ms"),
+                "jpeg_encode_ms": _metric_summary(samples, "jpeg_encode_ms"),
+                "total_tile_ms": _metric_summary(samples, "total_tile_ms"),
             }
 
 
@@ -162,11 +217,13 @@ def create_app(
     viewer_remote_ssh_port: int | None = None,
     viewer_source: str | None = None,
     tile_cache_size: int = 512,
+    tile_cache_mb: int = 256,
     tile_workers: int = 4,
 ) -> FastAPI:
     tile_size = int(tile_size)
     jpeg_quality = int(jpeg_quality)
     tile_cache_size = int(tile_cache_size)
+    tile_cache_mb = int(tile_cache_mb)
     tile_workers = int(tile_workers)
     if tile_size <= 0:
         raise ValueError("tile_size must be a positive integer")
@@ -174,6 +231,8 @@ def create_app(
         raise ValueError("jpeg_quality must be between 1 and 100")
     if tile_cache_size < 0:
         raise ValueError("tile_cache_size must be zero or a positive integer")
+    if tile_cache_mb < 0:
+        raise ValueError("tile_cache_mb must be zero or a positive integer")
     if tile_workers < 1 or tile_workers > 64:
         raise ValueError("tile_workers must be between 1 and 64")
     if score_normalization not in {"minmax", "percentile", "none"}:
@@ -210,7 +269,8 @@ def create_app(
     patch_cache: dict[int, OverlayContext] = {}
     annotation_cache: dict[int, AnnotationContext] = {}
     raster_heatmap_cache: dict[int, RasterHeatmapContext] = {}
-    tile_cache = TileCache(tile_cache_size)
+    tile_cache = TileCache(tile_cache_size, max_bytes=tile_cache_mb * 1024 * 1024)
+    tile_metrics = TileMetrics()
     tile_semaphore = Semaphore(tile_workers)
 
     def get_entry(slide_id: int) -> SlideEntry:
@@ -350,6 +410,7 @@ def create_app(
                 viewer_remote_ssh_port=viewer_remote_ssh_port,
                 viewer_source=viewer_source,
                 tile_cache_stats=json.dumps(tile_cache.stats(tile_workers), ensure_ascii=False),
+                tile_performance_stats=json.dumps(tile_metrics.stats(), ensure_ascii=False),
             ),
             headers=NO_STORE_HEADERS,
         )
@@ -426,6 +487,13 @@ def create_app(
     def api_cache_stats() -> JSONResponse:
         return _json_response(tile_cache.stats(tile_workers))
 
+    @app.get("/api/performance")
+    def api_performance() -> JSONResponse:
+        return _json_response({
+            "cache": tile_cache.stats(tile_workers),
+            "tiles": tile_metrics.stats(),
+        })
+
     @app.get("/dzi.dzi")
     def dzi(slide_id: int = Query(0, ge=0)) -> Response:
         return _dzi_response(get_session(slide_id), tile_size)
@@ -454,6 +522,7 @@ def create_app(
             jpeg_quality,
             cacheable=False,
             tile_cache=tile_cache,
+            tile_metrics=tile_metrics,
             tile_semaphore=tile_semaphore,
             tile_cache_key=tile_cache_key,
         )
@@ -471,6 +540,7 @@ def create_app(
             jpeg_quality,
             cacheable=False,
             tile_cache=tile_cache,
+            tile_metrics=tile_metrics,
             tile_semaphore=tile_semaphore,
             tile_cache_key=tile_cache_key,
         )
@@ -489,6 +559,7 @@ def create_app(
             jpeg_quality,
             cacheable=True,
             tile_cache=tile_cache,
+            tile_metrics=tile_metrics,
             tile_semaphore=tile_semaphore,
             tile_cache_key=tile_cache_key,
         )
@@ -560,6 +631,7 @@ def _tile_response(
     jpeg_quality: int,
     cacheable: bool,
     tile_cache: TileCache,
+    tile_metrics: TileMetrics,
     tile_semaphore: Semaphore,
     tile_cache_key: str,
 ) -> Response:
@@ -605,17 +677,34 @@ def _tile_response(
     if cacheable:
         cached = tile_cache.get(cache_key)
         if cached is not None:
+            tile_metrics.record_cache_hit()
             return Response(content=cached, media_type="image/jpeg", headers=CACHEABLE_TILE_HEADERS)
 
+    total_start = time.perf_counter()
+    read_region_ms = 0.0
+    resize_ms = 0.0
+    jpeg_encode_ms = 0.0
     with tile_semaphore:
+        read_start = time.perf_counter()
         image = session.slide.read_region(x0, y0, read_w, read_h, level=best_level)
+        read_region_ms = _elapsed_ms(read_start)
         image = ensure_rgb(image)
         if image.size != (tile_w_l, tile_h_l):
+            resize_start = time.perf_counter()
             image = image.resize((tile_w_l, tile_h_l), Image.Resampling.LANCZOS)
+            resize_ms = _elapsed_ms(resize_start)
 
         buffer = BytesIO()
+        jpeg_start = time.perf_counter()
         image.save(buffer, format="JPEG", quality=jpeg_quality)
+        jpeg_encode_ms = _elapsed_ms(jpeg_start)
         content = buffer.getvalue()
+    tile_metrics.record_generated({
+        "read_region_ms": read_region_ms,
+        "resize_ms": resize_ms,
+        "jpeg_encode_ms": jpeg_encode_ms,
+        "total_tile_ms": _elapsed_ms(total_start),
+    })
     if cacheable:
         tile_cache.set(cache_key, content)
     return Response(
@@ -628,3 +717,18 @@ def _tile_response(
 def _validate_cache_key(cache_key: str, expected: str) -> None:
     if cache_key != expected:
         raise HTTPException(status_code=404, detail="Tile cache key is no longer valid")
+
+
+def _elapsed_ms(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000.0, 3)
+
+
+def _metric_summary(samples: list[dict[str, float]], key: str) -> dict[str, float | int | None]:
+    values = sorted(float(sample.get(key, 0.0)) for sample in samples)
+    if not values:
+        return {"avg": None, "p95": None, "count": 0}
+    return {
+        "avg": round(sum(values) / len(values), 3),
+        "p95": round(values[min(len(values) - 1, int(math.ceil(len(values) * 0.95)) - 1)], 3),
+        "count": len(values),
+    }

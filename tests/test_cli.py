@@ -15,14 +15,14 @@ def test_root_version_option():
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert "SlideBridge Core 0.2.4" in result.stdout
+    assert "SlideBridge Core 0.2.5" in result.stdout
 
 
 def test_version_command():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "SlideBridge Core version: 0.2.4" in result.stdout
+    assert "SlideBridge Core version: 0.2.5" in result.stdout
     assert "Python version:" in result.stdout
 
 
@@ -93,6 +93,8 @@ def test_view_accepts_tile_performance_options(tmp_path, monkeypatch):
             "image",
             "--tile-cache-size",
             "128",
+            "--tile-cache-mb",
+            "64",
             "--tile-workers",
             "2",
         ],
@@ -102,4 +104,5 @@ def test_view_accepts_tile_performance_options(tmp_path, monkeypatch):
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 7860
     assert captured["stats"]["max_entries"] == 128
+    assert captured["stats"]["max_mb"] == 64
     assert captured["stats"]["tile_workers"] == 2
