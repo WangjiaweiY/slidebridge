@@ -89,10 +89,26 @@ first subset and reports a warning.
 ## Tile Options
 
 ```powershell
-slidebridge view C:\path\to\your\slide.svs --tile-size 256 --jpeg-quality 85
+slidebridge view C:\path\to\your\slide.svs --tile-size 256 --jpeg-quality 85 --tile-cache-size 512 --tile-workers 4
 ```
 
 Tiles use a per-viewer cache key so restarting the viewer on the same localhost
 port does not mix old and new slide images. HTML, DZI, and overlay APIs use
 `Cache-Control: no-store`; keyed tile images can be cached for repeated
 navigation inside the same viewer session.
+
+`--tile-cache-size` controls the in-memory server-side LRU cache for rendered
+JPEG tile bytes. Use `--tile-cache-size 0` to disable it. The cache is
+per-process and disappears when the viewer stops.
+
+`--tile-workers` limits how many tiles can be generated concurrently. This helps
+avoid CPU spikes when OpenSeadragon requests many tiles during fast zooming or
+panning.
+
+The viewer information panel and `/api/cache-stats` expose:
+
+- cache enabled state
+- entries and max entries
+- hits and misses
+- evictions
+- tile worker limit

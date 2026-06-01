@@ -30,6 +30,28 @@ def test_remote_view_dry_run_prints_tunnel_and_remote_command():
     assert "--viewer-context remote" in result.stdout
     assert "--viewer-remote-user user" in result.stdout
     assert "--viewer-remote-host example.org" in result.stdout
+    assert "--tile-cache-size 512" in result.stdout
+    assert "--tile-workers 4" in result.stdout
+
+
+def test_remote_view_dry_run_with_tile_performance_options():
+    result = runner.invoke(
+        app,
+        [
+            "remote-view",
+            "user@example.org:/data/slides/demo.svs",
+            "--tile-cache-size",
+            "128",
+            "--tile-workers",
+            "2",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = " ".join(result.stdout.split())
+    assert "--tile-cache-size 128" in output
+    assert "--tile-workers 2" in output
 
 
 def test_remote_inspect_dry_run_prints_command():

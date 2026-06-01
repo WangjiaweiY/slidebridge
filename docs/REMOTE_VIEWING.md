@@ -77,6 +77,19 @@ Start a remote viewer and open it locally:
 slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge" --local-port 7860 --remote-port 7860
 ```
 
+For slower links or heavily loaded servers, tune the remote tile cache and tile
+generation concurrency:
+
+```powershell
+slidebridge remote-view user@server:/data/slides/case.svs `
+  --remote-runner "conda run -n slidebridge slidebridge" `
+  --tile-cache-size 512 `
+  --tile-workers 4
+```
+
+The tile cache stays on the remote process. SlideBridge still does not download
+the slide to the local machine.
+
 To browse a remote folder and select slides in the browser:
 
 ```powershell

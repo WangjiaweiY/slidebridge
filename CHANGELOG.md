@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.4
+
+Added:
+
+- in-memory LRU tile cache for the browser viewer
+- tile generation concurrency limit for local and remote viewers
+- `/api/cache-stats` endpoint for viewer cache diagnostics
+- `--tile-cache-size` and `--tile-workers` options for `view` and `remote-view`
+
+Changed:
+
+- OpenSeadragon defaults now limit image loading concurrency and browser-side cache pressure
+- viewer information panel displays tile cache entries, hits, misses, evictions, and workers
+
 ## 0.2.3
 
 Added:

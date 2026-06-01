@@ -44,6 +44,11 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     match = re.search(r'const tileCacheKey = "([0-9a-f]+)"', page.text)
     assert match
     assert 'fetch(apiUrl("patches"), {cache: "no-store"})' in page.text
+    assert "initialTileCacheStats" in page.text
+    assert "imageLoaderLimit: 4" in page.text
+    assert "maxImageCacheCount: 200" in page.text
+    assert "blendTime: 0" in page.text
+    assert "immediateRender: false" in page.text
     cache_key = match.group(1)
     keyed_dzi = client.get(f"/slides/0/{cache_key}/dzi.dzi")
     assert keyed_dzi.status_code == 200
@@ -59,6 +64,58 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
 
     invalid = client.get("/dzi_files/99/0_0.jpeg")
     assert invalid.status_code == 404
+
+
+def test_server_tile_cache_records_hits_misses_and_evictions(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=11)
+    app = create_app(slide_path, reader="image", tile_size=128, tile_cache_size=2)
+    client = TestClient(app)
+
+    page = client.get("/")
+    cache_key = re.search(r'const tileCacheKey = "([0-9a-f]+)"', page.text).group(1)  # type: ignore[union-attr]
+
+    initial = client.get("/api/cache-stats")
+    assert initial.status_code == 200
+    assert initial.headers["cache-control"] == "no-store"
+    assert initial.json()["enabled"] is True
+    assert initial.json()["entries"] == 0
+
+    first = client.get(f"/slides/0/{cache_key}/dzi_files/9/0_0.jpeg")
+    assert first.status_code == 200
+    after_first = client.get("/api/cache-stats").json()
+    assert after_first["entries"] == 1
+    assert after_first["misses"] == 1
+    assert after_first["hits"] == 0
+
+    second = client.get(f"/slides/0/{cache_key}/dzi_files/9/0_0.jpeg")
+    assert second.status_code == 200
+    after_second = client.get("/api/cache-stats").json()
+    assert after_second["entries"] == 1
+    assert after_second["misses"] == 1
+    assert after_second["hits"] == 1
+
+    client.get(f"/slides/0/{cache_key}/dzi_files/9/1_0.jpeg")
+    client.get(f"/slides/0/{cache_key}/dzi_files/9/2_0.jpeg")
+    after_eviction = client.get("/api/cache-stats").json()
+    assert after_eviction["entries"] == 2
+    assert after_eviction["evictions"] >= 1
+
+
+def test_server_tile_cache_can_be_disabled(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=256, height=256, seed=12)
+    app = create_app(slide_path, reader="image", tile_size=128, tile_cache_size=0)
+    client = TestClient(app)
+
+    page = client.get("/")
+    cache_key = re.search(r'const tileCacheKey = "([0-9a-f]+)"', page.text).group(1)  # type: ignore[union-attr]
+    tile = client.get(f"/slides/0/{cache_key}/dzi_files/8/0_0.jpeg")
+    assert tile.status_code == 200
+
+    stats = client.get("/api/cache-stats").json()
+    assert stats["enabled"] is False
+    assert stats["entries"] == 0
+    assert stats["hits"] == 0
+    assert stats["misses"] == 0
 
 
 def test_server_raster_heatmap_endpoint(tmp_path):
@@ -91,6 +148,20 @@ def test_server_rejects_invalid_tile_config(tmp_path):
         assert "tile_size" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected invalid tile_size to raise")
+
+    try:
+        create_app(slide_path, reader="image", tile_cache_size=-1)
+    except ValueError as exc:
+        assert "tile_cache_size" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected invalid tile_cache_size to raise")
+
+    try:
+        create_app(slide_path, reader="image", tile_workers=0)
+    except ValueError as exc:
+        assert "tile_workers" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected invalid tile_workers to raise")
 
 
 def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):

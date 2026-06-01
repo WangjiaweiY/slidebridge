@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.3`
+Current version: `0.2.4`
 
 ## Quick Demo
 
@@ -212,6 +212,19 @@ slidebridge remote-view user@server:/data/slides/case.svs `
 Use `slidebridge remote-view --dry-run` to inspect the SSH tunnel and remote
 command before connecting. See [Remote WSI Viewing](docs/REMOTE_VIEWING.md).
 
+## Viewer Performance Options
+
+The viewer enables an in-process tile cache by default and limits concurrent
+tile generation to reduce server pressure during repeated zooming and panning:
+
+```powershell
+slidebridge view outputs\demo_slide.png --tile-cache-size 512 --tile-workers 4
+slidebridge remote-view user@server:/data/slides/case.svs --tile-cache-size 512 --tile-workers 4
+```
+
+Use `--tile-cache-size 0` to disable the server-side tile cache. The viewer info
+panel shows cache entries, hits, misses, and evictions.
+
 ## Export Patches
 
 ```powershell
@@ -333,6 +346,12 @@ v0.2.3:
 - PNG/JPG full-slide raster heatmap overlay
 - `--raster-heatmap` support for `view`, `remote-view`, and `render-overlay`
 - viewer tile/API cache hardening
+
+v0.2.4:
+
+- in-memory LRU tile cache
+- tile generation concurrency limit
+- viewer cache stats diagnostics
 
 v0.3:
 
