@@ -447,6 +447,19 @@
       color: #173d49;
       font-weight: 700;
     }
+    .snapshot-status {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .snapshot-status[data-state="ok"] {
+      color: #1f6f48;
+    }
+    .snapshot-status[data-state="error"] {
+      color: #9b2c2c;
+    }
     .footer {
       padding: 10px 16px;
       border-top: 1px solid var(--line);
@@ -736,6 +749,19 @@
             </div>
           </section>
           <section>
+            <div class="section-title"><span data-i18n="viewportSnapshot">Viewport Snapshot</span></div>
+            <div class="meta-grid">
+              <div class="key" data-i18n="viewportCenter">center</div><div class="value" id="snapshot-center">unknown</div>
+              <div class="key" data-i18n="viewportWindow">window</div><div class="value" id="snapshot-window">unknown</div>
+              <div class="key" data-i18n="viewportOutput">output</div><div class="value" id="snapshot-output">unknown</div>
+            </div>
+            <div class="control-actions" style="margin-top: 10px;">
+              <button id="copy-render-command" class="small-button" type="button" data-i18n="copyRenderCommand">Copy render-view command</button>
+              <button id="download-render-view" class="small-button" type="button" data-i18n="downloadViewportPng">Download PNG</button>
+            </div>
+            <div id="snapshot-status" class="snapshot-status"></div>
+          </section>
+          <section>
             <div class="section-title"><span data-i18n="tileCache">Tile Cache</span></div>
             <div class="meta-grid">
               <div class="key" data-i18n="cacheEnabled">enabled</div><div class="value" id="cache-enabled">unknown</div>
@@ -844,6 +870,7 @@
     const tileCacheKey = "{{ tile_cache_key }}";
     const initialTileCacheStats = {{ tile_cache_stats | safe }};
     const initialTilePerformanceStats = {{ tile_performance_stats | safe }};
+    const snapshotOptions = {{ snapshot_options | safe }};
     let selectedSlideId = slideEntries.length ? slideEntries[0].id : 0;
     const i18n = {
       en: {
@@ -888,6 +915,15 @@
         cacheServedTiles: "cache served",
         avgTileMs: "avg tile ms",
         p95TileMs: "p95 tile ms",
+        viewportSnapshot: "Viewport Snapshot",
+        viewportCenter: "center",
+        viewportWindow: "window",
+        viewportOutput: "output",
+        copyRenderCommand: "Copy render-view command",
+        downloadViewportPng: "Download PNG",
+        snapshotCopied: "render-view command copied.",
+        snapshotDownloaded: "Viewport PNG requested.",
+        snapshotUnavailable: "Viewport is not ready yet.",
         modelOverlay: "model/debug overlay",
         rasterHeatmap: "raster heatmap",
         annotationOverlay: "annotation overlay for research/debugging",
@@ -955,6 +991,15 @@
         cacheServedTiles: "缓存返回",
         avgTileMs: "平均 tile 毫秒",
         p95TileMs: "P95 tile 毫秒",
+        viewportSnapshot: "视野截图",
+        viewportCenter: "中心",
+        viewportWindow: "窗口",
+        viewportOutput: "输出",
+        copyRenderCommand: "复制 render-view 命令",
+        downloadViewportPng: "下载 PNG",
+        snapshotCopied: "已复制 render-view 命令。",
+        snapshotDownloaded: "已请求导出当前视野 PNG。",
+        snapshotUnavailable: "视野尚未准备好。",
         modelOverlay: "模型/调试叠加层",
         rasterHeatmap: "整图热图",
         annotationOverlay: "标注叠加层（研究/调试）",
@@ -1132,26 +1177,35 @@
         renderZoomControl();
         refreshViewerLayout(true);
         updateZoomReadout();
+        updateSnapshotReadout();
         scheduleCanvasOverlayRedraw();
       });
       viewer.addHandler("animation", function () {
         updateZoomReadout();
+        updateSnapshotReadout();
         scheduleCanvasOverlayRedraw();
       });
       viewer.addHandler("animation-finish", function () {
         updateZoomReadout();
+        updateSnapshotReadout();
         scheduleCanvasOverlayRedraw();
       });
       viewer.addHandler("zoom", function () {
         updateZoomReadout();
+        updateSnapshotReadout();
         scheduleCanvasOverlayRedraw();
       });
       viewer.addHandler("pan", function () {
         updateZoomReadout();
+        updateSnapshotReadout();
         scheduleCanvasOverlayRedraw();
       });
-      viewer.addHandler("resize", scheduleCanvasOverlayRedraw);
+      viewer.addHandler("resize", function () {
+        updateSnapshotReadout();
+        scheduleCanvasOverlayRedraw();
+      });
       setupCanvasTooltip();
+      setupSnapshotControls();
 
       renderSlideList();
       const search = document.getElementById("slide-search");
@@ -1175,6 +1229,7 @@
         renderRasterHeatmap();
         renderPatches();
         renderAnnotations();
+        updateSnapshotReadout();
       }
 
       function refreshViewerLayout(goHome) {
@@ -1287,6 +1342,7 @@
         currentSlideInfo = info;
         renderZoomControl();
         updateZoomReadout();
+        updateSnapshotReadout();
         const warnings = document.getElementById("meta-warnings");
         if (info.warnings && info.warnings.length) {
           warnings.textContent = info.warnings.join(", ");
@@ -1450,6 +1506,230 @@
           }
         }
         setActiveZoomButton(scale);
+      }
+
+      function setupSnapshotControls() {
+        const copyButton = document.getElementById("copy-render-command");
+        const downloadButton = document.getElementById("download-render-view");
+        if (copyButton) {
+          copyButton.addEventListener("click", async function () {
+            const command = buildRenderViewCommand();
+            if (!command) {
+              setSnapshotStatus(t("snapshotUnavailable"), "error");
+              return;
+            }
+            await copyText(command);
+            setSnapshotStatus(t("snapshotCopied"), "ok");
+          });
+        }
+        if (downloadButton) {
+          downloadButton.addEventListener("click", function () {
+            const url = buildSnapshotDownloadUrl();
+            if (!url) {
+              setSnapshotStatus(t("snapshotUnavailable"), "error");
+              return;
+            }
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = snapshotFilename();
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setSnapshotStatus(t("snapshotDownloaded"), "ok");
+          });
+        }
+        updateSnapshotReadout();
+      }
+
+      function currentViewportSnapshot() {
+        if (!isOpen || !currentSlideInfo || !viewer.viewport) {
+          return null;
+        }
+        const bounds = currentImageBounds(0);
+        const windowWidth = Math.max(1, Math.round(bounds[2] - bounds[0]));
+        const windowHeight = Math.max(1, Math.round(bounds[3] - bounds[1]));
+        const centerX = Math.round(bounds[0] + windowWidth / 2);
+        const centerY = Math.round(bounds[1] + windowHeight / 2);
+        const output = snapshotOutputSize(windowWidth, windowHeight);
+        return {
+          centerX,
+          centerY,
+          windowWidth,
+          windowHeight,
+          outWidth: output.width,
+          outHeight: output.height,
+          scale: output.width / windowWidth
+        };
+      }
+
+      function snapshotOutputSize(windowWidth, windowHeight) {
+        const viewerRect = document.getElementById("viewer").getBoundingClientRect();
+        const maxSide = 2200;
+        const minSide = 256;
+        const aspect = Math.max(1, windowHeight) / Math.max(1, windowWidth);
+        let width = Math.max(minSide, Math.round(viewerRect.width || 1600));
+        let height = Math.max(minSide, Math.round(width * aspect));
+        const factor = Math.min(1, maxSide / Math.max(width, height));
+        width = Math.max(1, Math.round(width * factor));
+        height = Math.max(1, Math.round(height * factor));
+        return {width, height};
+      }
+
+      function updateSnapshotReadout() {
+        const snapshot = currentViewportSnapshot();
+        const center = document.getElementById("snapshot-center");
+        const windowValue = document.getElementById("snapshot-window");
+        const output = document.getElementById("snapshot-output");
+        if (!center || !windowValue || !output) {
+          return;
+        }
+        if (!snapshot) {
+          center.textContent = "unknown";
+          windowValue.textContent = "unknown";
+          output.textContent = "unknown";
+          return;
+        }
+        center.textContent = `${snapshot.centerX}, ${snapshot.centerY}`;
+        windowValue.textContent = `${snapshot.windowWidth} x ${snapshot.windowHeight}`;
+        output.textContent = `${snapshot.outWidth} x ${snapshot.outHeight} (${snapshot.scale.toFixed(3)} px/level-0 px)`;
+      }
+
+      function buildSnapshotDownloadUrl() {
+        const snapshot = currentViewportSnapshot();
+        if (!snapshot) {
+          return null;
+        }
+        const params = new URLSearchParams();
+        params.set("slide_id", String(selectedSlideId));
+        params.set("center_x", String(snapshot.centerX));
+        params.set("center_y", String(snapshot.centerY));
+        params.set("window_width", String(snapshot.windowWidth));
+        params.set("window_height", String(snapshot.windowHeight));
+        params.set("out_width", String(snapshot.outWidth));
+        params.set("out_height", String(snapshot.outHeight));
+        params.set("include_patches", String(Boolean(snapshotOptions.patches && document.getElementById("overlay-toggle").checked)));
+        params.set("include_raster_heatmap", String(Boolean(snapshotOptions.raster_heatmap && document.getElementById("overlay-toggle").checked)));
+        params.set("include_annotations", String(Boolean(snapshotOptions.annotations && document.getElementById("annotation-toggle").checked)));
+        params.set("score_threshold", String(scoreThreshold()));
+        params.set("top_k", String(topKValue()));
+        params.set("opacity", String(Number(document.getElementById("opacity-slider").value || 0.45)));
+        params.set("annotation_opacity", String(Number(document.getElementById("annotation-opacity-slider").value || 0.35)));
+        const labels = selectedAnnotationLabelList();
+        if (labels !== null) {
+          params.set("annotation_labels", labels.length ? labels.join(",") : "__none__");
+        }
+        params.set("v", tileCacheKey);
+        return `/api/render-view?${params.toString()}`;
+      }
+
+      function buildRenderViewCommand() {
+        const snapshot = currentViewportSnapshot();
+        if (!snapshot || !currentSlideInfo) {
+          return null;
+        }
+        const lines = [`slidebridge render-view ${quoteCommandArg(currentSlideInfo.path || currentSlideInfo.filename || "slide.svs")}`];
+        let overlayOpacityAdded = false;
+        addCommandArg(lines, "--center-x", snapshot.centerX);
+        addCommandArg(lines, "--center-y", snapshot.centerY);
+        addCommandArg(lines, "--window-width", snapshot.windowWidth);
+        addCommandArg(lines, "--window-height", snapshot.windowHeight);
+        addCommandArg(lines, "--out-width", snapshot.outWidth);
+        addCommandArg(lines, "--out-height", snapshot.outHeight);
+        if (snapshotOptions.patches && document.getElementById("overlay-toggle").checked) {
+          addCommandArg(lines, "--patches", snapshotOptions.patches);
+          if (snapshotOptions.heatmap) {
+            addCommandArg(lines, "--heatmap", snapshotOptions.heatmap);
+          }
+          addCommandArg(lines, "--score-normalization", snapshotOptions.score_normalization || "minmax");
+          addCommandArg(lines, "--opacity", Number(document.getElementById("opacity-slider").value || 0.45).toFixed(2));
+          overlayOpacityAdded = true;
+        }
+        if (snapshotOptions.raster_heatmap && document.getElementById("overlay-toggle").checked) {
+          addCommandArg(lines, "--raster-heatmap", snapshotOptions.raster_heatmap);
+          if (!overlayOpacityAdded) {
+            addCommandArg(lines, "--opacity", Number(document.getElementById("opacity-slider").value || 0.45).toFixed(2));
+            overlayOpacityAdded = true;
+          }
+          if (snapshotOptions.raster_heatmap_threshold !== null && snapshotOptions.raster_heatmap_threshold !== undefined) {
+            addCommandArg(lines, "--raster-heatmap-threshold", snapshotOptions.raster_heatmap_threshold);
+          }
+          if (snapshotOptions.raster_heatmap_invert) {
+            lines.push("  --raster-heatmap-invert");
+          }
+          if (snapshotOptions.raster_heatmap_colormap && snapshotOptions.raster_heatmap_colormap !== "auto") {
+            addCommandArg(lines, "--raster-heatmap-colormap", snapshotOptions.raster_heatmap_colormap);
+          }
+        }
+        if (snapshotOptions.annotations && document.getElementById("annotation-toggle").checked) {
+          addCommandArg(lines, "--annotations", snapshotOptions.annotations);
+          if (snapshotOptions.annotation_format) {
+            addCommandArg(lines, "--annotation-format", snapshotOptions.annotation_format);
+          }
+          const labels = selectedAnnotationLabelList();
+          if (labels !== null && labels.length) {
+            addCommandArg(lines, "--annotation-labels", labels.join(","));
+          }
+          addCommandArg(lines, "--annotation-opacity", Number(document.getElementById("annotation-opacity-slider").value || 0.35).toFixed(2));
+        }
+        if (snapshotOptions.default_patch_size && Number(snapshotOptions.default_patch_size) !== 256) {
+          addCommandArg(lines, "--default-patch-size", snapshotOptions.default_patch_size);
+        }
+        addCommandArg(lines, "--out", "outputs\\view_snapshot.png");
+        return lines.join(" `\n");
+      }
+
+      function selectedAnnotationLabelList() {
+        if (!annotationPayload || !Array.isArray(annotationPayload.labels) || !annotationPayload.labels.length) {
+          return null;
+        }
+        const allLabels = annotationPayload.labels.map((label) => String(label));
+        if (selectedAnnotationLabels.size === allLabels.length && allLabels.every((label) => selectedAnnotationLabels.has(label))) {
+          return null;
+        }
+        return Array.from(selectedAnnotationLabels).sort();
+      }
+
+      function addCommandArg(lines, option, value) {
+        if (value === null || value === undefined || value === "") {
+          return;
+        }
+        const text = typeof value === "number" ? String(value) : quoteCommandArg(value);
+        lines.push(`  ${option} ${text}`);
+      }
+
+      function quoteCommandArg(value) {
+        return `"${String(value).replace(/"/g, "`\"")}"`;
+      }
+
+      async function copyText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand("copy");
+        textArea.remove();
+      }
+
+      function setSnapshotStatus(message, state) {
+        const status = document.getElementById("snapshot-status");
+        if (!status) {
+          return;
+        }
+        status.textContent = message || "";
+        status.dataset.state = state || "";
+      }
+
+      function snapshotFilename() {
+        const snapshot = currentViewportSnapshot();
+        const base = (currentSlideInfo && currentSlideInfo.filename ? currentSlideInfo.filename : "slide").replace(/[^A-Za-z0-9_.-]+/g, "_");
+        return snapshot ? `${base}_x${snapshot.centerX}_y${snapshot.centerY}.png` : "slidebridge_view.png";
       }
 
       function setActiveZoomButton(scale) {

@@ -14,7 +14,7 @@ Debug whole-slide images like a developer.
 
 > 上图是 synthetic demo，不包含任何患者数据。
 
-当前版本：`0.2.10`
+当前版本：`0.2.11`
 
 ## 这是什么？
 
@@ -212,6 +212,11 @@ v0.2.10:
 
 - `render-view` 静态视野截图
 - viewport-level patch / heatmap / annotation overlay 导出
+
+v0.2.11:
+
+- viewer 内复制当前视野的 `render-view` 命令
+- viewer 内直接下载当前视野 PNG
 
 v0.2.x:
 

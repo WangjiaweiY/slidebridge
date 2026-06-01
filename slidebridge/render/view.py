@@ -41,6 +41,62 @@ def render_view(
     image_format: str | None = None,
     jpeg_quality: int = 90,
 ) -> dict[str, Any]:
+    composed, result = render_view_to_image(
+        slide,
+        patch_table=patch_table,
+        annotation_table=annotation_table,
+        center_x=center_x,
+        center_y=center_y,
+        window_width=window_width,
+        window_height=window_height,
+        out_width=out_width,
+        out_height=out_height,
+        scale=scale,
+        magnification=magnification,
+        opacity=opacity,
+        show_labels=show_labels,
+        annotation_opacity=annotation_opacity,
+        draw_annotation_labels=draw_annotation_labels,
+        raster_heatmap_path=raster_heatmap_path,
+        raster_heatmap_opacity=raster_heatmap_opacity,
+        max_raster_heatmap_size=max_raster_heatmap_size,
+        raster_heatmap_threshold=raster_heatmap_threshold,
+        raster_heatmap_invert=raster_heatmap_invert,
+        raster_heatmap_colormap=raster_heatmap_colormap,
+    )
+    output = ensure_parent(out_path)
+    fmt = _format_from_path(output, image_format)
+    if fmt == "JPEG":
+        composed.save(output, format=fmt, quality=int(jpeg_quality))
+    else:
+        composed.save(output, format=fmt)
+    result["output_path"] = str(output)
+    return result
+
+
+def render_view_to_image(
+    slide: Slide,
+    patch_table: PatchTable | None = None,
+    annotation_table: AnnotationTable | None = None,
+    center_x: float | None = None,
+    center_y: float | None = None,
+    window_width: int = 4096,
+    window_height: int = 3072,
+    out_width: int = 1600,
+    out_height: int | None = None,
+    scale: float | None = None,
+    magnification: float | None = None,
+    opacity: float = 0.45,
+    show_labels: bool = False,
+    annotation_opacity: float = 0.35,
+    draw_annotation_labels: bool = False,
+    raster_heatmap_path: str | Path | None = None,
+    raster_heatmap_opacity: float | None = None,
+    max_raster_heatmap_size: int = 4096,
+    raster_heatmap_threshold: float | None = None,
+    raster_heatmap_invert: bool = False,
+    raster_heatmap_colormap: str = "auto",
+) -> tuple[Image.Image, dict[str, Any]]:
     slide_width, slide_height = slide.dimensions
     out_width = max(1, int(out_width))
     if scale is not None and magnification is not None:
@@ -128,15 +184,9 @@ def render_view(
     )
 
     composed = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
-    output = ensure_parent(out_path)
-    fmt = _format_from_path(output, image_format)
-    if fmt == "JPEG":
-        composed.save(output, format=fmt, quality=int(jpeg_quality))
-    else:
-        composed.save(output, format=fmt)
-    return {
+    return composed, {
         "input_slide": str(slide.path),
-        "output_path": str(output),
+        "output_path": None,
         "view_bbox": [x0, y0, x1, y1],
         "center_x": x0 + crop_width / 2,
         "center_y": y0 + crop_height / 2,

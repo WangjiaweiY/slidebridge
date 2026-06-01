@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.11
+
+Added:
+
+- viewer controls to copy a reproducible `render-view` command for the current viewport
+- viewer PNG download for the current viewport through `/api/render-view`
+- viewport snapshot readout for center, level-0 window size, and output size
+
+Changed:
+
+- `render-view` rendering can now be reused in-memory by the local viewer server
+
 ## 0.2.10
 
 Added:

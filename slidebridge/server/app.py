@@ -26,6 +26,7 @@ from slidebridge.overlays.heatmap import attach_scores, load_scores
 from slidebridge.overlays.patch_table import PatchTable
 from slidebridge.overlays.patches import load_patch_table
 from slidebridge.overlays.raster_heatmap import RasterHeatmap, is_raster_heatmap_path, load_raster_heatmap
+from slidebridge.render.view import render_view_to_image
 from slidebridge.utils.image import ensure_rgb
 from slidebridge.utils.paths import SUPPORTED_IMAGE_EXTENSIONS, SUPPORTED_WSI_EXTENSIONS
 
@@ -271,6 +272,21 @@ def create_app(
     if heatmap_path is not None and patches_path is None:
         raise ValueError("--heatmap requires --patches so scores can be aligned to coordinates")
 
+    snapshot_options = {
+        "patches": str(patches_path) if patches_path is not None else None,
+        "heatmap": str(heatmap_path) if heatmap_path is not None else None,
+        "raster_heatmap": str(raster_heatmap_path) if raster_heatmap_path is not None else None,
+        "annotations": str(annotations_path) if annotations_path is not None else None,
+        "annotation_format": annotation_format,
+        "default_patch_size": default_patch_size,
+        "score_normalization": score_normalization,
+        "max_raster_heatmap_size": max_raster_heatmap_size,
+        "raster_heatmap_threshold": raster_heatmap_threshold,
+        "raster_heatmap_invert": bool(raster_heatmap_invert),
+        "raster_heatmap_colormap": raster_heatmap_colormap,
+        "viewer_context": viewer_context,
+    }
+
     tile_cache_key = secrets.token_hex(8)
     lock = RLock()
     sessions: dict[int, SlideSession] = {}
@@ -423,6 +439,7 @@ def create_app(
                 viewer_remote_host=viewer_remote_host,
                 viewer_remote_ssh_port=viewer_remote_ssh_port,
                 viewer_source=viewer_source,
+                snapshot_options=json.dumps(snapshot_options, ensure_ascii=False),
                 tile_cache_stats=json.dumps(tile_cache.stats(tile_workers), ensure_ascii=False),
                 tile_performance_stats=json.dumps(tile_metrics.stats(), ensure_ascii=False),
             ),
@@ -507,6 +524,66 @@ def create_app(
             "cache": tile_cache.stats(tile_workers),
             "tiles": tile_metrics.stats(),
         })
+
+    @app.get("/api/render-view")
+    def api_render_view(
+        slide_id: int = Query(0, ge=0),
+        center_x: float = Query(...),
+        center_y: float = Query(...),
+        window_width: int = Query(..., ge=1),
+        window_height: int = Query(..., ge=1),
+        out_width: int = Query(1600, ge=1, le=4096),
+        out_height: int | None = Query(None, ge=1, le=4096),
+        include_patches: bool = Query(True),
+        include_annotations: bool = Query(True),
+        include_raster_heatmap: bool = Query(True),
+        score_threshold: float = Query(0.0, ge=0.0, le=1.0),
+        top_k: int = Query(0, ge=0),
+        annotation_labels: str | None = Query(None),
+        opacity: float | None = Query(None, ge=0.0, le=1.0),
+        annotation_opacity_query: float | None = Query(None, alias="annotation_opacity", ge=0.0, le=1.0),
+    ) -> Response:
+        session = get_session(slide_id)
+        patch_table = PatchTable(records=[])
+        if include_patches:
+            patch_table = _filter_patch_table_for_snapshot(get_patch_context(slide_id).table, score_threshold, top_k)
+        annotation_table = AnnotationTable(records=[])
+        if include_annotations:
+            annotation_table = get_annotation_context(slide_id).table
+            labels = _split_query_labels(annotation_labels)
+            if labels:
+                annotation_table = annotation_table.filter_labels(labels)
+        raster_path = raster_heatmap_path if include_raster_heatmap else None
+        image, _ = render_view_to_image(
+            session.slide,
+            patch_table=patch_table,
+            annotation_table=annotation_table,
+            center_x=center_x,
+            center_y=center_y,
+            window_width=window_width,
+            window_height=window_height,
+            out_width=out_width,
+            out_height=out_height,
+            opacity=heatmap_opacity if opacity is None else opacity,
+            annotation_opacity=annotation_opacity if annotation_opacity_query is None else annotation_opacity_query,
+            raster_heatmap_path=raster_path,
+            raster_heatmap_opacity=heatmap_opacity if opacity is None else opacity,
+            max_raster_heatmap_size=max_raster_heatmap_size,
+            raster_heatmap_threshold=raster_heatmap_threshold,
+            raster_heatmap_invert=raster_heatmap_invert,
+            raster_heatmap_colormap=raster_heatmap_colormap,
+        )
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        filename = f"slidebridge_view_s{int(slide_id)}_x{int(round(center_x))}_y{int(round(center_y))}.png"
+        return Response(
+            content=buffer.getvalue(),
+            media_type="image/png",
+            headers={
+                **NO_STORE_HEADERS,
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
 
     @app.get("/dzi.dzi")
     def dzi(slide_id: int = Query(0, ge=0)) -> Response:
@@ -634,6 +711,34 @@ def _dzi_response(session: SlideSession, tile_size: int) -> Response:
 
 def _json_response(payload: dict[str, Any]) -> JSONResponse:
     return JSONResponse(content=payload, headers=NO_STORE_HEADERS)
+
+
+def _split_query_labels(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _filter_patch_table_for_snapshot(table: PatchTable, score_threshold: float, top_k: int) -> PatchTable:
+    records = list(table.records)
+    threshold = max(0.0, min(1.0, float(score_threshold or 0.0)))
+    if threshold > 0:
+        records = [
+            record
+            for record in records
+            if record.score is not None and float(record.score) >= threshold
+        ]
+    if top_k > 0:
+        if any(record.score is not None for record in records):
+            records = sorted(records, key=lambda record: float(record.score or 0.0), reverse=True)
+        records = records[: int(top_k)]
+    return PatchTable(
+        records=records,
+        source=table.source,
+        coordinate_space=table.coordinate_space,
+        default_patch_size=table.default_patch_size,
+        metadata=dict(table.metadata),
+    )
 
 
 def _tile_response(
