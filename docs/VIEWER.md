@@ -48,6 +48,25 @@ The viewer includes:
 For large overlays, the server can limit returned patches with
 `--max-overlay-patches`, and the browser displays a performance warning.
 
+## Raster Heatmap Overlay
+
+The viewer can also display a full-slide PNG/JPG/JPEG heatmap:
+
+```powershell
+slidebridge view C:\path\to\your\slide.svs --raster-heatmap outputs\heatmap.png --heatmap-opacity 0.45
+```
+
+If `--heatmap` points to a PNG/JPG/JPEG file, SlideBridge treats it as a raster
+heatmap automatically:
+
+```powershell
+slidebridge view C:\path\to\your\slide.svs --heatmap outputs\heatmap.jpg
+```
+
+Raster heatmaps are stretched over the full level-0 slide extent. If the aspect
+ratio differs from the slide, the viewer reports a warning. Raster heatmaps are
+model/debug visualizations only.
+
 ## Annotation Overlay
 
 The viewer can display annotation files with patch and heatmap overlays:
@@ -73,4 +92,7 @@ first subset and reports a warning.
 slidebridge view C:\path\to\your\slide.svs --tile-size 256 --jpeg-quality 85
 ```
 
-Tiles are JPEG responses with a one-hour cache header.
+Tiles use a per-viewer cache key so restarting the viewer on the same localhost
+port does not mix old and new slide images. HTML, DZI, and overlay APIs use
+`Cache-Control: no-store`; keyed tile images can be cached for repeated
+navigation inside the same viewer session.

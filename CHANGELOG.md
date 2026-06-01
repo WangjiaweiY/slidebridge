@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.3
+
+Added:
+
+- Full-slide raster heatmap overlay from PNG/JPG/JPEG images
+- `--raster-heatmap` option for `view`, `remote-view`, and `render-overlay`
+- automatic raster heatmap detection when `--heatmap` points to PNG/JPG/JPEG
+
+Changed:
+
+- viewer overlay APIs and DZI/tile URLs use explicit no-cache/session keys to avoid stale overlays and tiles
+- GitHub default README is Chinese, with English README available separately
+
+Compliance:
+
+- raster heatmaps are model/debug visualizations only
+- no clinical diagnosis workflow is added
+
 ## 0.2.2
 
 Added:

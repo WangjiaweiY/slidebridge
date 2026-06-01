@@ -91,6 +91,21 @@ def test_remote_view_dry_run_with_overlays():
     output = " ".join(result.stdout.split())
     assert "--patches /data/features/coords.h5" in output
     assert "--annotations /data/annotations/case.geojson" in output
+def test_remote_view_dry_run_with_raster_heatmap():
+    result = runner.invoke(
+        app,
+        [
+            "remote-view",
+            "user@example.org:/data/slides/demo.svs",
+            "--raster-heatmap",
+            "/data/model_outputs/demo_heatmap.png",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = " ".join(result.stdout.split())
+    assert "--raster-heatmap /data/model_outputs/demo_heatmap.png" in output
 
 
 def test_remote_view_dry_run_directory_mode():

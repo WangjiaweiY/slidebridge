@@ -11,11 +11,11 @@ from slidebridge.cli import app
 runner = CliRunner()
 
 
-def test_release_version_output_contains_021():
+def test_release_version_output_contains_023():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "0.2.2" in result.stdout
+    assert "0.2.3" in result.stdout
 
 
 def test_cli_render_overlay(tmp_path):
@@ -46,3 +46,29 @@ def test_cli_render_overlay_without_scores(tmp_path):
 
     assert result.exit_code == 0
     assert overlay.exists()
+
+
+def test_cli_render_overlay_with_raster_heatmap(tmp_path):
+    slide = tmp_path / "demo.png"
+    heatmap = tmp_path / "heatmap.png"
+    overlay = tmp_path / "raster_overlay.png"
+
+    runner.invoke(app, ["create-demo", "--out", str(slide), "--width", "512", "--height", "384"])
+    Image.new("L", (64, 48), 180).save(heatmap)
+    result = runner.invoke(app, ["render-overlay", str(slide), "--heatmap", str(heatmap), "--out", str(overlay)])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["raster_heatmap"]["available"] is True
+    assert overlay.exists()
+
+
+def test_cli_create_demo_heatmap(tmp_path):
+    heatmap = tmp_path / "demo_heatmap.jpg"
+
+    result = runner.invoke(app, ["create-demo-heatmap", "--out", str(heatmap), "--width", "128", "--height", "96"])
+
+    assert result.exit_code == 0
+    assert heatmap.exists()
+    with Image.open(heatmap) as image:
+        assert image.size == (128, 96)

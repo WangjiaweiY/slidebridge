@@ -423,6 +423,13 @@
       border: 0;
       mix-blend-mode: multiply;
     }
+    .raster-heatmap-overlay {
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+    }
     .annotation-overlay {
       pointer-events: auto;
       overflow: visible;
@@ -629,6 +636,7 @@
             <div class="section-title"><span data-i18n="overlays">Overlays</span></div>
             <div class="count-row">
               <div class="pill" id="patch-count">{{ patch_count }} patches</div>
+              <div class="pill" id="raster-heatmap-count" {% if not raster_heatmap_available %}hidden{% endif %}>raster heatmap</div>
               <div class="pill" id="annotation-count">{{ annotation_count }} annotations</div>
             </div>
             {% if patch_warning %}
@@ -636,6 +644,9 @@
             {% endif %}
             {% if annotation_warning %}
             <div class="warning">{{ annotation_warning }}</div>
+            {% endif %}
+            {% if raster_heatmap_warning %}
+            <div class="warning">{{ raster_heatmap_warning }}</div>
             {% endif %}
             <div id="dynamic-warnings"></div>
             <div class="controls">
@@ -710,6 +721,7 @@
         vendor: "vendor",
         warnings: "warnings",
         modelOverlay: "model/debug overlay",
+        rasterHeatmap: "raster heatmap",
         annotationOverlay: "annotation overlay for research/debugging",
         low: "low",
         high: "high",
@@ -754,6 +766,7 @@
         vendor: "厂商",
         warnings: "警告",
         modelOverlay: "模型/调试叠加层",
+        rasterHeatmap: "整图热图",
         annotationOverlay: "标注叠加层（研究/调试）",
         low: "低",
         high: "高",
@@ -884,8 +897,10 @@
       let isOpen = false;
       let patchPayload = null;
       let annotationPayload = null;
+      let rasterHeatmapPayload = null;
       let patchElements = [];
       let annotationElements = [];
+      let rasterHeatmapElement = null;
       let currentSlideInfo = null;
       let currentZoomLevels = [];
       setupTabs(function () {
@@ -897,6 +912,9 @@
         }
         if (annotationPayload) {
           document.getElementById("annotation-count").textContent = annotationCountLabel(annotationPayload);
+        }
+        if (rasterHeatmapPayload) {
+          updateRasterHeatmapHeader(rasterHeatmapPayload, false);
         }
         const infoWarnings = document.getElementById("meta-warnings");
         if (infoWarnings && infoWarnings.dataset.empty === "true") {
@@ -929,11 +947,15 @@
         isOpen = false;
         patchPayload = null;
         annotationPayload = null;
+        rasterHeatmapPayload = null;
         clearOverlays();
         setActiveSlideButton();
         document.getElementById("dynamic-warnings").innerHTML = "";
         viewer.open(`/slides/${selectedSlideId}/${tileCacheKey}/dzi.dzi`);
-        await Promise.all([loadInfo(), loadPatches(), loadAnnotations()]);
+        await Promise.all([loadInfo(), loadPatches(false), loadRasterHeatmap(false), loadAnnotations(false)]);
+        renderRasterHeatmap();
+        renderPatches();
+        renderAnnotations();
       }
 
       function refreshViewerLayout(goHome) {
@@ -943,6 +965,7 @@
             viewer.viewport.goHome(true);
           }
           viewer.forceRedraw();
+          renderRasterHeatmap();
           renderPatches();
           renderAnnotations();
         });
@@ -982,20 +1005,34 @@
         updateInfo(info);
       }
 
-      async function loadPatches() {
+      async function loadPatches(renderNow = true) {
         const response = await fetch(apiUrl("patches"), {cache: "no-store"});
         const payload = await response.json();
         patchPayload = payload;
         updatePatchHeader(payload);
-        renderPatches();
+        if (renderNow) {
+          renderPatches();
+        }
       }
 
-      async function loadAnnotations() {
+      async function loadRasterHeatmap(renderNow = true) {
+        const response = await fetch(apiUrl("raster-heatmap"), {cache: "no-store"});
+        const payload = await response.json();
+        rasterHeatmapPayload = payload;
+        updateRasterHeatmapHeader(payload);
+        if (renderNow) {
+          renderRasterHeatmap();
+        }
+      }
+
+      async function loadAnnotations(renderNow = true) {
         const response = await fetch(apiUrl("annotations"), {cache: "no-store"});
         const payload = await response.json();
         annotationPayload = payload;
         updateAnnotationHeader(payload);
-        renderAnnotations();
+        if (renderNow) {
+          renderAnnotations();
+        }
       }
 
       function apiUrl(name) {
@@ -1197,13 +1234,32 @@
 
       function updatePatchHeader(payload) {
         document.getElementById("patch-count").textContent = patchCountLabel(payload);
-        document.getElementById("score-legend").hidden = !payload.has_scores;
+        updateScoreLegendVisibility();
         appendWarnings(payload.warnings || []);
+      }
+
+      function updateRasterHeatmapHeader(payload, appendWarningMessages = true) {
+        const element = document.getElementById("raster-heatmap-count");
+        if (!element) {
+          return;
+        }
+        element.hidden = !payload.available;
+        element.textContent = t("rasterHeatmap");
+        updateScoreLegendVisibility();
+        if (appendWarningMessages) {
+          appendWarnings(payload.warnings || []);
+        }
       }
 
       function updateAnnotationHeader(payload) {
         document.getElementById("annotation-count").textContent = annotationCountLabel(payload);
         appendWarnings(payload.warnings || []);
+      }
+
+      function updateScoreLegendVisibility() {
+        const hasPatchScores = Boolean(patchPayload && patchPayload.has_scores);
+        const hasRasterHeatmap = Boolean(rasterHeatmapPayload && rasterHeatmapPayload.available);
+        document.getElementById("score-legend").hidden = !(hasPatchScores || hasRasterHeatmap);
       }
 
       function patchCountLabel(payload) {
@@ -1233,10 +1289,35 @@
       }
 
       function clearOverlays() {
+        if (rasterHeatmapElement) {
+          viewer.removeOverlay(rasterHeatmapElement);
+          rasterHeatmapElement = null;
+        }
         patchElements.forEach((element) => viewer.removeOverlay(element));
         annotationElements.forEach((element) => viewer.removeOverlay(element));
         patchElements = [];
         annotationElements = [];
+      }
+
+      function renderRasterHeatmap() {
+        if (!isOpen || !rasterHeatmapPayload || !rasterHeatmapPayload.available || !currentSlideInfo) {
+          return;
+        }
+        if (rasterHeatmapElement) {
+          viewer.removeOverlay(rasterHeatmapElement);
+          rasterHeatmapElement = null;
+        }
+        const image = document.createElement("img");
+        image.className = "raster-heatmap-overlay";
+        image.src = rasterHeatmapPayload.url;
+        image.title = `${t("rasterHeatmap")}\n${rasterHeatmapPayload.mapping || ""}`;
+        viewer.addOverlay({
+          element: image,
+          location: viewer.viewport.imageToViewportRectangle(0, 0, currentSlideInfo.width, currentSlideInfo.height),
+          checkResize: false
+        });
+        rasterHeatmapElement = image;
+        updatePatchOverlayStyle();
       }
 
       function renderPatches() {
@@ -1420,6 +1501,10 @@
           } else {
             element.style.opacity = String(opacity);
           }
+        });
+        document.querySelectorAll(".raster-heatmap-overlay").forEach(function (element) {
+          element.style.display = toggle.checked ? "block" : "none";
+          element.style.opacity = String(opacity);
         });
       }
 

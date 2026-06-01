@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from slidebridge.server.app import create_app
 from slidebridge.utils.demo import create_demo_slide
@@ -58,6 +59,27 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
 
     invalid = client.get("/dzi_files/99/0_0.jpeg")
     assert invalid.status_code == 404
+
+
+def test_server_raster_heatmap_endpoint(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=8)
+    heatmap_path = tmp_path / "heatmap.png"
+    Image.new("RGB", (64, 48), (240, 20, 20)).save(heatmap_path)
+    app = create_app(slide_path, raster_heatmap_path=heatmap_path, reader="image")
+    client = TestClient(app)
+
+    page = client.get("/")
+    match = re.search(r'const tileCacheKey = "([0-9a-f]+)"', page.text)
+    assert match
+    payload = client.get("/api/raster-heatmap").json()
+    assert payload["available"] is True
+    assert payload["mapping"] == "stretch_to_full_slide"
+    assert payload["url"].endswith("/raster_heatmap.png")
+
+    image = client.get(payload["url"])
+    assert image.status_code == 200
+    assert image.headers["content-type"] == "image/png"
+    assert image.headers["cache-control"] == "public, max-age=3600"
 
 
 def test_server_rejects_invalid_tile_config(tmp_path):

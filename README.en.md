@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.2`
+Current version: `0.2.3`
 
 ## Quick Demo
 
@@ -140,6 +140,25 @@ If scores are stored separately:
 slidebridge view C:\path\to\your\slide.svs --patches outputs\coords.h5 --heatmap outputs\attention.npy
 ```
 
+## Full-Slide Heatmap PNG/JPG
+
+If a model exports a whole-image PNG/JPG heatmap, use it as a full-slide overlay:
+
+```powershell
+slidebridge create-demo-heatmap --out outputs\demo_heatmap.png
+slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --port 7860 --open-browser
+```
+
+`--heatmap` also auto-detects image heatmaps:
+
+```powershell
+slidebridge render-overlay outputs\demo_slide.png --heatmap outputs\demo_heatmap.png --out outputs\demo_raster_heatmap.png
+```
+
+Raster heatmaps currently cover the full slide extent and are stretched to the
+level-0 coordinate space. They are model/debug visualizations, not diagnostic
+outputs.
+
 ## Annotation Debugging
 
 Use synthetic annotations to test the annotation workflow without patient data:
@@ -221,6 +240,7 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 - `slidebridge export-patches PATH --patches PATCHES --out DIR`: export patch images and a manifest.
 - `slidebridge render-overlay PATH --patches PATCHES --annotations ANNOTATIONS --out OUTPUT`: render a static overlay image.
 - `slidebridge create-demo --out outputs\demo_slide.png`: create a synthetic H&E-like demo image.
+- `slidebridge create-demo-heatmap --out outputs\demo_heatmap.png`: create a synthetic raster heatmap.
 - `slidebridge create-demo-annotations --out outputs\demo_annotations.geojson`: create synthetic demo annotations.
 - `slidebridge inspect-annotations ANNOTATIONS --slide PATH`: inspect annotation files and optional slide bounds.
 - `slidebridge convert-annotations INPUT --out OUTPUT`: convert public annotation formats.
@@ -307,6 +327,12 @@ v0.2.2:
 - remote-check, remote-ls, remote-inspect, and remote-view
 - dry-run remote command diagnostics
 - local and remote directory viewer mode
+
+v0.2.3:
+
+- PNG/JPG full-slide raster heatmap overlay
+- `--raster-heatmap` support for `view`, `remote-view`, and `render-overlay`
+- viewer tile/API cache hardening
 
 v0.3:
 
