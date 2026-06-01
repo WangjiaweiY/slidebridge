@@ -57,6 +57,7 @@ The viewer can also display a full-slide PNG/JPG/JPEG heatmap:
 
 ```powershell
 slidebridge view C:\path\to\your\slide.svs --raster-heatmap outputs\heatmap.png --heatmap-opacity 0.45
+slidebridge inspect-heatmap outputs\heatmap.png --slide C:\path\to\your\slide.svs
 ```
 
 If `--heatmap` points to a PNG/JPG/JPEG file, SlideBridge treats it as a raster
@@ -69,6 +70,12 @@ slidebridge view C:\path\to\your\slide.svs --heatmap outputs\heatmap.jpg
 Raster heatmaps are stretched over the full level-0 slide extent. If the aspect
 ratio differs from the slide, the viewer reports a warning. Raster heatmaps are
 model/debug visualizations only.
+
+Optional raster controls:
+
+- `--raster-heatmap-threshold 0.4` hides lower normalized values.
+- `--raster-heatmap-invert` flips normalized intensity before display.
+- `--raster-heatmap-colormap score` forces the SlideBridge score colormap.
 
 ## Annotation Overlay
 

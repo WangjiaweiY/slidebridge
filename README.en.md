@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.7`
+Current version: `0.2.8`
 
 ## Quick Demo
 
@@ -147,6 +147,7 @@ If a model exports a whole-image PNG/JPG heatmap, use it as a full-slide overlay
 ```powershell
 slidebridge create-demo-heatmap --out outputs\demo_heatmap.png
 slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --port 7860 --open-browser
+slidebridge inspect-heatmap outputs\demo_heatmap.png --slide outputs\demo_slide.png
 ```
 
 `--heatmap` also auto-detects image heatmaps:
@@ -158,6 +159,13 @@ slidebridge render-overlay outputs\demo_slide.png --heatmap outputs\demo_heatmap
 Raster heatmaps currently cover the full slide extent and are stretched to the
 level-0 coordinate space. They are model/debug visualizations, not diagnostic
 outputs.
+
+Useful tuning options:
+
+```powershell
+slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --raster-heatmap-threshold 0.4 --raster-heatmap-colormap score
+slidebridge render-overlay outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --raster-heatmap-invert --out outputs\demo_raster_heatmap.png
+```
 
 ## Annotation Debugging
 
@@ -386,6 +394,12 @@ v0.2.7:
 - canvas overlay rendering
 - viewport culling for large patch and annotation overlays
 - overlay draw count and canvas tooltip
+
+v0.2.8:
+
+- heatmap inspection command
+- raster heatmap threshold / invert / colormap controls
+- slide-aspect synthetic heatmap generation
 
 v0.3:
 

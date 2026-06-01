@@ -18,6 +18,9 @@ class RasterHeatmap:
     source_size: tuple[int, int]
     mode: str
     warnings: list[str]
+    threshold: float | None = None
+    invert: bool = False
+    colormap: str = "auto"
 
     def to_png_bytes(self) -> bytes:
         buffer = BytesIO()
@@ -41,6 +44,9 @@ class RasterHeatmap:
             "mode": self.mode,
             "coordinate_space": "level0",
             "mapping": "stretch_to_full_slide",
+            "threshold": self.threshold,
+            "invert": self.invert,
+            "colormap": self.colormap,
             "warnings": warnings,
         }
 
@@ -51,22 +57,46 @@ def is_raster_heatmap_path(path: str | Path | None) -> bool:
     return Path(str(path)).suffix.lower() in RASTER_HEATMAP_EXTENSIONS
 
 
-def load_raster_heatmap(path: str | Path, max_size: int = 4096) -> RasterHeatmap:
+def load_raster_heatmap(
+    path: str | Path,
+    max_size: int = 4096,
+    threshold: float | None = None,
+    invert: bool = False,
+    colormap: str = "auto",
+) -> RasterHeatmap:
     heatmap_path = Path(path)
     if heatmap_path.suffix.lower() not in RASTER_HEATMAP_EXTENSIONS:
         raise ValueError("Raster heatmap must be a PNG, JPG, or JPEG image.")
+    colormap = str(colormap or "auto").lower()
+    if colormap not in {"auto", "score", "grayscale", "none"}:
+        raise ValueError("Raster heatmap colormap must be one of: auto, score, grayscale, none")
+    if threshold is not None:
+        threshold = float(threshold)
+        if threshold < 0.0 or threshold > 1.0:
+            raise ValueError("Raster heatmap threshold must be between 0 and 1")
     warnings: list[str] = []
     with Image.open(heatmap_path) as image:
         source_size = image.size
+        values = _normalized_values(image, warnings)
+        if invert:
+            values = 1.0 - values
         mode = "rgb"
-        if _is_grayscale(image):
-            rgba = _colorize_grayscale(image, warnings)
-            mode = "grayscale-colorized"
+        if colormap == "score" or (_is_grayscale(image) and colormap == "auto"):
+            rgba = _colorize_values(values)
+            mode = "score-colorized" if colormap == "score" else "grayscale-colorized"
+        elif colormap == "grayscale":
+            rgba = _grayscale_values(values)
+            mode = "grayscale"
         else:
             rgba = image.convert("RGBA")
             mode = "rgba" if "A" in image.getbands() else "rgb"
+            if invert:
+                rgba = _invert_rgba(rgba)
+                mode = f"{mode}-inverted"
+        if threshold is not None:
+            rgba = _apply_threshold(rgba, values, threshold, warnings)
     rgba = _resize_if_needed(rgba, max_size=max_size, warnings=warnings)
-    return RasterHeatmap(heatmap_path, rgba, source_size, mode, warnings)
+    return RasterHeatmap(heatmap_path, rgba, source_size, mode, warnings, threshold, bool(invert), colormap)
 
 
 def composite_raster_heatmap(
@@ -74,8 +104,11 @@ def composite_raster_heatmap(
     path: str | Path,
     opacity: float = 0.45,
     max_size: int = 4096,
+    threshold: float | None = None,
+    invert: bool = False,
+    colormap: str = "auto",
 ) -> tuple[Image.Image, RasterHeatmap]:
-    heatmap = load_raster_heatmap(path, max_size=max_size)
+    heatmap = load_raster_heatmap(path, max_size=max_size, threshold=threshold, invert=invert, colormap=colormap)
     overlay = heatmap.image.resize(base.size, Image.Resampling.BILINEAR).convert("RGBA")
     alpha = overlay.getchannel("A")
     alpha = alpha.point(lambda value: int(value * max(0.0, min(1.0, float(opacity)))))
@@ -89,8 +122,16 @@ def _is_grayscale(image: Image.Image) -> bool:
     return image.mode in {"1", "L", "I", "I;16", "F"} or bands == ("L",) or bands == ("I",)
 
 
-def _colorize_grayscale(image: Image.Image, warnings: list[str]) -> Image.Image:
-    values = np.asarray(image.convert("F"), dtype=np.float32)
+def _normalized_values(image: Image.Image, warnings: list[str]) -> np.ndarray:
+    if _is_grayscale(image):
+        values = np.asarray(image.convert("F"), dtype=np.float32)
+        return _normalize_array(values, warnings)
+    rgb = np.asarray(image.convert("RGB"), dtype=np.float32)
+    values = (0.2126 * rgb[..., 0] + 0.7152 * rgb[..., 1] + 0.0722 * rgb[..., 2]) / 255.0
+    return np.clip(values, 0.0, 1.0).astype(np.float32)
+
+
+def _normalize_array(values: np.ndarray, warnings: list[str]) -> np.ndarray:
     finite = values[np.isfinite(values)]
     if finite.size == 0:
         normalized = np.zeros(values.shape, dtype=np.float32)
@@ -104,10 +145,36 @@ def _colorize_grayscale(image: Image.Image, warnings: list[str]) -> Image.Image:
         else:
             normalized = (values - vmin) / (vmax - vmin)
             normalized = np.clip(normalized, 0.0, 1.0)
-    rgb = _score_colormap(normalized)
-    alpha = np.full(normalized.shape, 255, dtype=np.uint8)
+    return normalized.astype(np.float32)
+
+
+def _colorize_values(values: np.ndarray) -> Image.Image:
+    rgb = _score_colormap(values)
+    alpha = np.full(values.shape, 255, dtype=np.uint8)
     rgba = np.dstack([rgb, alpha])
     return Image.fromarray(rgba)
+
+
+def _grayscale_values(values: np.ndarray) -> Image.Image:
+    gray = np.round(np.clip(values, 0.0, 1.0) * 255).astype(np.uint8)
+    alpha = np.full(gray.shape, 255, dtype=np.uint8)
+    rgba = np.dstack([gray, gray, gray, alpha])
+    return Image.fromarray(rgba)
+
+
+def _invert_rgba(image: Image.Image) -> Image.Image:
+    array = np.asarray(image.convert("RGBA"), dtype=np.uint8).copy()
+    array[..., :3] = 255 - array[..., :3]
+    return Image.fromarray(array, mode="RGBA")
+
+
+def _apply_threshold(image: Image.Image, values: np.ndarray, threshold: float, warnings: list[str]) -> Image.Image:
+    rgba = np.asarray(image.convert("RGBA"), dtype=np.uint8).copy()
+    mask = np.asarray(values >= threshold)
+    rgba[..., 3] = np.where(mask, rgba[..., 3], 0).astype(np.uint8)
+    if not bool(mask.any()):
+        warnings.append("raster_heatmap_threshold_hides_all_pixels")
+    return Image.fromarray(rgba, mode="RGBA")
 
 
 def _score_colormap(values: np.ndarray) -> np.ndarray:

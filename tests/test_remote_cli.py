@@ -134,6 +134,30 @@ def test_remote_view_dry_run_with_raster_heatmap():
     assert "--raster-heatmap /data/model_outputs/demo_heatmap.png" in output
 
 
+def test_remote_view_dry_run_with_raster_heatmap_options():
+    result = runner.invoke(
+        app,
+        [
+            "remote-view",
+            "user@example.org:/data/slides/demo.svs",
+            "--raster-heatmap",
+            "/data/model_outputs/demo_heatmap.png",
+            "--raster-heatmap-threshold",
+            "0.4",
+            "--raster-heatmap-invert",
+            "--raster-heatmap-colormap",
+            "score",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = " ".join(result.stdout.split())
+    assert "--raster-heatmap-threshold 0.4" in output
+    assert "--raster-heatmap-invert" in output
+    assert "--raster-heatmap-colormap score" in output
+
+
 def test_remote_view_dry_run_directory_mode():
     result = runner.invoke(
         app,

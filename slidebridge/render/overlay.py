@@ -27,6 +27,9 @@ def render_overlay(
     raster_heatmap_path: str | Path | None = None,
     raster_heatmap_opacity: float | None = None,
     max_raster_heatmap_size: int = 4096,
+    raster_heatmap_threshold: float | None = None,
+    raster_heatmap_invert: bool = False,
+    raster_heatmap_colormap: str = "auto",
     image_format: str | None = None,
 ) -> dict[str, Any]:
     thumbnail = ensure_rgb(slide.get_thumbnail(max_size=max_size))
@@ -50,6 +53,9 @@ def render_overlay(
             raster_heatmap_path,
             opacity=raster_opacity,
             max_size=max_raster_heatmap_size,
+            threshold=raster_heatmap_threshold,
+            invert=raster_heatmap_invert,
+            colormap=raster_heatmap_colormap,
         )
         raster_summary = raster.summary(slide_width=slide_width, slide_height=slide_height)
 

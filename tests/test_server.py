@@ -137,7 +137,14 @@ def test_server_raster_heatmap_endpoint(tmp_path):
     slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=8)
     heatmap_path = tmp_path / "heatmap.png"
     Image.new("RGB", (64, 48), (240, 20, 20)).save(heatmap_path)
-    app = create_app(slide_path, raster_heatmap_path=heatmap_path, reader="image")
+    app = create_app(
+        slide_path,
+        raster_heatmap_path=heatmap_path,
+        reader="image",
+        raster_heatmap_threshold=0.25,
+        raster_heatmap_invert=True,
+        raster_heatmap_colormap="score",
+    )
     client = TestClient(app)
 
     page = client.get("/")
@@ -146,6 +153,9 @@ def test_server_raster_heatmap_endpoint(tmp_path):
     payload = client.get("/api/raster-heatmap").json()
     assert payload["available"] is True
     assert payload["mapping"] == "stretch_to_full_slide"
+    assert payload["threshold"] == 0.25
+    assert payload["invert"] is True
+    assert payload["colormap"] == "score"
     assert payload["url"].endswith("/raster_heatmap.png")
 
     image = client.get(payload["url"])
@@ -184,6 +194,13 @@ def test_server_rejects_invalid_tile_config(tmp_path):
         assert "tile_workers" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected invalid tile_workers to raise")
+
+    try:
+        create_app(slide_path, reader="image", raster_heatmap_threshold=1.5)
+    except ValueError as exc:
+        assert "raster_heatmap_threshold" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected invalid raster_heatmap_threshold to raise")
 
 
 def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
