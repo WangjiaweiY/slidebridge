@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi.testclient import TestClient
 
 from slidebridge.server.app import create_app
@@ -17,12 +19,14 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     info = client.get("/api/info")
     assert info.status_code == 200
     assert info.json()["reader"] == "image"
+    assert info.headers["cache-control"] == "no-store"
 
     patches = client.get("/api/patches")
     assert patches.status_code == 200
     assert patches.json()["patches"][0]["score"] == 0.5
     assert patches.json()["count"] == 1
     assert patches.json()["has_scores"] is True
+    assert patches.headers["cache-control"] == "no-store"
 
     dzi = client.get("/dzi.dzi")
     assert dzi.status_code == 200
@@ -30,8 +34,23 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
 
     tile = client.get("/dzi_files/9/0_0.jpeg")
     assert tile.status_code == 200
-    assert tile.headers["cache-control"] == "public, max-age=3600"
+    assert tile.headers["cache-control"] == "no-store"
     assert tile.headers["content-type"] == "image/jpeg"
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert page.headers["cache-control"] == "no-store"
+    match = re.search(r'const tileCacheKey = "([0-9a-f]+)"', page.text)
+    assert match
+    assert 'fetch(apiUrl("patches"), {cache: "no-store"})' in page.text
+    cache_key = match.group(1)
+    keyed_dzi = client.get(f"/slides/0/{cache_key}/dzi.dzi")
+    assert keyed_dzi.status_code == 200
+    keyed_tile = client.get(f"/slides/0/{cache_key}/dzi_files/9/0_0.jpeg")
+    assert keyed_tile.status_code == 200
+    assert keyed_tile.headers["cache-control"] == "public, max-age=3600"
+    stale_tile = client.get("/slides/0/not-the-current-cache-key/dzi_files/9/0_0.jpeg")
+    assert stale_tile.status_code == 404
 
     asset = client.get("/static/vendor/openseadragon/openseadragon.min.js")
     assert asset.status_code == 200
@@ -63,6 +82,7 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
 
     slides = client.get("/api/slides")
     assert slides.status_code == 200
+    assert slides.headers["cache-control"] == "no-store"
     payload = slides.json()
     assert payload["library_mode"] is True
     assert payload["recursive"] is True

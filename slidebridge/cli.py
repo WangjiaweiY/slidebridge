@@ -904,10 +904,18 @@ def _remote_port_is_listening(
 def _remote_view_cleanup_command(port: int) -> str:
     checked_port = int(port)
     return (
+        "self=$$; "
         "user_name=$(id -un 2>/dev/null || whoami); "
-        "pids=$(ps -u \"$user_name\" -o pid=,args= 2>/dev/null | "
-        f"awk -v port='--port {checked_port}' "
-        "'index($0, \"slidebridge view\") && index($0, port) {print $1}'); "
+        "pids=''; "
+        "if command -v ss >/dev/null 2>&1; then "
+        f"pids=$(ss -ltnp 'sport = :{checked_port}' 2>/dev/null | "
+        "sed -n 's/.*pid=\\([0-9][0-9]*\\).*/\\1/p' | sort -u); "
+        "fi; "
+        "extra=$(ps -u \"$user_name\" -o pid=,args= 2>/dev/null | "
+        f"awk -v port='--port {checked_port}' -v self=\"$self\" "
+        "'$1 != self && index($0, port) && "
+        "(index($0, \"slidebridge view\") || index($0, \"conda run\")) {print $1}'); "
+        "pids=$(printf '%s\\n%s\\n' \"$pids\" \"$extra\" | awk 'NF && $1 != 1 {print $1}' | sort -u); "
         "if [ -n \"$pids\" ]; then "
         "kill $pids 2>/dev/null || true; "
         "sleep 1; "

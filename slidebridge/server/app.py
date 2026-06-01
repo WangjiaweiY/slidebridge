@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import secrets
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from io import BytesIO
@@ -10,7 +11,7 @@ from threading import RLock
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Template
 from PIL import Image
@@ -27,6 +28,8 @@ from slidebridge.utils.paths import SUPPORTED_IMAGE_EXTENSIONS, SUPPORTED_WSI_EX
 
 
 VIEWABLE_EXTENSIONS = SUPPORTED_WSI_EXTENSIONS | SUPPORTED_IMAGE_EXTENSIONS
+NO_STORE_HEADERS = {"Cache-Control": "no-store"}
+CACHEABLE_TILE_HEADERS = {"Cache-Control": "public, max-age=3600"}
 
 
 @dataclass(frozen=True)
@@ -123,6 +126,7 @@ def create_app(
     if heatmap_path is not None and patches_path is None:
         raise ValueError("--heatmap requires --patches so scores can be aligned to coordinates")
 
+    tile_cache_key = secrets.token_hex(8)
     lock = RLock()
     sessions: dict[int, SlideSession] = {}
     patch_cache: dict[int, OverlayContext] = {}
@@ -236,31 +240,33 @@ def create_app(
                 library_warning=library_warning,
                 slide_count=len(entries),
                 slides_json=json.dumps([entry.to_dict() for entry in entries], ensure_ascii=False),
+                tile_cache_key=tile_cache_key,
                 viewer_context=viewer_context,
                 viewer_remote_user=viewer_remote_user,
                 viewer_remote_host=viewer_remote_host,
                 viewer_remote_ssh_port=viewer_remote_ssh_port,
                 viewer_source=viewer_source,
-            )
+            ),
+            headers=NO_STORE_HEADERS,
         )
 
     @app.get("/api/slides")
-    def api_slides() -> dict:
-        return {
+    def api_slides() -> JSONResponse:
+        return _json_response({
             "count": len(entries),
             "root": str(source),
             "library_mode": library_mode,
             "recursive": recursive,
             "warnings": [library_warning] if library_warning else [],
             "slides": [entry.to_dict() for entry in entries],
-        }
+        })
 
     @app.get("/api/info")
-    def api_info(slide_id: int = Query(0, ge=0)) -> dict:
-        return get_session(slide_id).info
+    def api_info(slide_id: int = Query(0, ge=0)) -> JSONResponse:
+        return _json_response(get_session(slide_id).info)
 
     @app.get("/api/patches")
-    def api_patches(slide_id: int = Query(0, ge=0)) -> dict:
+    def api_patches(slide_id: int = Query(0, ge=0)) -> JSONResponse:
         context = get_patch_context(slide_id)
         patch_table = context.table
         returned_records = patch_table.records[:max_overlay_patches]
@@ -272,7 +278,7 @@ def create_app(
             warnings.append(
                 f"Returning first {max_overlay_patches} of {len(patch_table)} patches for viewer responsiveness."
             )
-        return {
+        return _json_response({
             "count": len(patch_table),
             "returned": len(returned_records),
             "has_scores": bool(scores),
@@ -280,10 +286,10 @@ def create_app(
             "score_max": max(scores) if scores else None,
             "warnings": warnings,
             "patches": [record.to_dict() for record in returned_records],
-        }
+        })
 
     @app.get("/api/annotations")
-    def api_annotations(slide_id: int = Query(0, ge=0)) -> dict:
+    def api_annotations(slide_id: int = Query(0, ge=0)) -> JSONResponse:
         context = get_annotation_context(slide_id)
         annotation_table = context.table
         returned_records = annotation_table.records[:max_annotations]
@@ -294,7 +300,7 @@ def create_app(
             warnings.append(
                 f"Returning first {max_annotations} of {len(annotation_table)} annotations for viewer responsiveness."
             )
-        return {
+        return _json_response({
             "count": len(annotation_table),
             "returned": len(returned_records),
             "coordinate_space": annotation_table.coordinate_space,
@@ -302,7 +308,7 @@ def create_app(
             "type_counts": context.summary.get("type_counts", {}),
             "warnings": warnings,
             "annotations": [record.to_dict() for record in returned_records],
-        }
+        })
 
     @app.get("/dzi.dzi")
     def dzi(slide_id: int = Query(0, ge=0)) -> Response:
@@ -314,15 +320,29 @@ def create_app(
             raise HTTPException(status_code=404, detail="Slide id must be non-negative")
         return _dzi_response(get_session(slide_id), tile_size)
 
+    @app.get("/slides/{slide_id}/{cache_key}/dzi.dzi")
+    def slide_dzi_with_cache_key(slide_id: int, cache_key: str) -> Response:
+        _validate_cache_key(cache_key, tile_cache_key)
+        if slide_id < 0:
+            raise HTTPException(status_code=404, detail="Slide id must be non-negative")
+        return _dzi_response(get_session(slide_id), tile_size)
+
     @app.get("/dzi_files/{level}/{col}_{row}.jpeg")
     def tile(level: int, col: int, row: int, slide_id: int = Query(0, ge=0)) -> Response:
-        return _tile_response(get_session(slide_id), level, col, row, tile_size, jpeg_quality)
+        return _tile_response(get_session(slide_id), level, col, row, tile_size, jpeg_quality, cacheable=False)
 
     @app.get("/slides/{slide_id}/dzi_files/{level}/{col}_{row}.jpeg")
     def slide_tile(slide_id: int, level: int, col: int, row: int) -> Response:
         if slide_id < 0:
             raise HTTPException(status_code=404, detail="Slide id must be non-negative")
-        return _tile_response(get_session(slide_id), level, col, row, tile_size, jpeg_quality)
+        return _tile_response(get_session(slide_id), level, col, row, tile_size, jpeg_quality, cacheable=False)
+
+    @app.get("/slides/{slide_id}/{cache_key}/dzi_files/{level}/{col}_{row}.jpeg")
+    def slide_tile_with_cache_key(slide_id: int, cache_key: str, level: int, col: int, row: int) -> Response:
+        _validate_cache_key(cache_key, tile_cache_key)
+        if slide_id < 0:
+            raise HTTPException(status_code=404, detail="Slide id must be non-negative")
+        return _tile_response(get_session(slide_id), level, col, row, tile_size, jpeg_quality, cacheable=True)
 
     return app
 
@@ -361,7 +381,11 @@ def _dzi_response(session: SlideSession, tile_size: int) -> Response:
   <Size Width="{session.width}" Height="{session.height}"/>
 </Image>
 """
-    return Response(content=xml, media_type="application/xml")
+    return Response(content=xml, media_type="application/xml", headers=NO_STORE_HEADERS)
+
+
+def _json_response(payload: dict[str, Any]) -> JSONResponse:
+    return JSONResponse(content=payload, headers=NO_STORE_HEADERS)
 
 
 def _tile_response(
@@ -371,6 +395,7 @@ def _tile_response(
     row: int,
     tile_size: int,
     jpeg_quality: int,
+    cacheable: bool,
 ) -> Response:
     if level < 0:
         raise HTTPException(status_code=404, detail="Tile level must be non-negative")
@@ -412,5 +437,10 @@ def _tile_response(
     return Response(
         content=buffer.getvalue(),
         media_type="image/jpeg",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers=CACHEABLE_TILE_HEADERS if cacheable else NO_STORE_HEADERS,
     )
+
+
+def _validate_cache_key(cache_key: str, expected: str) -> None:
+    if cache_key != expected:
+        raise HTTPException(status_code=404, detail="Tile cache key is no longer valid")
