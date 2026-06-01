@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.10`
+Current version: `0.2.11`
 
 ## Quick Demo
 
@@ -183,6 +183,9 @@ slidebridge render-view outputs\demo_slide.png `
   --window-width 1200 --window-height 900 `
   --out outputs\demo_view.png
 ```
+
+The viewer information panel can also copy a `render-view` command for the
+current viewport or download the current viewport as a PNG.
 
 ## Annotation Debugging
 
@@ -423,6 +426,16 @@ v0.2.9:
 - viewer-side score threshold and top-k patch filters
 - annotation label filters
 - click-to-inspect overlay details and zoom-to-item
+
+v0.2.10:
+
+- static viewport snapshots with `render-view`
+- viewport-level patch / heatmap / annotation overlay export
+
+v0.2.11:
+
+- copy current viewer viewport as a reproducible `render-view` command
+- download current viewer viewport as a PNG
 
 v0.3:
 

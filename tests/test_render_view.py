@@ -6,7 +6,7 @@ from PIL import Image
 from slidebridge.annotations.table import AnnotationRecord, AnnotationTable
 from slidebridge.overlays.patch_table import PatchRecord, PatchTable
 from slidebridge.readers.image_reader import ImageReader
-from slidebridge.render.view import render_view
+from slidebridge.render.view import render_view, render_view_to_image
 from slidebridge.utils.demo import create_demo_slide
 
 
@@ -80,6 +80,31 @@ def test_render_view_scale_controls_output_window(tmp_path):
     assert result["window_width"] == 200
     assert result["window_height"] == 100
     assert result["scale"] == 1.0
+
+
+def test_render_view_to_image_returns_image_and_summary(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=24)
+    slide = ImageReader().open(slide_path)
+
+    try:
+        image, result = render_view_to_image(
+            slide,
+            center_x=256,
+            center_y=192,
+            window_width=256,
+            window_height=192,
+            out_width=320,
+            out_height=240,
+        )
+    finally:
+        slide.close()
+
+    assert image.mode == "RGB"
+    assert image.size == (320, 240)
+    assert result["output_path"] is None
+    assert result["view_bbox"] == [128, 96, 384, 288]
+    assert result["window_width"] == 256
+    assert result["window_height"] == 192
 
 
 def test_render_view_rejects_scale_and_magnification_together(tmp_path):

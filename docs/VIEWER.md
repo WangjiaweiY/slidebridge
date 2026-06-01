@@ -103,6 +103,11 @@ All viewport coordinates are level-0 pixels. `--window-width` and
 debugging screenshots, and comparing model outputs without relying on browser
 state.
 
+The viewer's information panel shows the current level-0 center and window size.
+Use **Copy render-view command** to copy a reproducible CLI command for the
+current viewport, or **Download PNG** to export the current viewport directly
+from the running tile server.
+
 ## Annotation Overlay
 
 The viewer can display annotation files with patch and heatmap overlays:

@@ -54,6 +54,11 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "drawCanvasOverlays" in page.text
     assert "currentImageBounds(0.12)" in page.text
     assert "overlay-render-count" in page.text
+    assert "snapshotOptions" in page.text
+    assert "copy-render-command" in page.text
+    assert "download-render-view" in page.text
+    assert "buildRenderViewCommand" in page.text
+    assert "buildSnapshotDownloadUrl" in page.text
     cache_key = match.group(1)
     keyed_dzi = client.get(f"/slides/0/{cache_key}/dzi.dzi")
     assert keyed_dzi.status_code == 200
@@ -69,6 +74,40 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
 
     invalid = client.get("/dzi_files/99/0_0.jpeg")
     assert invalid.status_code == 404
+
+
+def test_server_render_view_endpoint_returns_png(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=13)
+    patches_path = tmp_path / "coords.csv"
+    patches_path.write_text(
+        "x,y,width,height,score\n200,150,64,64,0.8\n10,20,64,64,0.1\n",
+        encoding="utf-8",
+    )
+    app = create_app(slide_path, patches_path=patches_path, reader="image", tile_size=128)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/render-view",
+        params={
+            "center_x": 256,
+            "center_y": 192,
+            "window_width": 256,
+            "window_height": 192,
+            "out_width": 320,
+            "out_height": 240,
+            "score_threshold": 0.5,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "no-store"
+    assert "attachment" in response.headers["content-disposition"]
+    assert response.content.startswith(b"\x89PNG")
+    image_path = tmp_path / "snapshot.png"
+    image_path.write_bytes(response.content)
+    with Image.open(image_path) as image:
+        assert image.size == (320, 240)
 
 
 def test_server_tile_cache_records_hits_misses_and_evictions(tmp_path):
