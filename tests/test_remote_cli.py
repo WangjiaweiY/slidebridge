@@ -31,6 +31,7 @@ def test_remote_view_dry_run_prints_tunnel_and_remote_command():
     assert "--viewer-remote-user user" in result.stdout
     assert "--viewer-remote-host example.org" in result.stdout
     assert "--tile-cache-size 512" in result.stdout
+    assert "--tile-cache-mb 256" in result.stdout
     assert "--tile-workers 4" in result.stdout
 
 
@@ -42,6 +43,8 @@ def test_remote_view_dry_run_with_tile_performance_options():
             "user@example.org:/data/slides/demo.svs",
             "--tile-cache-size",
             "128",
+            "--tile-cache-mb",
+            "64",
             "--tile-workers",
             "2",
             "--dry-run",
@@ -51,6 +54,7 @@ def test_remote_view_dry_run_with_tile_performance_options():
     assert result.exit_code == 0
     output = " ".join(result.stdout.split())
     assert "--tile-cache-size 128" in output
+    assert "--tile-cache-mb 64" in output
     assert "--tile-workers 2" in output
 
 

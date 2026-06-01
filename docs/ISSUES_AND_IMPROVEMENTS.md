@@ -23,7 +23,7 @@ do not describe clinical diagnosis workflows.
 | OpenSeadragon asset loading | CDN loading can be slow or unavailable. | The first implementation depended on a public CDN. | A bundled local OpenSeadragon asset is used first, with CDN as fallback. | Keep bundled asset version documented and upgrade deliberately. |
 | Magnification controls | Users needed visible magnification state and direct magnification jumps. | OpenSeadragon default buttons only expose generic zoom. | A custom magnification panel shows equivalent magnification and supports 1x/2x/5x/10x/20x/40x/Fit controls. | Improve calibration when objective power or MPP is missing. |
 | Heatmap examples | Users may not have ready model attention files while testing the viewer. | Real model outputs vary by project and are often unavailable during UI testing. | Synthetic CSV/H5/NPY patch-score examples can be generated on a remote or local machine for visual debugging. Raster PNG/JPG heatmaps are also supported as full-slide overlays. | Add a first-class command for synthetic heatmap fixtures. |
-| Tile request pressure | Fast zooming and panning can send many tile requests and repeatedly read/encode the same regions. | OpenSeadragon requests visible tiles aggressively, and the server previously regenerated repeated tile URLs. | The viewer now has an in-memory LRU tile cache, `/api/cache-stats`, and a tile generation concurrency limit. | Add timing metrics for read/resize/JPEG encode and consider canvas overlay culling next. |
+| Tile request pressure | Fast zooming and panning can send many tile requests and repeatedly read/encode the same regions. | OpenSeadragon requests visible tiles aggressively, and the server previously regenerated repeated tile URLs. | The viewer now has an in-memory LRU tile cache, byte-aware cache limits, `/api/cache-stats`, `/api/performance`, and a tile generation concurrency limit. | Use the timing metrics to decide whether the next bottleneck is reading, resizing, JPEG encoding, network, or overlays. |
 | Local shell noise | Some PowerShell sessions may print stale conda initialization errors. | The user shell profile may reference an old conda installation. | Development commands use the known Python executable or environment-specific `slidebridge.exe` directly. | Document shell-profile cleanup in Windows troubleshooting. |
 
 ## Improvement Backlog
@@ -73,7 +73,7 @@ do not describe clinical diagnosis workflows.
 
 ### Tile Performance
 
-- Add metrics for tile render time, reader level selection, and JPEG encoding time.
+- Add timing metrics for reader level selection and downstream response transfer.
 - Consider a lower default JPEG quality only after measuring visual impact.
 - Keep correctness and predictable cache behavior ahead of aggressive caching.
 

@@ -84,6 +84,7 @@ generation concurrency:
 slidebridge remote-view user@server:/data/slides/case.svs `
   --remote-runner "conda run -n slidebridge slidebridge" `
   --tile-cache-size 512 `
+  --tile-cache-mb 256 `
   --tile-workers 4
 ```
 

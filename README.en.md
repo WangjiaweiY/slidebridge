@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.4`
+Current version: `0.2.5`
 
 ## Quick Demo
 
@@ -218,12 +218,13 @@ The viewer enables an in-process tile cache by default and limits concurrent
 tile generation to reduce server pressure during repeated zooming and panning:
 
 ```powershell
-slidebridge view outputs\demo_slide.png --tile-cache-size 512 --tile-workers 4
-slidebridge remote-view user@server:/data/slides/case.svs --tile-cache-size 512 --tile-workers 4
+slidebridge view outputs\demo_slide.png --tile-cache-size 512 --tile-cache-mb 256 --tile-workers 4
+slidebridge remote-view user@server:/data/slides/case.svs --tile-cache-size 512 --tile-cache-mb 256 --tile-workers 4
 ```
 
 Use `--tile-cache-size 0` to disable the server-side tile cache. The viewer info
-panel shows cache entries, hits, misses, and evictions.
+panel shows cache entries, memory use, hits, misses, evictions, generated tiles,
+cache-served tiles, and average/p95 tile generation time.
 
 ## Export Patches
 
@@ -352,6 +353,12 @@ v0.2.4:
 - in-memory LRU tile cache
 - tile generation concurrency limit
 - viewer cache stats diagnostics
+
+v0.2.5:
+
+- byte-aware tile cache limit with `--tile-cache-mb`
+- tile performance metrics through `/api/performance`
+- viewer timing diagnostics for read/resize/JPEG/total tile generation
 
 v0.3:
 

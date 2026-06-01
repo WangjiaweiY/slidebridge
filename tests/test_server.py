@@ -45,6 +45,7 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert match
     assert 'fetch(apiUrl("patches"), {cache: "no-store"})' in page.text
     assert "initialTileCacheStats" in page.text
+    assert "initialTilePerformanceStats" in page.text
     assert "imageLoaderLimit: 4" in page.text
     assert "maxImageCacheCount: 200" in page.text
     assert "blendTime: 0" in page.text
@@ -79,13 +80,22 @@ def test_server_tile_cache_records_hits_misses_and_evictions(tmp_path):
     assert initial.headers["cache-control"] == "no-store"
     assert initial.json()["enabled"] is True
     assert initial.json()["entries"] == 0
+    assert initial.json()["max_mb"] == 256
 
     first = client.get(f"/slides/0/{cache_key}/dzi_files/9/0_0.jpeg")
     assert first.status_code == 200
     after_first = client.get("/api/cache-stats").json()
     assert after_first["entries"] == 1
+    assert after_first["bytes"] > 0
+    assert after_first["mb"] >= 0
     assert after_first["misses"] == 1
     assert after_first["hits"] == 0
+    performance = client.get("/api/performance")
+    assert performance.status_code == 200
+    assert performance.headers["cache-control"] == "no-store"
+    performance_payload = performance.json()
+    assert performance_payload["tiles"]["generated_tiles"] == 1
+    assert performance_payload["tiles"]["total_tile_ms"]["avg"] is not None
 
     second = client.get(f"/slides/0/{cache_key}/dzi_files/9/0_0.jpeg")
     assert second.status_code == 200
@@ -93,6 +103,7 @@ def test_server_tile_cache_records_hits_misses_and_evictions(tmp_path):
     assert after_second["entries"] == 1
     assert after_second["misses"] == 1
     assert after_second["hits"] == 1
+    assert client.get("/api/performance").json()["tiles"]["cache_served_tiles"] == 1
 
     client.get(f"/slides/0/{cache_key}/dzi_files/9/1_0.jpeg")
     client.get(f"/slides/0/{cache_key}/dzi_files/9/2_0.jpeg")
@@ -155,6 +166,13 @@ def test_server_rejects_invalid_tile_config(tmp_path):
         assert "tile_cache_size" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected invalid tile_cache_size to raise")
+
+    try:
+        create_app(slide_path, reader="image", tile_cache_mb=-1)
+    except ValueError as exc:
+        assert "tile_cache_mb" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected invalid tile_cache_mb to raise")
 
     try:
         create_app(slide_path, reader="image", tile_workers=0)
