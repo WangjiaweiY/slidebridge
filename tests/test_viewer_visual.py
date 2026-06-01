@@ -38,9 +38,6 @@ def test_viewer_visual_smoke_and_sidebar_scroll(tmp_path):
             _wait_for_viewer_ready(page)
 
             assert page.locator("#viewer-error").is_hidden()
-            assert page.locator("#copy-viewer-url").is_visible()
-            assert page.locator("#copy-render-command").is_visible()
-            assert page.locator("#download-render-view").is_visible()
             assert page.locator(".zoom-control").is_visible()
 
             scrollable = page.eval_on_selector(
@@ -52,6 +49,11 @@ def test_viewer_visual_smoke_and_sidebar_scroll(tmp_path):
             page.mouse.wheel(0, 700)
             scrolled = page.eval_on_selector("#slide-list", "(el) => el.scrollTop")
             assert scrolled > 0
+
+            page.locator('[data-tab-target="info-tab"]').click()
+            assert page.locator("#copy-viewer-url").is_visible()
+            assert page.locator("#copy-render-command").is_visible()
+            assert page.locator("#download-render-view").is_visible()
 
             screenshot = page.locator("#viewer").screenshot()
             assert _image_has_slide_content(screenshot, tmp_path / "viewer.png")
