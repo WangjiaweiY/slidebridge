@@ -88,8 +88,9 @@ def test_remote_view_dry_run_with_overlays():
     )
 
     assert result.exit_code == 0
-    assert "--patches /data/features/coords.h5" in result.stdout
-    assert "--annotations /data/annotations/case.geojson" in result.stdout
+    output = " ".join(result.stdout.split())
+    assert "--patches /data/features/coords.h5" in output
+    assert "--annotations /data/annotations/case.geojson" in output
 
 
 def test_remote_view_dry_run_directory_mode():
