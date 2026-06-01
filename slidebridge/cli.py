@@ -46,6 +46,7 @@ from slidebridge.remote.spec import RemotePath, is_remote_spec, parse_remote_pat
 from slidebridge.remote.ssh import build_ssh_base_command, require_ssh_available
 from slidebridge.remote.tunnel import build_tunnel_command, is_local_port_available, wait_for_http
 from slidebridge.render.overlay import render_overlay
+from slidebridge.render.view import render_view as render_view_image
 from slidebridge.server.app import create_app
 from slidebridge.utils.demo import create_demo_heatmap, create_demo_slide
 from slidebridge.utils.image import ensure_rgb, image_to_base64_jpeg
@@ -1071,6 +1072,94 @@ def render_overlay_command(
             raster_heatmap_invert=raster_heatmap_invert,
             raster_heatmap_colormap=raster_heatmap_colormap,
             image_format=image_format,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    except Exception as exc:
+        _fail(exc)
+    finally:
+        if slide is not None:
+            slide.close()
+
+
+@app.command("render-view")
+def render_view_command(
+    slide_path: Path = typer.Argument(..., help="Path to a WSI or image."),
+    out: Path = typer.Option(..., "--out", help="Output PNG/JPG path."),
+    center_x: Optional[float] = typer.Option(None, "--center-x", help="Level-0 x coordinate at viewport center."),
+    center_y: Optional[float] = typer.Option(None, "--center-y", help="Level-0 y coordinate at viewport center."),
+    window_width: int = typer.Option(4096, "--window-width", help="Level-0 viewport width in pixels."),
+    window_height: int = typer.Option(3072, "--window-height", help="Level-0 viewport height in pixels."),
+    out_width: int = typer.Option(1600, "--out-width", help="Rendered output width in pixels."),
+    out_height: Optional[int] = typer.Option(None, "--out-height", help="Rendered output height in pixels. Defaults from viewport aspect."),
+    scale: Optional[float] = typer.Option(None, "--scale", help="Output pixels per level-0 slide pixel."),
+    magnification: Optional[float] = typer.Option(None, "--magnification", help="Equivalent magnification if objective metadata is available."),
+    patches: Optional[Path] = typer.Option(None, "--patches", help="Patch coordinate file."),
+    heatmap: Optional[Path] = typer.Option(None, "--heatmap", help="Optional score/attention file or PNG/JPG heatmap."),
+    raster_heatmap: Optional[Path] = typer.Option(None, "--raster-heatmap", help="Optional PNG/JPG heatmap covering the full slide."),
+    annotations: Optional[Path] = typer.Option(None, "--annotations", help="Optional annotation file."),
+    annotation_format: Optional[str] = typer.Option(None, "--annotation-format", help="Annotation format override."),
+    annotation_labels: Optional[str] = typer.Option(None, "--annotation-labels", help="Comma-separated annotation label filter."),
+    default_patch_size: int = typer.Option(256, "--default-patch-size", help="Default patch size."),
+    reader: Optional[str] = typer.Option(None, "--reader", help="Specify a reader by name."),
+    opacity: float = typer.Option(0.45, "--opacity", min=0.0, max=1.0, help="Patch/heatmap opacity."),
+    score_normalization: str = typer.Option("minmax", "--score-normalization", help="minmax, percentile, or none."),
+    show_labels: bool = typer.Option(False, "--show-labels/--no-labels", help="Draw patch labels or indices."),
+    annotation_opacity: float = typer.Option(0.35, "--annotation-opacity", min=0.0, max=1.0, help="Annotation opacity."),
+    draw_annotation_labels: bool = typer.Option(False, "--draw-annotation-labels/--no-draw-annotation-labels", help="Draw annotation labels."),
+    max_raster_heatmap_size: int = typer.Option(4096, "--max-raster-heatmap-size", help="Maximum raster heatmap side used during rendering."),
+    raster_heatmap_threshold: Optional[float] = typer.Option(None, "--raster-heatmap-threshold", min=0.0, max=1.0, help="Hide raster heatmap pixels below this normalized value."),
+    raster_heatmap_invert: bool = typer.Option(False, "--raster-heatmap-invert/--no-raster-heatmap-invert", help="Invert raster heatmap intensity before rendering."),
+    raster_heatmap_colormap: str = typer.Option("auto", "--raster-heatmap-colormap", help="Raster heatmap colormap: auto, score, grayscale, or none."),
+    image_format: Optional[str] = typer.Option(None, "--format", help="Output format: png or jpg. Defaults to output suffix."),
+    jpeg_quality: int = typer.Option(90, "--jpeg-quality", min=1, max=100, help="JPEG output quality."),
+) -> None:
+    """Render a static viewport snapshot with optional overlays."""
+
+    slide = None
+    try:
+        if score_normalization not in {"minmax", "percentile", "none"}:
+            raise ValueError("--score-normalization must be one of: minmax, percentile, none")
+        patch_score_heatmap, full_slide_heatmap = _resolve_heatmap_paths(heatmap, raster_heatmap)
+        if patch_score_heatmap is not None and patches is None:
+            raise ValueError("--heatmap score files require --patches")
+        slide = open_slide(slide_path, reader=reader)
+        patch_table = None
+        if patches is not None:
+            patch_table = load_patch_table(patches, default_patch_size=default_patch_size, score_path=patch_score_heatmap)
+            patch_table = patch_table.validate(slide.dimensions[0], slide.dimensions[1], mode="clip")
+            if score_normalization != "none":
+                patch_table = patch_table.normalize_scores(score_normalization)  # type: ignore[arg-type]
+        annotation_table = None
+        if annotations is not None:
+            annotation_table = load_annotation_table(annotations, format=annotation_format).compute_bboxes().normalize_colors()
+            if annotation_labels:
+                annotation_table = annotation_table.filter_labels(_split_labels(annotation_labels))
+            annotation_table = annotation_table.validate(slide.dimensions[0], slide.dimensions[1], mode="warn")
+        result = render_view_image(
+            slide,
+            out,
+            patch_table=patch_table,
+            annotation_table=annotation_table,
+            center_x=center_x,
+            center_y=center_y,
+            window_width=window_width,
+            window_height=window_height,
+            out_width=out_width,
+            out_height=out_height,
+            scale=scale,
+            magnification=magnification,
+            opacity=opacity,
+            show_labels=show_labels,
+            annotation_opacity=annotation_opacity,
+            draw_annotation_labels=draw_annotation_labels,
+            raster_heatmap_path=full_slide_heatmap,
+            raster_heatmap_opacity=opacity,
+            max_raster_heatmap_size=max_raster_heatmap_size,
+            raster_heatmap_threshold=raster_heatmap_threshold,
+            raster_heatmap_invert=raster_heatmap_invert,
+            raster_heatmap_colormap=raster_heatmap_colormap,
+            image_format=image_format,
+            jpeg_quality=jpeg_quality,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except Exception as exc:
