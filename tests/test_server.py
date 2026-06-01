@@ -230,6 +230,13 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     assert "zoom-control" in page.text
     assert "equiv. magnification" in page.text
     assert "zoomToImageScale" in page.text
+    assert "score-threshold-slider" in page.text
+    assert "top-k-input" in page.text
+    assert "annotation-label-filter" in page.text
+    assert "overlay-detail" in page.text
+    assert "filteredPatches" in page.text
+    assert "filteredAnnotations" in page.text
+    assert "zoomToBbox" in page.text
     assert "data-i18n=\"slideMetadata\"" in page.text
     assert "flex-direction: column" in page.text
     assert "overflow-y: auto" in page.text

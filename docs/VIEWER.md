@@ -47,6 +47,9 @@ The viewer includes:
 - patch count
 - hover text with index, coordinates, size, and score
 - canvas draw count
+- score threshold filtering
+- top-k patch filtering
+- click-to-inspect patch details and zoom-to-item
 
 For large overlays, the server can limit returned patches with
 `--max-overlay-patches`, and the browser displays a performance warning.
@@ -84,6 +87,10 @@ The viewer can display annotation files with patch and heatmap overlays:
 ```powershell
 slidebridge view C:\path\to\your\slide.svs --patches outputs\coords.csv --annotations outputs\annotations.geojson --port 7860 --open-browser
 ```
+
+The overlay panel can filter annotations by label. Label filters are applied in
+the browser to the records already returned by `/api/annotations`; they do not
+modify annotation files and are only for research/debugging inspection.
 
 Annotation overlays use level-0 image coordinates and support:
 

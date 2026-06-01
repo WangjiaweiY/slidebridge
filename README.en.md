@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.8`
+Current version: `0.2.9`
 
 ## Quick Demo
 
@@ -400,6 +400,12 @@ v0.2.8:
 - heatmap inspection command
 - raster heatmap threshold / invert / colormap controls
 - slide-aspect synthetic heatmap generation
+
+v0.2.9:
+
+- viewer-side score threshold and top-k patch filters
+- annotation label filters
+- click-to-inspect overlay details and zoom-to-item
 
 v0.3:
 

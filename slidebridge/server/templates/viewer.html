@@ -330,6 +330,65 @@
     .control-label span {
       color: var(--muted);
     }
+    .control-value {
+      color: #23313b;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .inline-input {
+      width: 92px;
+      height: 28px;
+      padding: 4px 7px;
+      border: 1px solid #cbd5df;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      font-size: 12px;
+    }
+    .control-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .small-button {
+      height: 28px;
+      padding: 0 9px;
+      border: 1px solid #cbd5df;
+      border-radius: 6px;
+      background: #fff;
+      color: #31414c;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .small-button:hover {
+      border-color: var(--accent);
+      background: #eef8fa;
+    }
+    .label-filter {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .label-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      max-width: 100%;
+      padding: 5px 7px;
+      border: 1px solid #cbd5df;
+      border-radius: 999px;
+      background: #fff;
+      color: #263540;
+      font-size: 12px;
+    }
+    .label-chip span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     input[type="range"] {
       width: 100%;
     }
@@ -366,6 +425,27 @@
       color: var(--warning);
       font-size: 13px;
       line-height: 1.35;
+    }
+    .overlay-detail {
+      min-height: 64px;
+      padding: 8px 9px;
+      border: 1px solid #d6e0e8;
+      border-radius: 6px;
+      background: #f6f9fb;
+      color: #253440;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: pre-line;
+      overflow-wrap: anywhere;
+    }
+    .overlay-detail[data-empty="true"] {
+      color: var(--muted);
+    }
+    .overlay-detail-title {
+      display: block;
+      margin-bottom: 5px;
+      color: #173d49;
+      font-weight: 700;
     }
     .footer {
       padding: 10px 16px;
@@ -699,12 +779,44 @@
                 <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}">
                 <div class="legend" id="score-legend" hidden><span data-i18n="low">low</span><span class="legend-bar"></span><span data-i18n="high">high</span></div>
               </div>
+              <div class="control-row" id="score-threshold-row">
+                <label class="control-label">
+                  <span data-i18n="scoreThreshold">score threshold</span>
+                  <output id="score-threshold-value" class="control-value">0.00</output>
+                </label>
+                <input id="score-threshold-slider" type="range" min="0" max="1" step="0.01" value="0">
+              </div>
+              <div class="control-row">
+                <label class="control-label" for="top-k-input">
+                  <span data-i18n="topK">top-k patches</span>
+                  <input id="top-k-input" class="inline-input" type="number" min="0" step="1" placeholder="all">
+                </label>
+                <div class="control-actions">
+                  <button id="clear-overlay-filters" class="small-button" type="button" data-i18n="clearFilters">Clear filters</button>
+                </div>
+              </div>
               <div class="control-row">
                 <label class="control-label">
                   <span data-i18n="annotationOverlay">annotation overlay for research/debugging</span>
                   <input id="annotation-toggle" type="checkbox" checked>
                 </label>
                 <input id="annotation-opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ annotation_opacity }}">
+              </div>
+              <div class="control-row">
+                <label class="control-label">
+                  <span data-i18n="annotationLabels">annotation labels</span>
+                </label>
+                <div class="control-actions">
+                  <button id="select-all-labels" class="small-button" type="button" data-i18n="allLabels">All</button>
+                  <button id="select-no-labels" class="small-button" type="button" data-i18n="noLabels">None</button>
+                </div>
+                <div id="annotation-label-filter" class="label-filter"></div>
+              </div>
+              <div class="control-row">
+                <label class="control-label">
+                  <span data-i18n="overlayDetails">overlay details</span>
+                </label>
+                <div id="overlay-detail" class="overlay-detail" data-empty="true" data-i18n="selectOverlayItem">Click a patch or annotation in the viewer.</div>
               </div>
             </div>
           </section>
@@ -779,6 +891,16 @@
         modelOverlay: "model/debug overlay",
         rasterHeatmap: "raster heatmap",
         annotationOverlay: "annotation overlay for research/debugging",
+        scoreThreshold: "score threshold",
+        topK: "top-k patches",
+        clearFilters: "Clear filters",
+        annotationLabels: "annotation labels",
+        allLabels: "All",
+        noLabels: "None",
+        overlayDetails: "overlay details",
+        selectOverlayItem: "Click a patch or annotation in the viewer.",
+        filtered: "filtered",
+        selected: "selected",
         low: "low",
         high: "high",
         patches: "patches",
@@ -979,6 +1101,8 @@
       const overlayTooltip = document.getElementById("overlay-tooltip");
       let overlayHitItems = [];
       let overlayRedrawPending = false;
+      let selectedAnnotationLabels = new Set();
+      let annotationFilterSignature = "";
       setupTabs(function () {
         refreshViewerLayout(false);
       });
@@ -1043,6 +1167,7 @@
         annotationPayload = null;
         rasterHeatmapPayload = null;
         clearOverlays();
+        clearOverlayDetail();
         setActiveSlideButton();
         document.getElementById("dynamic-warnings").innerHTML = "";
         viewer.open(`/slides/${selectedSlideId}/${tileCacheKey}/dzi.dzi`);
@@ -1372,6 +1497,7 @@
       }
 
       function updatePatchHeader(payload) {
+        updateScoreFilterControls();
         document.getElementById("patch-count").textContent = patchCountLabel(payload);
         updateScoreLegendVisibility();
         appendWarnings(payload.warnings || []);
@@ -1391,6 +1517,7 @@
       }
 
       function updateAnnotationHeader(payload) {
+        updateAnnotationLabelFilter(payload);
         document.getElementById("annotation-count").textContent = annotationCountLabel(payload);
         appendWarnings(payload.warnings || []);
       }
@@ -1402,6 +1529,10 @@
       }
 
       function patchCountLabel(payload) {
+        const filteredCount = filteredPatches((payload && payload.patches) || []).length;
+        if (payload && payload.returned !== undefined && filteredCount !== Number(payload.returned || 0)) {
+          return `${filteredCount} ${t("shown")} / ${payload.returned} ${t("patches")} (${t("filtered")})`;
+        }
         return payload.count > payload.returned
           ? `${payload.count} ${t("patches")} (${payload.returned} ${t("shown")})`
           : `${payload.count} ${t("patches")}`;
@@ -1409,9 +1540,135 @@
 
       function annotationCountLabel(payload) {
         const labels = payload.labels && payload.labels.length ? ` (${payload.labels.join(", ")})` : "";
+        const filteredCount = filteredAnnotations((payload && payload.annotations) || []).length;
+        if (payload && payload.returned !== undefined && filteredCount !== Number(payload.returned || 0)) {
+          return `${filteredCount} ${t("shown")} / ${payload.returned} ${t("annotations")} (${t("filtered")})`;
+        }
         return payload.count > payload.returned
           ? `${payload.count} ${t("annotations")} (${payload.returned} ${t("shown")})${labels}`
           : `${payload.count} ${t("annotations")}${labels}`;
+      }
+
+      function updateScoreFilterControls() {
+        const hasScores = Boolean(patchPayload && patchPayload.has_scores);
+        const row = document.getElementById("score-threshold-row");
+        const slider = document.getElementById("score-threshold-slider");
+        if (row) {
+          row.hidden = !hasScores;
+        }
+        if (slider) {
+          slider.disabled = !hasScores;
+        }
+        updateScoreThresholdValue();
+      }
+
+      function updateScoreThresholdValue() {
+        const slider = document.getElementById("score-threshold-slider");
+        const value = document.getElementById("score-threshold-value");
+        if (slider && value) {
+          value.textContent = Number(slider.value || 0).toFixed(2);
+        }
+      }
+
+      function scoreThreshold() {
+        const slider = document.getElementById("score-threshold-slider");
+        return slider ? Math.max(0, Math.min(1, Number(slider.value || 0))) : 0;
+      }
+
+      function topKValue() {
+        const input = document.getElementById("top-k-input");
+        const value = input ? Number(input.value) : 0;
+        return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+      }
+
+      function filteredPatches(patches) {
+        const rows = Array.isArray(patches) ? patches.slice() : [];
+        const hasScores = Boolean(patchPayload && patchPayload.has_scores);
+        let filtered = rows;
+        if (hasScores) {
+          const minScore = scoreThreshold();
+          filtered = rows.filter(function (patch) {
+            const score = Number(patch.score);
+            return Number.isFinite(score) && score >= minScore;
+          });
+          filtered.sort((a, b) => Number(b.score) - Number(a.score));
+        }
+        const topK = topKValue();
+        if (topK > 0) {
+          filtered = filtered.slice(0, topK);
+        }
+        return filtered;
+      }
+
+      function updateAnnotationLabelFilter(payload) {
+        const container = document.getElementById("annotation-label-filter");
+        if (!container) {
+          return;
+        }
+        const annotations = (payload && payload.annotations) || [];
+        const counts = new Map();
+        annotations.forEach(function (annotation) {
+          const label = String(annotation.label || "unlabeled");
+          counts.set(label, (counts.get(label) || 0) + 1);
+        });
+        const labels = Array.from(counts.keys()).sort();
+        const signature = labels.join("\u001f");
+        if (signature !== annotationFilterSignature) {
+          annotationFilterSignature = signature;
+          selectedAnnotationLabels = new Set(labels);
+        }
+        container.innerHTML = "";
+        if (!labels.length) {
+          container.textContent = t("none");
+          return;
+        }
+        labels.forEach(function (label) {
+          const chip = document.createElement("label");
+          chip.className = "label-chip";
+          chip.title = `${label} (${counts.get(label) || 0})`;
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = selectedAnnotationLabels.has(label);
+          checkbox.addEventListener("change", function () {
+            if (checkbox.checked) {
+              selectedAnnotationLabels.add(label);
+            } else {
+              selectedAnnotationLabels.delete(label);
+            }
+            document.getElementById("annotation-count").textContent = annotationCountLabel(annotationPayload);
+            scheduleCanvasOverlayRedraw();
+          });
+          const text = document.createElement("span");
+          text.textContent = `${label} (${counts.get(label) || 0})`;
+          chip.appendChild(checkbox);
+          chip.appendChild(text);
+          container.appendChild(chip);
+        });
+      }
+
+      function filteredAnnotations(annotations) {
+        const rows = Array.isArray(annotations) ? annotations : [];
+        if (!rows.length) {
+          return rows;
+        }
+        const labels = new Set(rows.map((annotation) => String(annotation.label || "unlabeled")));
+        if (!labels.size) {
+          return rows;
+        }
+        if (!selectedAnnotationLabels.size) {
+          return [];
+        }
+        return rows.filter((annotation) => selectedAnnotationLabels.has(String(annotation.label || "unlabeled")));
+      }
+
+      function refreshOverlayCountsAndCanvas() {
+        if (patchPayload) {
+          document.getElementById("patch-count").textContent = patchCountLabel(patchPayload);
+        }
+        if (annotationPayload) {
+          document.getElementById("annotation-count").textContent = annotationCountLabel(annotationPayload);
+        }
+        scheduleCanvasOverlayRedraw();
       }
 
       function rasterHeatmapLabel(payload) {
@@ -1524,12 +1781,12 @@
         let drawn = 0;
         let total = 0;
         if (patchPayload && document.getElementById("overlay-toggle").checked) {
-          const patches = patchPayload.patches || [];
+          const patches = filteredPatches(patchPayload.patches || []);
           total += patches.length;
           drawn += drawPatchCanvasOverlays(patches, viewBounds);
         }
         if (annotationPayload && document.getElementById("annotation-toggle").checked) {
-          const annotations = annotationPayload.annotations || [];
+          const annotations = filteredAnnotations(annotationPayload.annotations || []);
           total += annotations.length;
           drawn += drawAnnotationCanvasOverlays(annotations, viewBounds);
         }
@@ -1563,7 +1820,7 @@
             overlayContext.strokeRect(rect.x, rect.y, rect.width, rect.height);
           }
           overlayContext.restore();
-          overlayHitItems.push({screen: rect, title: patchTitle(patch, score)});
+          overlayHitItems.push({screen: rect, title: patchTitle(patch, score), kind: "patch", data: patch, bbox});
           drawn += 1;
         });
         return drawn;
@@ -1590,7 +1847,7 @@
           }
           const rect = annotationScreenHitRect(annotation, bbox);
           if (rect) {
-            overlayHitItems.push({screen: rect, title: annotationTitle(annotation)});
+            overlayHitItems.push({screen: rect, title: annotationTitle(annotation), kind: "annotation", data: annotation, bbox});
           }
           drawn += 1;
         });
@@ -1802,6 +2059,20 @@
           overlayTooltip.style.top = `${Math.min(y + 14, rect.height - 24)}px`;
           overlayTooltip.style.display = "block";
         });
+        container.addEventListener("click", function (event) {
+          if (event.target && event.target.closest && event.target.closest(".zoom-control")) {
+            return;
+          }
+          const rect = container.getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          const y = event.clientY - rect.top;
+          const item = hitCanvasOverlay(x, y);
+          if (item) {
+            setOverlayDetail(item);
+          } else {
+            clearOverlayDetail();
+          }
+        });
         container.addEventListener("mouseleave", hideOverlayTooltip);
       }
 
@@ -1817,6 +2088,59 @@
 
       function hideOverlayTooltip() {
         overlayTooltip.style.display = "none";
+      }
+
+      function setOverlayDetail(item) {
+        const detail = document.getElementById("overlay-detail");
+        if (!detail || !item) {
+          return;
+        }
+        detail.dataset.empty = "false";
+        detail.innerHTML = "";
+        const title = document.createElement("span");
+        title.className = "overlay-detail-title";
+        title.textContent = item.kind === "annotation" ? "annotation" : "patch";
+        const body = document.createElement("div");
+        body.textContent = item.title;
+        const actions = document.createElement("div");
+        actions.className = "control-actions";
+        actions.style.marginTop = "8px";
+        const zoomButton = document.createElement("button");
+        zoomButton.className = "small-button";
+        zoomButton.type = "button";
+        zoomButton.textContent = "Zoom to item";
+        zoomButton.addEventListener("click", function () {
+          zoomToBbox(item.bbox);
+        });
+        actions.appendChild(zoomButton);
+        detail.appendChild(title);
+        detail.appendChild(body);
+        if (item.bbox) {
+          detail.appendChild(actions);
+        }
+      }
+
+      function clearOverlayDetail() {
+        const detail = document.getElementById("overlay-detail");
+        if (!detail) {
+          return;
+        }
+        detail.dataset.empty = "true";
+        detail.textContent = t("selectOverlayItem");
+      }
+
+      function zoomToBbox(bbox) {
+        if (!bbox || bbox.length < 4 || !viewer || !viewer.viewport) {
+          return;
+        }
+        const x = Number(bbox[0]);
+        const y = Number(bbox[1]);
+        const width = Math.max(1, Number(bbox[2]) - x);
+        const height = Math.max(1, Number(bbox[3]) - y);
+        const padX = width * 0.25;
+        const padY = height * 0.25;
+        const rect = viewer.viewport.imageToViewportRectangle(x - padX, y - padY, width + padX * 2, height + padY * 2);
+        viewer.viewport.fitBounds(rect, false);
       }
 
       function patchTitle(patch, score) {
@@ -1988,6 +2312,34 @@
 
       document.getElementById("overlay-toggle").addEventListener("change", updatePatchOverlayStyle);
       document.getElementById("opacity-slider").addEventListener("input", updatePatchOverlayStyle);
+      document.getElementById("score-threshold-slider").addEventListener("input", function () {
+        updateScoreThresholdValue();
+        refreshOverlayCountsAndCanvas();
+      });
+      document.getElementById("top-k-input").addEventListener("input", refreshOverlayCountsAndCanvas);
+      document.getElementById("clear-overlay-filters").addEventListener("click", function () {
+        document.getElementById("score-threshold-slider").value = "0";
+        document.getElementById("top-k-input").value = "";
+        updateScoreThresholdValue();
+        if (annotationPayload) {
+          selectedAnnotationLabels = new Set((annotationPayload.annotations || []).map((annotation) => String(annotation.label || "unlabeled")));
+          updateAnnotationLabelFilter(annotationPayload);
+        }
+        refreshOverlayCountsAndCanvas();
+      });
+      document.getElementById("select-all-labels").addEventListener("click", function () {
+        if (!annotationPayload) {
+          return;
+        }
+        selectedAnnotationLabels = new Set((annotationPayload.annotations || []).map((annotation) => String(annotation.label || "unlabeled")));
+        updateAnnotationLabelFilter(annotationPayload);
+        refreshOverlayCountsAndCanvas();
+      });
+      document.getElementById("select-no-labels").addEventListener("click", function () {
+        selectedAnnotationLabels = new Set();
+        updateAnnotationLabelFilter(annotationPayload);
+        refreshOverlayCountsAndCanvas();
+      });
       document.getElementById("annotation-toggle").addEventListener("change", updateAnnotationOverlayStyle);
       document.getElementById("annotation-opacity-slider").addEventListener("input", updateAnnotationOverlayStyle);
     }
