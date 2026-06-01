@@ -32,6 +32,15 @@ from slidebridge.qc.report import generate_html_report, generate_json_report
 from slidebridge.qc.tissue import estimate_tissue_percent
 from slidebridge.remote.commands import build_find_command, build_remote_slidebridge_command, quote_remote_arg
 from slidebridge.remote.diagnostics import REMOTE_INSTALL_HINT, RemoteCommandResult, run_ssh_command
+from slidebridge.remote.profiles import (
+    RemoteProfile,
+    delete_profile,
+    get_profile,
+    load_profiles,
+    profile_config_path,
+    resolve_profile_target,
+    upsert_profile,
+)
 from slidebridge.remote.spec import RemotePath, is_remote_spec, parse_remote_path
 from slidebridge.remote.ssh import build_ssh_base_command, require_ssh_available
 from slidebridge.remote.tunnel import build_tunnel_command, is_local_port_available, wait_for_http
@@ -42,6 +51,8 @@ from slidebridge.utils.image import ensure_rgb, image_to_base64_jpeg
 from slidebridge.utils.paths import ensure_parent, iter_slide_paths
 
 app = typer.Typer(no_args_is_help=True, help="SlideBridge Core WSI inspection tools.")
+remote_profile_app = typer.Typer(no_args_is_help=True, help="Manage reusable remote SSH profiles.")
+app.add_typer(remote_profile_app, name="remote-profile")
 console = Console()
 
 
@@ -534,13 +545,124 @@ def label_patches_command(
             slide.close()
 
 
+@remote_profile_app.command("path")
+def remote_profile_path() -> None:
+    """Show where local remote profiles are stored."""
+
+    console.print(str(profile_config_path()))
+
+
+@remote_profile_app.command("list")
+def remote_profile_list(json_output: bool = typer.Option(False, "--json", help="Output JSON.")) -> None:
+    """List saved remote SSH profiles."""
+
+    try:
+        profiles = load_profiles()
+        if json_output:
+            print(json.dumps({"path": str(profile_config_path()), "profiles": [item.to_dict() for item in profiles.values()]}, ensure_ascii=False, indent=2))
+            return
+        table = Table(title="Remote Profiles")
+        table.add_column("name")
+        table.add_column("target")
+        table.add_column("root")
+        table.add_column("runner")
+        table.add_column("ports")
+        for profile in sorted(profiles.values(), key=lambda item: item.name):
+            table.add_row(
+                profile.name,
+                f"{profile.target}:{profile.ssh_port or '22'}",
+                profile.root or "",
+                profile.remote_runner,
+                f"local {profile.local_port} -> remote {profile.remote_port}",
+            )
+        console.print(table)
+        console.print(f"Config: {profile_config_path()}")
+    except Exception as exc:
+        _fail(exc)
+
+
+@remote_profile_app.command("show")
+def remote_profile_show(
+    name: str = typer.Argument(..., help="Profile name."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+) -> None:
+    """Show one saved remote SSH profile."""
+
+    try:
+        profile = get_profile(name)
+        payload = profile.to_dict()
+        if json_output:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return
+        table = Table(title=f"Remote Profile: {profile.name}")
+        table.add_column("field")
+        table.add_column("value")
+        for key, value in payload.items():
+            table.add_row(key, ", ".join(value) if isinstance(value, list) else str(value or ""))
+        console.print(table)
+    except Exception as exc:
+        _fail(exc)
+
+
+@remote_profile_app.command("add")
+def remote_profile_add(
+    name: str = typer.Argument(..., help="Profile name, e.g. lab or moonlab."),
+    host: str = typer.Option(..., "--host", help="SSH host."),
+    user: Optional[str] = typer.Option(None, "--user", help="SSH username."),
+    ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
+    identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
+    ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option. May be repeated."),
+    remote_runner: str = typer.Option("slidebridge", "--remote-runner", help="Remote SlideBridge command."),
+    remote_workdir: Optional[str] = typer.Option(None, "--remote-workdir", help="Optional remote working directory."),
+    root: Optional[str] = typer.Option(None, "--root", help="Optional default server-side slide root."),
+    local_host: str = typer.Option("127.0.0.1", "--local-host", help="Default local tunnel bind host."),
+    local_port: int = typer.Option(7860, "--local-port", help="Default local tunnel port."),
+    remote_host: str = typer.Option("127.0.0.1", "--remote-host", help="Default remote viewer bind host."),
+    remote_port: int = typer.Option(7860, "--remote-port", help="Default remote viewer port."),
+) -> None:
+    """Create or update a reusable remote SSH profile on this local machine."""
+
+    try:
+        profile = RemoteProfile(
+            name=name,
+            host=host,
+            user=user,
+            ssh_port=ssh_port,
+            identity_file=str(identity_file) if identity_file else None,
+            ssh_options=list(ssh_option),
+            remote_runner=remote_runner,
+            remote_workdir=remote_workdir,
+            root=root,
+            local_host=local_host,
+            local_port=local_port,
+            remote_host=remote_host,
+            remote_port=remote_port,
+        )
+        path = upsert_profile(profile)
+        console.print(f"Saved remote profile '{profile.name}' to {path}")
+    except Exception as exc:
+        _fail(exc)
+
+
+@remote_profile_app.command("remove")
+def remote_profile_remove(name: str = typer.Argument(..., help="Profile name.")) -> None:
+    """Remove a saved remote SSH profile."""
+
+    try:
+        path = delete_profile(name)
+        console.print(f"Removed remote profile '{name}' from {path}")
+    except Exception as exc:
+        _fail(exc)
+
+
 @app.command("remote-check")
 def remote_check(
     remote: str = typer.Argument(..., help="Remote host, user@host, or user@host:/server/path. Server-side paths are not uploaded."),
+    profile: Optional[str] = typer.Option(None, "--profile", help="Saved remote profile name."),
     ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
     identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
     ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option, e.g. '-J bastion'. May be repeated."),
-    remote_runner: str = typer.Option("slidebridge", "--remote-runner", help="Remote SlideBridge command."),
+    remote_runner: Optional[str] = typer.Option(None, "--remote-runner", help="Remote SlideBridge command. Defaults to profile or slidebridge."),
     remote_workdir: Optional[str] = typer.Option(None, "--remote-workdir", help="Optional remote working directory."),
     slide: Optional[str] = typer.Option(None, "--slide", help="Optional remote slide path when REMOTE has no path."),
     json_output: bool = typer.Option(False, "--json", help="Output JSON summary."),
@@ -549,7 +671,12 @@ def remote_check(
     """Check remote SSH access, SlideBridge availability, readers, and optional slide inspection."""
 
     try:
-        remote_path, slide_path = _remote_from_target(remote, slide=slide, ssh_port=ssh_port)
+        remote_path, slide_path, active_profile = _remote_from_target(remote, slide=slide, ssh_port=ssh_port, profile_name=profile)
+        effective_ssh_port = _profile_ssh_port(active_profile, ssh_port)
+        effective_identity = _profile_identity_file(active_profile, identity_file)
+        effective_ssh_options = _profile_ssh_options(active_profile, ssh_option)
+        effective_runner = _profile_runner(active_profile, remote_runner)
+        effective_workdir = _profile_workdir(active_profile, remote_workdir)
         checks = [
             ("version", ["version"]),
             ("env", ["env"]),
@@ -560,12 +687,12 @@ def remote_check(
         commands = [
             (
                 name,
-                build_remote_slidebridge_command(remote_runner, args, remote_workdir=remote_workdir),
+                build_remote_slidebridge_command(effective_runner, args, remote_workdir=effective_workdir),
             )
             for name, args in checks
         ]
         ssh_commands = [
-            (name, _ssh_command_for_remote(remote_path, command, ssh_port, identity_file, ssh_option))
+            (name, _ssh_command_for_remote(remote_path, command, effective_ssh_port, effective_identity, effective_ssh_options))
             for name, command in commands
         ]
         if dry_run:
@@ -582,7 +709,7 @@ def remote_check(
         if any(result["returncode"] != 0 for result in results) and not json_output:
             console.print(f"[yellow]{REMOTE_INSTALL_HINT}[/yellow]")
         if json_output:
-            print(json.dumps({"target": remote_path.target, "slide": slide_path, "results": results}, ensure_ascii=False, indent=2))
+            print(json.dumps({"target": remote_path.target, "profile": active_profile.name if active_profile else None, "slide": slide_path, "results": results}, ensure_ascii=False, indent=2))
     except Exception as exc:
         _fail(exc)
 
@@ -590,6 +717,7 @@ def remote_check(
 @app.command("remote-ls")
 def remote_ls(
     remote_dir: str = typer.Argument(..., help="Remote directory as user@host:/server/path or host:/server/path. No files are downloaded."),
+    profile: Optional[str] = typer.Option(None, "--profile", help="Saved remote profile name."),
     ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
     identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
     ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option, e.g. '-J bastion'. May be repeated."),
@@ -603,11 +731,15 @@ def remote_ls(
     """List likely slide files on a remote Linux/POSIX server without reading them."""
 
     try:
-        remote_path = parse_remote_path(remote_dir)
-        remote_path = RemotePath(remote_path.user, remote_path.host, remote_path.path, ssh_port)
+        remote_path, active_profile = _resolve_remote_path_argument(remote_dir, profile_name=profile)
+        effective_ssh_port = _profile_ssh_port(active_profile, ssh_port)
+        effective_identity = _profile_identity_file(active_profile, identity_file)
+        effective_ssh_options = _profile_ssh_options(active_profile, ssh_option)
+        effective_workdir = _profile_workdir(active_profile, remote_workdir)
+        remote_path = RemotePath(remote_path.user, remote_path.host, remote_path.path, effective_ssh_port)
         find_command = build_find_command(remote_path.path, _split_csv(patterns), max_depth=max_depth, limit=limit)
-        remote_command = f"cd {quote_remote_arg(remote_workdir)} && {find_command}" if remote_workdir else find_command
-        ssh_command = _ssh_command_for_remote(remote_path, remote_command, ssh_port, identity_file, ssh_option)
+        remote_command = f"cd {quote_remote_arg(effective_workdir)} && {find_command}" if effective_workdir else find_command
+        ssh_command = _ssh_command_for_remote(remote_path, remote_command, effective_ssh_port, effective_identity, effective_ssh_options)
         if dry_run:
             _print_remote_dry_run(None, [("find", remote_command)], [("find", ssh_command)])
             return
@@ -618,7 +750,7 @@ def remote_ls(
             raise RuntimeError("remote-ls failed. The remote server must provide a Linux/POSIX find command.")
         rows = _parse_remote_ls(result.stdout)
         if json_output:
-            print(json.dumps({"target": remote_path.target, "remote_dir": remote_path.path, "files": rows}, ensure_ascii=False, indent=2))
+            print(json.dumps({"target": remote_path.target, "profile": active_profile.name if active_profile else None, "remote_dir": remote_path.path, "files": rows}, ensure_ascii=False, indent=2))
         else:
             table = Table(title="Remote Slide Files")
             table.add_column("path")
@@ -634,10 +766,11 @@ def remote_ls(
 @app.command("remote-inspect")
 def remote_inspect(
     remote_slide: str = typer.Argument(..., help="Remote slide as user@host:/server/path or host:/server/path. The slide remains remote."),
+    profile: Optional[str] = typer.Option(None, "--profile", help="Saved remote profile name."),
     ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
     identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
     ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option, e.g. '-J bastion'. May be repeated."),
-    remote_runner: str = typer.Option("slidebridge", "--remote-runner", help="Remote SlideBridge command."),
+    remote_runner: Optional[str] = typer.Option(None, "--remote-runner", help="Remote SlideBridge command. Defaults to profile or slidebridge."),
     remote_workdir: Optional[str] = typer.Option(None, "--remote-workdir", help="Optional remote working directory."),
     json_output: bool = typer.Option(False, "--json", help="Run remote inspect with --json and print raw JSON."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print command without connecting over SSH."),
@@ -645,10 +778,15 @@ def remote_inspect(
     """Run slidebridge inspect on a remote server-side slide path over SSH."""
 
     try:
-        remote_path = parse_remote_path(remote_slide)
+        remote_path, active_profile = _resolve_remote_path_argument(remote_slide, profile_name=profile)
+        effective_ssh_port = _profile_ssh_port(active_profile, ssh_port)
+        effective_identity = _profile_identity_file(active_profile, identity_file)
+        effective_ssh_options = _profile_ssh_options(active_profile, ssh_option)
+        effective_runner = _profile_runner(active_profile, remote_runner)
+        effective_workdir = _profile_workdir(active_profile, remote_workdir)
         args = ["inspect", remote_path.path] + (["--json"] if json_output else [])
-        remote_command = build_remote_slidebridge_command(remote_runner, args, remote_workdir=remote_workdir)
-        ssh_command = _ssh_command_for_remote(remote_path, remote_command, ssh_port, identity_file, ssh_option)
+        remote_command = build_remote_slidebridge_command(effective_runner, args, remote_workdir=effective_workdir)
+        ssh_command = _ssh_command_for_remote(remote_path, remote_command, effective_ssh_port, effective_identity, effective_ssh_options)
         if dry_run:
             _print_remote_dry_run(None, [("inspect", remote_command)], [("inspect", ssh_command)])
             return
@@ -666,15 +804,16 @@ def remote_inspect(
 @app.command("remote-view")
 def remote_view(
     remote_slide: str = typer.Argument(..., help="Remote slide or directory as user@host:/server/path or host:/server/path. Files remain remote."),
+    profile: Optional[str] = typer.Option(None, "--profile", help="Saved remote profile name."),
     ssh_port: Optional[int] = typer.Option(None, "--ssh-port", help="SSH port."),
     identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="SSH identity file."),
     ssh_option: list[str] = typer.Option([], "--ssh-option", help="Extra SSH option, e.g. '-J bastion'. May be repeated."),
-    remote_runner: str = typer.Option("slidebridge", "--remote-runner", help="Remote SlideBridge command."),
+    remote_runner: Optional[str] = typer.Option(None, "--remote-runner", help="Remote SlideBridge command. Defaults to profile or slidebridge."),
     remote_workdir: Optional[str] = typer.Option(None, "--remote-workdir", help="Optional remote working directory."),
-    local_host: str = typer.Option("127.0.0.1", "--local-host", help="Local tunnel bind host. Defaults to localhost."),
-    local_port: int = typer.Option(7860, "--local-port", help="Local tunnel port."),
-    remote_host: str = typer.Option("127.0.0.1", "--remote-host", help="Remote viewer bind host. Defaults to localhost."),
-    remote_port: int = typer.Option(7860, "--remote-port", help="Remote viewer port."),
+    local_host: Optional[str] = typer.Option(None, "--local-host", help="Local tunnel bind host. Defaults to profile or localhost."),
+    local_port: Optional[int] = typer.Option(None, "--local-port", help="Local tunnel port. Defaults to profile or 7860."),
+    remote_host: Optional[str] = typer.Option(None, "--remote-host", help="Remote viewer bind host. Defaults to profile or localhost."),
+    remote_port: Optional[int] = typer.Option(None, "--remote-port", help="Remote viewer port. Defaults to profile or 7860."),
     tile_cache_size: int = typer.Option(512, "--tile-cache-size", min=0, help="Maximum in-memory JPEG tiles cached by the remote viewer. Use 0 to disable."),
     tile_cache_mb: int = typer.Option(256, "--tile-cache-mb", min=0, help="Maximum remote in-memory tile cache size in MB. Use 0 to disable the byte limit."),
     tile_workers: int = typer.Option(4, "--tile-workers", min=1, max=64, help="Maximum concurrent tile generation workers on the remote viewer."),
@@ -699,14 +838,23 @@ def remote_view(
     """View a remote server-side WSI or slide directory through an SSH localhost tunnel."""
 
     try:
-        remote_path = parse_remote_path(remote_slide)
+        remote_path, active_profile = _resolve_remote_path_argument(remote_slide, profile_name=profile)
+        effective_ssh_port = _profile_ssh_port(active_profile, ssh_port)
+        effective_identity = _profile_identity_file(active_profile, identity_file)
+        effective_ssh_options = _profile_ssh_options(active_profile, ssh_option)
+        effective_runner = _profile_runner(active_profile, remote_runner)
+        effective_workdir = _profile_workdir(active_profile, remote_workdir)
+        effective_local_host = local_host or (active_profile.local_host if active_profile else None) or "127.0.0.1"
+        effective_local_port = int(local_port if local_port is not None else ((active_profile.local_port if active_profile else None) or 7860))
+        effective_remote_host = remote_host or (active_profile.remote_host if active_profile else None) or "127.0.0.1"
+        effective_remote_port = int(remote_port if remote_port is not None else ((active_profile.remote_port if active_profile else None) or 7860))
         patch_score_heatmap, full_slide_heatmap = _resolve_heatmap_paths(heatmap, raster_heatmap)
         remote_command = build_remote_slidebridge_command(
-            remote_runner,
+            effective_runner,
             _remote_view_args(
                 remote_path.path,
-                remote_host,
-                remote_port,
+                effective_remote_host,
+                effective_remote_port,
                 patches=patches,
                 heatmap=patch_score_heatmap,
                 raster_heatmap=full_slide_heatmap,
@@ -723,35 +871,35 @@ def remote_view(
                 viewer_context="remote",
                 viewer_remote_user=remote_path.user,
                 viewer_remote_host=remote_path.host,
-                viewer_remote_ssh_port=ssh_port or remote_path.ssh_port,
+                viewer_remote_ssh_port=effective_ssh_port or remote_path.ssh_port,
                 viewer_source=remote_path.path,
                 tile_cache_size=tile_cache_size,
                 tile_cache_mb=tile_cache_mb,
                 tile_workers=tile_workers,
             ),
-            remote_workdir=remote_workdir,
+            remote_workdir=effective_workdir,
         )
         ssh_command = build_tunnel_command(
             remote_path,
             remote_command,
-            local_host=local_host,
-            local_port=local_port,
-            remote_host=remote_host,
-            remote_port=remote_port,
-            ssh_port=ssh_port,
-            identity_file=str(identity_file) if identity_file else None,
-            ssh_options=ssh_option,
+            local_host=effective_local_host,
+            local_port=effective_local_port,
+            remote_host=effective_remote_host,
+            remote_port=effective_remote_port,
+            ssh_port=effective_ssh_port,
+            identity_file=str(effective_identity) if effective_identity else None,
+            ssh_options=effective_ssh_options,
         )
-        local_url = _local_url(local_host, local_port)
-        _warn_if_public_bind(local_host, "local")
-        _warn_if_public_bind(remote_host, "remote")
+        local_url = _local_url(effective_local_host, effective_local_port)
+        _warn_if_public_bind(effective_local_host, "local")
+        _warn_if_public_bind(effective_remote_host, "remote")
         if dry_run:
             _print_remote_dry_run(local_url, [("view", remote_command)], [("tunnel", ssh_command)])
             return
         require_ssh_available()
-        if not is_local_port_available("127.0.0.1" if local_host == "0.0.0.0" else local_host, local_port):
-            raise RuntimeError(f"Local port {local_port} is already in use. Choose another --local-port.")
-        _ensure_remote_port_available(remote_path, remote_port, ssh_port, identity_file, ssh_option)
+        if not is_local_port_available("127.0.0.1" if effective_local_host == "0.0.0.0" else effective_local_host, effective_local_port):
+            raise RuntimeError(f"Local port {effective_local_port} is already in use. Choose another --local-port.")
+        _ensure_remote_port_available(remote_path, effective_remote_port, effective_ssh_port, effective_identity, effective_ssh_options)
         if verbose:
             _print_remote_dry_run(local_url, [("view", remote_command)], [("tunnel", ssh_command)])
         console.print(f"Starting remote SlideBridge viewer through SSH: {local_url}")
@@ -765,14 +913,14 @@ def remote_view(
                 raise RuntimeError(f"Viewer did not become reachable at {local_url} within {wait_timeout} seconds.")
             returncode = process.wait()
             if returncode != 0:
-                _cleanup_remote_viewer(remote_path, remote_port, ssh_port, identity_file, ssh_option)
+                _cleanup_remote_viewer(remote_path, effective_remote_port, effective_ssh_port, effective_identity, effective_ssh_options)
         except KeyboardInterrupt:
             console.print("Stopping SSH tunnel...")
             _stop_process(process)
-            _cleanup_remote_viewer(remote_path, remote_port, ssh_port, identity_file, ssh_option)
+            _cleanup_remote_viewer(remote_path, effective_remote_port, effective_ssh_port, effective_identity, effective_ssh_options)
         except Exception:
             _stop_process(process)
-            _cleanup_remote_viewer(remote_path, remote_port, ssh_port, identity_file, ssh_option)
+            _cleanup_remote_viewer(remote_path, effective_remote_port, effective_ssh_port, effective_identity, effective_ssh_options)
             raise
     except Exception as exc:
         _fail(exc)
@@ -844,10 +992,45 @@ def render_overlay_command(
             slide.close()
 
 
-def _remote_from_target(remote: str, slide: Optional[str] = None, ssh_port: Optional[int] = None) -> tuple[RemotePath, str | None]:
+def _resolve_remote_path_argument(value: str, profile_name: Optional[str] = None) -> tuple[RemotePath, RemoteProfile | None]:
+    if profile_name:
+        return resolve_profile_target(value, profile_name=profile_name)
+    try:
+        return resolve_profile_target(value)
+    except KeyError:
+        return parse_remote_path(value), None
+
+
+def _remote_from_target(
+    remote: str,
+    slide: Optional[str] = None,
+    ssh_port: Optional[int] = None,
+    profile_name: Optional[str] = None,
+) -> tuple[RemotePath, str | None, RemoteProfile | None]:
+    if profile_name:
+        profile = get_profile(profile_name)
+        slide_path = slide or ("" if str(remote).strip() == profile.name else str(remote).strip())
+        remote_path = RemotePath(profile.user, profile.host, slide_path, ssh_port or profile.ssh_port)
+        if slide_path:
+            remote_path = profile.to_remote_path(slide_path)
+            if ssh_port is not None:
+                remote_path = RemotePath(remote_path.user, remote_path.host, remote_path.path, ssh_port)
+        return remote_path, remote_path.path or None, profile
+    profiles = load_profiles()
+    if str(remote).strip() in profiles:
+        profile = profiles[str(remote).strip()]
+        slide_path = profile.resolve_server_path(slide) if slide else ""
+        return RemotePath(profile.user, profile.host, slide_path, ssh_port or profile.ssh_port), slide_path or None, profile
+    try:
+        remote_path, profile = resolve_profile_target(remote)
+        if ssh_port is not None:
+            remote_path = RemotePath(remote_path.user, remote_path.host, remote_path.path, ssh_port)
+        return remote_path, remote_path.path, profile
+    except KeyError:
+        pass
     if is_remote_spec(remote):
         parsed = parse_remote_path(remote)
-        return RemotePath(parsed.user, parsed.host, parsed.path, ssh_port), parsed.path
+        return RemotePath(parsed.user, parsed.host, parsed.path, ssh_port), parsed.path, None
     text = str(remote or "").strip()
     if not text or "/" in text or "\\" in text:
         raise ValueError("REMOTE must be a host, user@host, or [user@]host:/server/path.")
@@ -857,7 +1040,31 @@ def _remote_from_target(remote: str, slide: Optional[str] = None, ssh_port: Opti
         user, host = text.split("@", 1)
     if not host:
         raise ValueError("Remote host is empty.")
-    return RemotePath(user=user or None, host=host, path=slide or "", ssh_port=ssh_port), slide
+    return RemotePath(user=user or None, host=host, path=slide or "", ssh_port=ssh_port), slide, None
+
+
+def _profile_ssh_port(profile: RemoteProfile | None, ssh_port: Optional[int]) -> Optional[int]:
+    return ssh_port if ssh_port is not None else (profile.ssh_port if profile else None)
+
+
+def _profile_identity_file(profile: RemoteProfile | None, identity_file: Optional[Path]) -> Optional[Path]:
+    if identity_file is not None:
+        return identity_file
+    if profile and profile.identity_file:
+        return Path(profile.identity_file)
+    return None
+
+
+def _profile_ssh_options(profile: RemoteProfile | None, ssh_options: list[str]) -> list[str]:
+    return list(profile.ssh_options if profile else []) + list(ssh_options or [])
+
+
+def _profile_runner(profile: RemoteProfile | None, remote_runner: Optional[str]) -> str:
+    return remote_runner or (profile.remote_runner if profile else None) or "slidebridge"
+
+
+def _profile_workdir(profile: RemoteProfile | None, remote_workdir: Optional[str]) -> Optional[str]:
+    return remote_workdir if remote_workdir is not None else (profile.remote_workdir if profile else None)
 
 
 def _ssh_command_for_remote(

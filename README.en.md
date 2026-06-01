@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.5`
+Current version: `0.2.6`
 
 ## Quick Demo
 
@@ -212,6 +212,21 @@ slidebridge remote-view user@server:/data/slides/case.svs `
 Use `slidebridge remote-view --dry-run` to inspect the SSH tunnel and remote
 command before connecting. See [Remote WSI Viewing](docs/REMOTE_VIEWING.md).
 
+For repeated use, save a local remote profile once and reuse shorter commands:
+
+```powershell
+slidebridge remote-profile add lab `
+  --host server.example.org `
+  --user user `
+  --ssh-port 22 `
+  --remote-runner "conda run -n slidebridge slidebridge" `
+  --root /data/slides
+
+slidebridge remote-view lab:case.svs
+slidebridge remote-view lab:cohort-a/ --recursive
+slidebridge remote-ls lab:
+```
+
 ## Viewer Performance Options
 
 The viewer enables an in-process tile cache by default and limits concurrent
@@ -263,6 +278,7 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 - `slidebridge remote-ls REMOTE_DIR`: list likely slide files on a remote server.
 - `slidebridge remote-inspect REMOTE_SLIDE`: inspect a remote slide over SSH.
 - `slidebridge remote-view REMOTE_SLIDE_OR_DIR`: view a remote slide or slide directory through an SSH localhost tunnel.
+- `slidebridge remote-profile add/list/show/remove`: manage reusable local SSH viewer profiles.
 - `slidebridge view PATH --patches COORDS.csv --heatmap SCORES.npy`: start the
   local pan/zoom viewer with optional model/debug score and annotation overlays.
 - `slidebridge readers`: list registered readers and dependency availability.
@@ -359,6 +375,11 @@ v0.2.5:
 - byte-aware tile cache limit with `--tile-cache-mb`
 - tile performance metrics through `/api/performance`
 - viewer timing diagnostics for read/resize/JPEG/total tile generation
+
+v0.2.6:
+
+- reusable remote profiles for SSH viewer settings
+- profile-relative remote paths for shorter commands
 
 v0.3:
 
