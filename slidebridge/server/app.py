@@ -209,6 +209,9 @@ def create_app(
     max_annotations: int = 10_000,
     annotation_labels: list[str] | None = None,
     max_raster_heatmap_size: int = 4096,
+    raster_heatmap_threshold: float | None = None,
+    raster_heatmap_invert: bool = False,
+    raster_heatmap_colormap: str = "auto",
     recursive: bool = False,
     max_slides: int = 500,
     viewer_context: str = "local",
@@ -237,6 +240,11 @@ def create_app(
         raise ValueError("tile_workers must be between 1 and 64")
     if score_normalization not in {"minmax", "percentile", "none"}:
         raise ValueError("score_normalization must be one of: minmax, percentile, none")
+    if raster_heatmap_threshold is not None and not (0.0 <= float(raster_heatmap_threshold) <= 1.0):
+        raise ValueError("raster_heatmap_threshold must be between 0 and 1")
+    raster_heatmap_colormap = str(raster_heatmap_colormap or "auto").lower()
+    if raster_heatmap_colormap not in {"auto", "score", "grayscale", "none"}:
+        raise ValueError("raster_heatmap_colormap must be one of: auto, score, grayscale, none")
     max_overlay_patches = max(0, int(max_overlay_patches))
     max_annotations = max(0, int(max_annotations))
     max_slides = max(1, int(max_slides))
@@ -343,7 +351,13 @@ def create_app(
             context = RasterHeatmapContext(None, {"available": False, "warnings": []}, "")
             raster_heatmap_cache[slide_id] = context
             return context
-        heatmap = load_raster_heatmap(raster_heatmap_path, max_size=max_raster_heatmap_size)
+        heatmap = load_raster_heatmap(
+            raster_heatmap_path,
+            max_size=max_raster_heatmap_size,
+            threshold=raster_heatmap_threshold,
+            invert=raster_heatmap_invert,
+            colormap=raster_heatmap_colormap,
+        )
         summary_payload = heatmap.summary(slide_width=session.width, slide_height=session.height)
         warnings = list(summary_payload.get("warnings", []))
         if library_mode:

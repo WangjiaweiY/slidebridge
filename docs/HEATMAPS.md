@@ -57,9 +57,29 @@ Examples:
 
 ```powershell
 slidebridge create-demo-heatmap --out outputs\demo_heatmap.png
+slidebridge inspect-heatmap outputs\demo_heatmap.png --slide C:\path\to\your\slide.svs
 slidebridge view C:\path\to\your\slide.svs --raster-heatmap outputs\demo_heatmap.png
 slidebridge view C:\path\to\your\slide.svs --heatmap outputs\heatmap.jpg
 ```
+
+Useful raster tuning options:
+
+```powershell
+slidebridge view C:\path\to\your\slide.svs `
+  --raster-heatmap outputs\demo_heatmap.png `
+  --raster-heatmap-threshold 0.4 `
+  --raster-heatmap-colormap score
+
+slidebridge render-overlay C:\path\to\your\slide.svs `
+  --raster-heatmap outputs\demo_heatmap.png `
+  --raster-heatmap-invert `
+  --out outputs\slide_with_inverted_heatmap.png
+```
+
+`--raster-heatmap-threshold` hides pixels below the normalized heatmap value.
+`--raster-heatmap-invert` flips normalized intensity before colorization and
+thresholding. `--raster-heatmap-colormap` accepts `auto`, `score`,
+`grayscale`, or `none`.
 
 Remote example:
 

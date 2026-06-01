@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.8
+
+Added:
+
+- `inspect-heatmap` command for raster heatmap and score-file diagnostics
+- raster heatmap threshold, invert, and colormap controls for viewer and static rendering
+- `create-demo-heatmap --slide` for slide-aspect demo heatmaps
+
+Changed:
+
+- raster heatmap summaries now report display settings for easier alignment debugging
+
 ## 0.2.7
 
 Added:

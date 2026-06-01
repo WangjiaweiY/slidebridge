@@ -25,8 +25,9 @@ from slidebridge.core.diagnostics import environment_report, reader_statuses
 from slidebridge.core.metadata import summary
 from slidebridge.core.registry import SlideOpenError, get_registered_readers, open_slide
 from slidebridge.export.patches import export_patches as export_patch_images
+from slidebridge.overlays.heatmap import load_scores
 from slidebridge.overlays.patches import load_patch_table
-from slidebridge.overlays.raster_heatmap import is_raster_heatmap_path
+from slidebridge.overlays.raster_heatmap import is_raster_heatmap_path, load_raster_heatmap
 from slidebridge.qc.blur import blur_score
 from slidebridge.qc.report import generate_html_report, generate_json_report
 from slidebridge.qc.tissue import estimate_tissue_percent
@@ -283,16 +284,85 @@ def create_demo_heatmap_command(
     out: Path = typer.Option(Path("outputs/demo_heatmap.png"), "--out", help="Output PNG/JPG heatmap path."),
     width: int = typer.Option(1024, "--width", help="Heatmap image width in pixels."),
     height: int = typer.Option(768, "--height", help="Heatmap image height in pixels."),
+    slide_path: Optional[Path] = typer.Option(None, "--slide", help="Optional slide used to match demo heatmap aspect ratio."),
+    max_size: int = typer.Option(1024, "--max-size", help="Maximum heatmap side when --slide is provided."),
+    reader: Optional[str] = typer.Option(None, "--reader", help="Specify a slide reader by name when --slide is used."),
     seed: int = typer.Option(42, "--seed", help="Random seed."),
     style: str = typer.Option("hotspot", "--style", help="Synthetic style: hotspot, gradient, or rings."),
 ) -> None:
     """Create a synthetic full-slide raster heatmap for viewer demos."""
 
+    slide = None
     try:
+        if slide_path is not None:
+            slide = open_slide(slide_path, reader=reader)
+            width, height = _scaled_dimensions(slide.dimensions[0], slide.dimensions[1], max_size=max_size)
         output = create_demo_heatmap(out, width=width, height=height, seed=seed, style=style)
         console.print(f"Saved demo heatmap: {output}")
     except Exception as exc:
         _fail(exc)
+    finally:
+        if slide is not None:
+            slide.close()
+
+
+@app.command("inspect-heatmap")
+def inspect_heatmap(
+    heatmap_path: Path = typer.Argument(..., help="Raster PNG/JPG heatmap or score/attention file."),
+    slide_path: Optional[Path] = typer.Option(None, "--slide", help="Optional slide used for alignment checks."),
+    reader: Optional[str] = typer.Option(None, "--reader", help="Specify a slide reader by name."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+    max_size: int = typer.Option(4096, "--max-size", help="Maximum raster heatmap side to inspect after resizing."),
+    threshold: Optional[float] = typer.Option(None, "--threshold", min=0.0, max=1.0, help="Optional raster threshold preview."),
+    invert: bool = typer.Option(False, "--invert/--no-invert", help="Invert raster intensity before colorization/thresholding."),
+    colormap: str = typer.Option("auto", "--colormap", help="Raster colormap: auto, score, grayscale, or none."),
+) -> None:
+    """Inspect raster heatmaps or score vectors for debugging alignment."""
+
+    slide = None
+    try:
+        slide_dimensions = None
+        if slide_path is not None:
+            slide = open_slide(slide_path, reader=reader)
+            slide_dimensions = slide.dimensions
+        if is_raster_heatmap_path(heatmap_path):
+            heatmap = load_raster_heatmap(
+                heatmap_path,
+                max_size=max_size,
+                threshold=threshold,
+                invert=invert,
+                colormap=colormap,
+            )
+            info = heatmap.summary(
+                slide_width=slide_dimensions[0] if slide_dimensions else None,
+                slide_height=slide_dimensions[1] if slide_dimensions else None,
+            )
+            info["type"] = "raster"
+            if slide_dimensions:
+                info["slide_width"] = slide_dimensions[0]
+                info["slide_height"] = slide_dimensions[1]
+        else:
+            scores = np.asarray(load_scores(heatmap_path), dtype=np.float64).reshape(-1)
+            finite = scores[np.isfinite(scores)]
+            info = {
+                "type": "scores",
+                "source": str(heatmap_path),
+                "count": int(scores.size),
+                "finite_count": int(finite.size),
+                "score_min": float(finite.min()) if finite.size else None,
+                "score_max": float(finite.max()) if finite.size else None,
+                "score_mean": float(finite.mean()) if finite.size else None,
+                "warnings": [] if finite.size else ["score_file_has_no_finite_values"],
+            }
+        if json_output:
+            print(json.dumps(info, ensure_ascii=False, indent=2))
+            return
+        _print_heatmap_summary(info)
+    except Exception as exc:
+        _fail(exc)
+    finally:
+        if slide is not None:
+            slide.close()
 
 
 @app.command("create-demo-annotations")
@@ -414,6 +484,9 @@ def view(
     max_annotations: int = typer.Option(10_000, "--max-annotations", help="Maximum annotations returned to the browser."),
     annotation_labels: Optional[str] = typer.Option(None, "--annotation-labels", help="Comma-separated annotation label filter."),
     max_raster_heatmap_size: int = typer.Option(4096, "--max-raster-heatmap-size", help="Maximum raster heatmap side served to browser."),
+    raster_heatmap_threshold: Optional[float] = typer.Option(None, "--raster-heatmap-threshold", min=0.0, max=1.0, help="Hide raster heatmap pixels below this normalized value."),
+    raster_heatmap_invert: bool = typer.Option(False, "--raster-heatmap-invert/--no-raster-heatmap-invert", help="Invert raster heatmap intensity before display."),
+    raster_heatmap_colormap: str = typer.Option("auto", "--raster-heatmap-colormap", help="Raster heatmap colormap: auto, score, grayscale, or none."),
     recursive: bool = typer.Option(False, "--recursive/--no-recursive", help="When PATH is a directory, include nested slide files."),
     max_slides: int = typer.Option(500, "--max-slides", help="Maximum slide files listed in directory viewer mode."),
     viewer_context: str = typer.Option("local", "--viewer-context", help="Viewer display context: local or remote."),
@@ -445,6 +518,9 @@ def view(
             max_annotations=max_annotations,
             annotation_labels=_split_labels(annotation_labels),
             max_raster_heatmap_size=max_raster_heatmap_size,
+            raster_heatmap_threshold=raster_heatmap_threshold,
+            raster_heatmap_invert=raster_heatmap_invert,
+            raster_heatmap_colormap=raster_heatmap_colormap,
             recursive=recursive,
             max_slides=max_slides,
             viewer_context=viewer_context,
@@ -832,6 +908,9 @@ def remote_view(
     max_overlay_patches: int = typer.Option(50_000, "--max-overlay-patches", help="Maximum patch overlays returned by remote viewer."),
     max_annotations: int = typer.Option(10_000, "--max-annotations", help="Maximum annotations returned by remote viewer."),
     max_raster_heatmap_size: int = typer.Option(4096, "--max-raster-heatmap-size", help="Maximum remote raster heatmap side served to browser."),
+    raster_heatmap_threshold: Optional[float] = typer.Option(None, "--raster-heatmap-threshold", min=0.0, max=1.0, help="Hide remote raster heatmap pixels below this normalized value."),
+    raster_heatmap_invert: bool = typer.Option(False, "--raster-heatmap-invert/--no-raster-heatmap-invert", help="Invert remote raster heatmap intensity before display."),
+    raster_heatmap_colormap: str = typer.Option("auto", "--raster-heatmap-colormap", help="Remote raster heatmap colormap: auto, score, grayscale, or none."),
     recursive: bool = typer.Option(False, "--recursive/--no-recursive", help="When REMOTE_SLIDE is a directory, include nested slide files."),
     max_slides: int = typer.Option(500, "--max-slides", help="Maximum slide files listed by the remote directory viewer."),
 ) -> None:
@@ -866,6 +945,9 @@ def remote_view(
                 max_overlay_patches=max_overlay_patches,
                 max_annotations=max_annotations,
                 max_raster_heatmap_size=max_raster_heatmap_size,
+                raster_heatmap_threshold=raster_heatmap_threshold,
+                raster_heatmap_invert=raster_heatmap_invert,
+                raster_heatmap_colormap=raster_heatmap_colormap,
                 recursive=recursive,
                 max_slides=max_slides,
                 viewer_context="remote",
@@ -946,6 +1028,9 @@ def render_overlay_command(
     annotation_labels: Optional[str] = typer.Option(None, "--annotation-labels", help="Comma-separated annotation label filter."),
     draw_annotation_labels: bool = typer.Option(False, "--draw-annotation-labels/--no-draw-annotation-labels", help="Draw annotation labels."),
     max_raster_heatmap_size: int = typer.Option(4096, "--max-raster-heatmap-size", help="Maximum raster heatmap side used during rendering."),
+    raster_heatmap_threshold: Optional[float] = typer.Option(None, "--raster-heatmap-threshold", min=0.0, max=1.0, help="Hide raster heatmap pixels below this normalized value."),
+    raster_heatmap_invert: bool = typer.Option(False, "--raster-heatmap-invert/--no-raster-heatmap-invert", help="Invert raster heatmap intensity before rendering."),
+    raster_heatmap_colormap: str = typer.Option("auto", "--raster-heatmap-colormap", help="Raster heatmap colormap: auto, score, grayscale, or none."),
 ) -> None:
     slide = None
     try:
@@ -982,6 +1067,9 @@ def render_overlay_command(
             raster_heatmap_path=full_slide_heatmap,
             raster_heatmap_opacity=opacity,
             max_raster_heatmap_size=max_raster_heatmap_size,
+            raster_heatmap_threshold=raster_heatmap_threshold,
+            raster_heatmap_invert=raster_heatmap_invert,
+            raster_heatmap_colormap=raster_heatmap_colormap,
             image_format=image_format,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -1235,6 +1323,9 @@ def _remote_view_args(
     max_overlay_patches: int = 50_000,
     max_annotations: int = 10_000,
     max_raster_heatmap_size: int = 4096,
+    raster_heatmap_threshold: Optional[float] = None,
+    raster_heatmap_invert: bool = False,
+    raster_heatmap_colormap: str = "auto",
     recursive: bool = False,
     max_slides: int = 500,
     viewer_context: str = "local",
@@ -1287,6 +1378,12 @@ def _remote_view_args(
         args.extend(["--viewer-source", viewer_source])
     if recursive:
         args.append("--recursive")
+    if raster_heatmap_threshold is not None:
+        args.extend(["--raster-heatmap-threshold", str(float(raster_heatmap_threshold))])
+    if raster_heatmap_invert:
+        args.append("--raster-heatmap-invert")
+    if raster_heatmap_colormap != "auto":
+        args.extend(["--raster-heatmap-colormap", raster_heatmap_colormap])
     if patches:
         args.extend(["--patches", patches])
     if heatmap:
@@ -1450,10 +1547,53 @@ def _print_annotation_summary(info: dict) -> None:
     console.print(table)
 
 
+def _print_heatmap_summary(info: dict) -> None:
+    table = Table(title="Heatmap Inspect")
+    table.add_column("Field")
+    table.add_column("Value")
+    for key in [
+        "type",
+        "source",
+        "source_width",
+        "source_height",
+        "served_width",
+        "served_height",
+        "slide_width",
+        "slide_height",
+        "mode",
+        "coordinate_space",
+        "mapping",
+        "threshold",
+        "invert",
+        "colormap",
+        "count",
+        "finite_count",
+        "score_min",
+        "score_max",
+        "score_mean",
+        "warnings",
+    ]:
+        if key in info:
+            value = info[key]
+            table.add_row(key, json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else str(value))
+    console.print(table)
+
+
 def _split_labels(labels: Optional[str]) -> list[str]:
     if not labels:
         return []
     return [item.strip() for item in labels.split(",") if item.strip()]
+
+
+def _scaled_dimensions(width: int, height: int, max_size: int) -> tuple[int, int]:
+    width = max(1, int(width))
+    height = max(1, int(height))
+    max_size = max(64, int(max_size))
+    longest = max(width, height)
+    if longest <= max_size:
+        return width, height
+    scale = max_size / float(longest)
+    return max(1, int(round(width * scale))), max(1, int(round(height * scale)))
 
 
 def _resolve_heatmap_paths(heatmap, raster_heatmap):

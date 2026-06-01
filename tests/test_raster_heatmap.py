@@ -40,6 +40,33 @@ def test_load_rgb_raster_heatmap_preserves_rgb_mode(tmp_path):
     assert heatmap.mode == "rgb"
 
 
+def test_load_raster_heatmap_threshold_and_invert(tmp_path):
+    data = np.array([[0, 64], [192, 255]], dtype=np.uint8)
+    path = tmp_path / "heatmap.png"
+    Image.fromarray(data).save(path)
+
+    heatmap = load_raster_heatmap(path, threshold=0.5, invert=True, colormap="score")
+    alpha = np.asarray(heatmap.image.getchannel("A"))
+
+    assert heatmap.threshold == 0.5
+    assert heatmap.invert is True
+    assert heatmap.colormap == "score"
+    assert alpha[0, 0] == 255
+    assert alpha[-1, -1] == 0
+
+
+def test_load_raster_heatmap_rejects_invalid_colormap(tmp_path):
+    path = tmp_path / "heatmap.png"
+    Image.new("L", (8, 8), 128).save(path)
+
+    try:
+        load_raster_heatmap(path, colormap="bad")
+    except ValueError as exc:
+        assert "colormap" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected invalid colormap to raise")
+
+
 def test_render_overlay_with_raster_heatmap_only(tmp_path):
     slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=9)
     heatmap_path = tmp_path / "raster_heatmap.png"

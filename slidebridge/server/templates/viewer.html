@@ -1383,7 +1383,7 @@
           return;
         }
         element.hidden = !payload.available;
-        element.textContent = t("rasterHeatmap");
+        element.textContent = rasterHeatmapLabel(payload);
         updateScoreLegendVisibility();
         if (appendWarningMessages) {
           appendWarnings(payload.warnings || []);
@@ -1412,6 +1412,23 @@
         return payload.count > payload.returned
           ? `${payload.count} ${t("annotations")} (${payload.returned} ${t("shown")})${labels}`
           : `${payload.count} ${t("annotations")}${labels}`;
+      }
+
+      function rasterHeatmapLabel(payload) {
+        if (!payload || !payload.available) {
+          return t("rasterHeatmap");
+        }
+        const details = [];
+        if (payload.mode) {
+          details.push(payload.mode);
+        }
+        if (payload.threshold !== null && payload.threshold !== undefined) {
+          details.push(`>=${payload.threshold}`);
+        }
+        if (payload.invert) {
+          details.push("invert");
+        }
+        return details.length ? `${t("rasterHeatmap")} (${details.join(", ")})` : t("rasterHeatmap");
       }
 
       function appendWarnings(warnings) {
@@ -1447,7 +1464,7 @@
         const image = document.createElement("img");
         image.className = "raster-heatmap-overlay";
         image.src = rasterHeatmapPayload.url;
-        image.title = `${t("rasterHeatmap")}\n${rasterHeatmapPayload.mapping || ""}`;
+        image.title = `${rasterHeatmapLabel(rasterHeatmapPayload)}\n${rasterHeatmapPayload.mapping || ""}`;
         viewer.addOverlay({
           element: image,
           location: viewer.viewport.imageToViewportRectangle(0, 0, currentSlideInfo.width, currentSlideInfo.height),
