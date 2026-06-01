@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.6
+
+Added:
+
+- local `remote-profile` commands for reusable SSH viewer settings
+- `--profile` support for `remote-check`, `remote-ls`, `remote-inspect`, and `remote-view`
+- profile-relative remote paths such as `lab:slides/case.svs`
+- documentation for remote profiles and shorter remote viewer commands
+
+Changed:
+
+- remote commands can inherit SSH port, identity file, SSH options, remote runner, workdir, root path, and viewer ports from a saved profile
+
 ## 0.2.5
 
 Added:

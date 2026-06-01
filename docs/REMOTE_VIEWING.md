@@ -120,6 +120,53 @@ Preview commands without connecting:
 slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge" --dry-run
 ```
 
+## Remote Profiles
+
+If you repeatedly use the same server, save the SSH and remote runner settings
+once on your local machine:
+
+```powershell
+slidebridge remote-profile add lab `
+  --host server.example.org `
+  --user user `
+  --ssh-port 22 `
+  --remote-runner "conda run -n slidebridge slidebridge" `
+  --root /data/slides
+```
+
+Profiles are stored locally in a JSON file. They are not uploaded to the remote
+server and should not be committed to the repository.
+
+List and inspect profiles:
+
+```powershell
+slidebridge remote-profile list
+slidebridge remote-profile show lab
+slidebridge remote-profile path
+```
+
+Use a profile with absolute server paths:
+
+```powershell
+slidebridge remote-view lab:/data/slides/case.svs
+slidebridge remote-inspect lab:/data/slides/case.svs
+slidebridge remote-ls lab:/data/slides
+```
+
+Use profile-relative paths when the profile has `--root`:
+
+```powershell
+slidebridge remote-view lab:case.svs
+slidebridge remote-view lab:cohort-a/ --recursive
+slidebridge remote-ls lab:
+```
+
+You can also pass the profile separately:
+
+```powershell
+slidebridge remote-view case.svs --profile lab
+```
+
 ## Troubleshooting
 
 - `ssh not found`: install or enable OpenSSH Client on Windows.
