@@ -191,7 +191,7 @@
             </div>
             <div class="controls">
               <div class="control-actions">
-                <button id="figure-set-main" class="small-button" type="button" data-i18n="setMainView">Set main from current view</button>
+                <button id="figure-set-main" class="small-button" type="button" data-i18n="setMainFullSlide">Set main to full slide</button>
               </div>
               <div class="control-row">
                 <label class="control-label" for="figure-heatmap-layer">
@@ -219,6 +219,12 @@
                 <label class="control-label" for="figure-scalebar">
                   <span data-i18n="mainScalebar">main scale bar um</span>
                   <input id="figure-scalebar" class="inline-input" type="number" min="0" step="50" placeholder="none">
+                </label>
+              </div>
+              <div class="control-row">
+                <label class="label-chip figure-label-toggle" for="figure-label-toggle">
+                  <input id="figure-label-toggle" type="checkbox" checked>
+                  <span data-i18n="showFigureLabels">show panel labels</span>
                 </label>
               </div>
               <div class="figure-slot-list" id="figure-slot-list"></div>

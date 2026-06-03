@@ -9,7 +9,7 @@ from slidebridge.annotations.render import draw_annotations
 from slidebridge.annotations.table import AnnotationRecord, AnnotationTable
 from slidebridge.core.protocol import Slide
 from slidebridge.overlays.patch_table import PatchTable
-from slidebridge.overlays.raster_heatmap import load_raster_heatmap
+from slidebridge.overlays.raster_heatmap import RasterHeatmap, load_raster_heatmap
 from slidebridge.render.overlay import _format_from_path, _score_color
 from slidebridge.utils.image import ensure_rgb
 from slidebridge.utils.paths import ensure_parent
@@ -33,6 +33,7 @@ def render_view(
     annotation_opacity: float = 0.35,
     draw_annotation_labels: bool = False,
     raster_heatmap_path: str | Path | None = None,
+    raster_heatmap: RasterHeatmap | None = None,
     raster_heatmap_opacity: float | None = None,
     max_raster_heatmap_size: int = 4096,
     raster_heatmap_threshold: float | None = None,
@@ -58,6 +59,7 @@ def render_view(
         annotation_opacity=annotation_opacity,
         draw_annotation_labels=draw_annotation_labels,
         raster_heatmap_path=raster_heatmap_path,
+        raster_heatmap=raster_heatmap,
         raster_heatmap_opacity=raster_heatmap_opacity,
         max_raster_heatmap_size=max_raster_heatmap_size,
         raster_heatmap_threshold=raster_heatmap_threshold,
@@ -91,6 +93,7 @@ def render_view_to_image(
     annotation_opacity: float = 0.35,
     draw_annotation_labels: bool = False,
     raster_heatmap_path: str | Path | None = None,
+    raster_heatmap: RasterHeatmap | None = None,
     raster_heatmap_opacity: float | None = None,
     max_raster_heatmap_size: int = 4096,
     raster_heatmap_threshold: float | None = None,
@@ -131,7 +134,11 @@ def render_view_to_image(
     x1 = x0 + crop_width
     y1 = y0 + crop_height
 
-    base_region = ensure_rgb(slide.read_region(x0, y0, crop_width, crop_height, level=0))
+    read_level = _render_read_level(slide, crop_width, crop_height, out_width, out_height)
+    level_downsample = _level_downsample(slide, read_level)
+    read_width = max(1, int(round(crop_width / level_downsample)))
+    read_height = max(1, int(round(crop_height / level_downsample)))
+    base_region = ensure_rgb(slide.read_region(x0, y0, read_width, read_height, level=read_level))
     base = base_region.resize((out_width, out_height), Image.Resampling.BILINEAR)
     scale_x = out_width / float(crop_width)
     scale_y = out_height / float(crop_height)
@@ -144,10 +151,11 @@ def render_view_to_image(
     rendered_patches = 0
     raster_summary = None
 
-    if raster_heatmap_path is not None:
+    if raster_heatmap_path is not None or raster_heatmap is not None:
         base, raster_summary = _composite_view_raster_heatmap(
             base,
             raster_heatmap_path,
+            raster_heatmap,
             slide_width,
             slide_height,
             (x0, y0, x1, y1),
@@ -194,6 +202,8 @@ def render_view_to_image(
         "window_height": crop_height,
         "out_width": out_width,
         "out_height": out_height,
+        "read_level": read_level,
+        "read_level_downsample": level_downsample,
         "scale": out_width / float(crop_width),
         "patches_count": len(patch_table),
         "rendered_patches_count": rendered_patches,
@@ -231,7 +241,8 @@ def _bbox_to_output_box(
 
 def _composite_view_raster_heatmap(
     base: Image.Image,
-    path: str | Path,
+    path: str | Path | None,
+    heatmap: RasterHeatmap | None,
     slide_width: int,
     slide_height: int,
     view_bbox: tuple[int, int, int, int],
@@ -241,7 +252,10 @@ def _composite_view_raster_heatmap(
     invert: bool,
     colormap: str,
 ) -> tuple[Image.Image, dict[str, Any]]:
-    heatmap = load_raster_heatmap(path, max_size=max_size, threshold=threshold, invert=invert, colormap=colormap)
+    if heatmap is None:
+        if path is None:
+            raise ValueError("Raster heatmap path or loaded raster heatmap is required.")
+        heatmap = load_raster_heatmap(path, max_size=max_size, threshold=threshold, invert=invert, colormap=colormap)
     hx0 = int(round(view_bbox[0] / max(1, slide_width) * heatmap.image.width))
     hy0 = int(round(view_bbox[1] / max(1, slide_height) * heatmap.image.height))
     hx1 = int(round(view_bbox[2] / max(1, slide_width) * heatmap.image.width))
@@ -258,6 +272,25 @@ def _composite_view_raster_heatmap(
     overlay.putalpha(alpha)
     composed = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
     return composed, heatmap.summary(slide_width=slide_width, slide_height=slide_height)
+
+
+def _render_read_level(slide: Slide, crop_width: int, crop_height: int, out_width: int, out_height: int) -> int:
+    downsample = max(float(crop_width) / max(1, out_width), float(crop_height) / max(1, out_height))
+    if downsample <= 1.25:
+        return 0
+    try:
+        level = int(slide.get_best_level_for_downsample(downsample))
+    except Exception:
+        return 0
+    return max(0, min(level, max(0, int(slide.level_count) - 1)))
+
+
+def _level_downsample(slide: Slide, level: int) -> float:
+    try:
+        value = float(slide.level_downsamples[int(level)])
+    except Exception:
+        return 1.0
+    return value if value > 0 else 1.0
 
 
 def _shift_annotation_table(table: AnnotationTable, x0: float, y0: float) -> AnnotationTable:

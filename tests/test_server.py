@@ -7,6 +7,8 @@ from io import BytesIO
 from fastapi.testclient import TestClient
 from PIL import Image
 
+import slidebridge.render.view as render_view_module
+import slidebridge.server.app as server_app_module
 from slidebridge.server.app import create_app
 from slidebridge.utils.demo import create_demo_slide
 
@@ -210,6 +212,44 @@ def test_server_render_figure_uses_selected_raster_heatmap_layer(tmp_path):
     with Image.open(BytesIO(response.content)).convert("RGB") as image:
         red, _, blue = image.getpixel((80 + 1120, 80 + 490))
     assert red > blue
+
+
+def test_server_render_figure_reuses_loaded_raster_heatmap(tmp_path, monkeypatch):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=16)
+    heatmap_path = tmp_path / "heatmap.png"
+    Image.new("RGB", (64, 48), (240, 40, 20)).save(heatmap_path)
+    calls = {"count": 0}
+    real_load = server_app_module.load_raster_heatmap
+
+    def counted_load(*args, **kwargs):
+        calls["count"] += 1
+        return real_load(*args, **kwargs)
+
+    monkeypatch.setattr(server_app_module, "load_raster_heatmap", counted_load)
+    monkeypatch.setattr(
+        render_view_module,
+        "load_raster_heatmap",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("render_view should reuse the loaded heatmap")),
+    )
+    app = create_app(slide_path, raster_heatmap_path=heatmap_path, reader="image")
+    client = TestClient(app)
+    spec = {
+        "slide_id": 0,
+        "canvas": {"width": 2400, "height": 1800, "background": "white"},
+        "heatmap_layer_id": "0-heatmap",
+        "overlay_opacity": 0.45,
+        "show_labels": True,
+        "main": {"bbox": [0, 0, 512, 384], "mode": "overlay", "fit": "contain", "label": "A", "scalebar_um": None},
+        "patches": [
+            {"slot": 0, "bbox": [100, 80, 180, 160], "mode": "overlay", "label": "B"},
+            {"slot": 1, "bbox": [180, 120, 260, 200], "mode": "overlay", "label": "C"},
+        ],
+    }
+
+    response = client.post("/api/render-figure", json=spec)
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
 
 
 def test_server_render_figure_overlay_without_heatmap_returns_400(tmp_path):

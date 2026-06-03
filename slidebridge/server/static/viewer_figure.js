@@ -5,12 +5,15 @@
 
   const state = {
     activeSlot: 0,
+    slideId: null,
     heatmapLayerId: "",
     overlayOpacity: 0.45,
     opacityTouched: false,
     mainBbox: null,
     mainMode: "overlay",
     scalebarUm: null,
+    showLabels: true,
+    isExporting: false,
     slots: SLOT_LABELS.map(function (label, slot) {
       return {slot, label, bbox: null, mode: slot === 0 ? "raw" : "overlay"};
     })
@@ -58,6 +61,7 @@
       opacity: document.getElementById("figure-opacity"),
       opacityValue: document.getElementById("figure-opacity-value"),
       scalebar: document.getElementById("figure-scalebar"),
+      labelToggle: document.getElementById("figure-label-toggle"),
       slotList: document.getElementById("figure-slot-list"),
       selectPatch: document.getElementById("figure-select-patch"),
       copySpec: document.getElementById("figure-copy-spec"),
@@ -136,13 +140,13 @@
 
   function bindControls() {
     elements.setMain.addEventListener("click", function () {
-      const bbox = window.SlideBridgeViewer.getCurrentViewportBbox();
+      const bbox = fullSlideBbox();
       if (!bbox) {
-        setStatus("Viewport is not ready.", "error");
+        setStatus(tr("snapshotUnavailable"), "error");
         return;
       }
       state.mainBbox = bbox;
-      setStatus("Main panel set from current view.", "ok");
+      setStatus(tr("figureMainFullSet"), "ok");
       render();
     });
 
@@ -168,9 +172,14 @@
       render();
     });
 
+    elements.labelToggle.addEventListener("change", function () {
+      state.showLabels = Boolean(elements.labelToggle.checked);
+      render();
+    });
+
     elements.selectPatch.addEventListener("click", async function () {
       try {
-        setStatus("Selection mode active.", "");
+        setStatus(tr("figureSelectionActive"), "busy");
         const bbox = await window.SlideBridgeViewer.selectSquareRegion();
         const slot = state.slots[state.activeSlot];
         slot.bbox = bbox;
@@ -179,7 +188,7 @@
         if (nextEmpty) {
           state.activeSlot = nextEmpty.slot;
         }
-        setStatus(`Slot ${slot.label} set.`, "ok");
+        setStatus(tr("figureSlotSet").replace("{label}", slot.label), "ok");
       } catch (error) {
         setStatus(error && error.message ? error.message : "Selection failed.", "error");
       }
@@ -190,9 +199,9 @@
       try {
         const spec = buildSpec();
         await copyText(JSON.stringify(spec, null, 2));
-        setStatus("Figure spec copied.", "ok");
+        setStatus(tr("figureSpecCopied"), "ok");
       } catch (error) {
-        setStatus(error && error.message ? error.message : "Spec is not ready.", "error");
+        setStatus(error && error.message ? error.message : tr("figureMainUnset"), "error");
       }
     });
 
@@ -201,13 +210,20 @@
 
   function refreshFromViewer() {
     const api = window.SlideBridgeViewer;
+    const selectedSlideId = api.getSelectedSlideId();
+    if (state.slideId !== selectedSlideId) {
+      state.slideId = selectedSlideId;
+      state.mainBbox = fullSlideBbox();
+    } else if (!state.mainBbox) {
+      state.mainBbox = fullSlideBbox();
+    }
     const layers = api.getRasterHeatmapLayers();
     const previous = state.heatmapLayerId;
     elements.layer.innerHTML = "";
     if (!layers.length) {
       const option = document.createElement("option");
       option.value = "";
-      option.textContent = "No raster heatmap";
+      option.textContent = tr("noRasterHeatmap");
       elements.layer.appendChild(option);
       elements.layer.disabled = true;
       state.heatmapLayerId = "";
@@ -243,6 +259,7 @@
       }
     });
     renderModes(overlayAvailable);
+    elements.labelToggle.checked = Boolean(state.showLabels);
     renderPreview();
     renderSlots();
     renderActions();
@@ -288,8 +305,11 @@
   function renderActions() {
     const hasMain = Boolean(state.mainBbox);
     elements.copySpec.disabled = !hasMain;
-    elements.exportPng.disabled = !hasMain;
-    elements.selectPatch.disabled = !window.SlideBridgeViewer || !window.SlideBridgeViewer.selectSquareRegion;
+    elements.exportPng.disabled = !hasMain || state.isExporting;
+    elements.exportPng.textContent = state.isExporting ? tr("figureExporting") : tr("exportFigurePng");
+    elements.selectPatch.disabled = state.isExporting || !window.SlideBridgeViewer || !window.SlideBridgeViewer.selectSquareRegion;
+    elements.setMain.disabled = state.isExporting;
+    elements.copySpec.disabled = state.isExporting || !hasMain;
   }
 
   function renderOpacity() {
@@ -298,16 +318,18 @@
 
   function buildSpec() {
     if (!state.mainBbox) {
-      throw new Error("Main panel is not set.");
+      throw new Error(tr("figureMainUnset"));
     }
     return {
       slide_id: window.SlideBridgeViewer.getSelectedSlideId(),
       canvas: {...CANVAS},
       heatmap_layer_id: state.heatmapLayerId,
       overlay_opacity: Number(state.overlayOpacity),
+      show_labels: Boolean(state.showLabels),
       main: {
         bbox: state.mainBbox.slice(),
         mode: state.mainMode,
+        fit: "contain",
         label: "A",
         scalebar_um: state.scalebarUm
       },
@@ -333,7 +355,9 @@
       return;
     }
     elements.exportPng.disabled = true;
-    setStatus("Exporting PNG.", "");
+    state.isExporting = true;
+    renderActions();
+    setStatus(tr("figureExporting"), "busy");
     try {
       const response = await fetch("/api/render-figure", {
         method: "POST",
@@ -354,10 +378,11 @@
       window.setTimeout(function () {
         URL.revokeObjectURL(url);
       }, 2000);
-      setStatus("PNG export requested.", "ok");
+      setStatus(tr("figureExportComplete"), "ok");
     } catch (error) {
       setStatus(error && error.message ? error.message : "Export failed.", "error");
     }
+    state.isExporting = false;
     renderActions();
   }
 
@@ -373,6 +398,27 @@
   function setStatus(message, stateName) {
     elements.status.textContent = message || "";
     elements.status.dataset.state = stateName || "";
+  }
+
+  function fullSlideBbox() {
+    if (!window.SlideBridgeViewer || !window.SlideBridgeViewer.getCurrentSlideInfo) {
+      return null;
+    }
+    const info = window.SlideBridgeViewer.getCurrentSlideInfo();
+    const width = info ? Number(info.width) : 0;
+    const height = info ? Number(info.height) : 0;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+    return [0, 0, Math.round(width), Math.round(height)];
+  }
+
+  function tr(key) {
+    const api = window.SlideBridgeViewer;
+    if (api && api.translate) {
+      return api.translate(key);
+    }
+    return key;
   }
 
   async function copyText(text) {

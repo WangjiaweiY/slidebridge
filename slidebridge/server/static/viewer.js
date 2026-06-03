@@ -20,13 +20,24 @@
         slideLibrary: "Slide Library",
         figureDesigner: "Figure Designer",
         setMainView: "Set main from current view",
+        setMainFullSlide: "Set main to full slide",
         figureHeatmapLayer: "heatmap layer",
         mainMode: "main mode",
         overlayOpacity: "overlay opacity",
         mainScalebar: "main scale bar um",
+        showFigureLabels: "show panel labels",
         selectPatchArea: "Select patch area",
         copyFigureSpec: "Copy JSON spec",
         exportFigurePng: "Export PNG",
+        figureExporting: "Exporting PNG...",
+        figureExportComplete: "PNG export requested.",
+        figureSpecCopied: "Figure spec copied.",
+        figureMainFullSet: "Main panel set to full slide.",
+        figureMainUnset: "Main panel is not set.",
+        figureSelectionActive: "Selection mode active.",
+        figureSlotSet: "Slot {label} set.",
+        noRasterHeatmap: "No raster heatmap",
+        empty: "empty",
         filterSlides: "Filter slides",
         session: "Session",
         slideMetadata: "Slide Metadata",
@@ -105,7 +116,28 @@
         tabLibrary: "切片库",
         tabInfo: "信息",
         tabOverlays: "叠加层",
+        tabFigure: "排图",
         slideLibrary: "切片库",
+        figureDesigner: "论文图设计",
+        setMainView: "从当前视野设置主图",
+        setMainFullSlide: "主图设为全切片",
+        figureHeatmapLayer: "热图层",
+        mainMode: "主图模式",
+        overlayOpacity: "叠加透明度",
+        mainScalebar: "主图比例尺 um",
+        showFigureLabels: "显示面板标签",
+        selectPatchArea: "框选 patch 区域",
+        copyFigureSpec: "复制 JSON spec",
+        exportFigurePng: "导出 PNG",
+        figureExporting: "正在导出 PNG...",
+        figureExportComplete: "PNG 导出请求已完成。",
+        figureSpecCopied: "Figure spec 已复制。",
+        figureMainFullSet: "主图已设为全切片。",
+        figureMainUnset: "主图尚未设置。",
+        figureSelectionActive: "正在框选 patch。",
+        figureSlotSet: "Slot {label} 已设置。",
+        noRasterHeatmap: "没有整图热图",
+        empty: "空",
         filterSlides: "筛选切片",
         session: "会话",
         slideMetadata: "切片元数据",
@@ -443,6 +475,7 @@
         }
         renderZoomControl();
         updateZoomReadout();
+        emitViewerStateChange();
       });
 
       viewer.addHandler("open", function () {
@@ -966,6 +999,10 @@
             const slider = document.getElementById("opacity-slider");
             const value = slider ? Number(slider.value) : defaultHeatmapOpacity;
             return Number.isFinite(value) ? value : defaultHeatmapOpacity;
+          },
+          translate: t,
+          getLanguage: function () {
+            return currentLanguage;
           },
           selectSquareRegion: selectSquareRegion
         };
