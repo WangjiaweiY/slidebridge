@@ -18,7 +18,9 @@ PATCH_SLOT_SIZE = 300
 PATCH_SLOT_GUTTER = 32
 PATCH_GRID_COLUMNS = 3
 PATCH_GRID_ROWS = 2
-PATCH_GRID_Y = 1088
+MAIN_PATCH_GAP = 32
+PATCH_ROW_GUTTER = PATCH_SLOT_GUTTER
+BOTTOM_MARGIN = 80
 
 
 def render_figure_spec_to_image(
@@ -34,27 +36,29 @@ def render_figure_spec_to_image(
     font_small = _font(15)
     heatmap_source = raster_heatmap_paths.get(normalized["heatmap_layer_id"])
     show_labels = bool(normalized["show_labels"])
+    layout = _resolve_layout(normalized)
+    main_panel = layout["main_panel"]
 
     main = normalized["main"]
     main_image, main_summary = _render_panel(
         slide,
         tuple(main["bbox"]),
-        MAIN_PANEL[2],
-        MAIN_PANEL[3],
+        main_panel[2],
+        main_panel[3],
         main["mode"],
         heatmap_source,
         normalized["overlay_opacity"],
-        fit=main["fit"],
+        fit="cover",
     )
-    canvas.paste(main_image, MAIN_PANEL[:2])
-    _draw_border(draw, MAIN_PANEL, width=3)
+    canvas.paste(main_image, main_panel[:2])
+    _draw_border(draw, main_panel, width=3)
     if show_labels:
-        _draw_panel_label(draw, MAIN_PANEL, main["label"], font_label)
+        _draw_panel_label(draw, main_panel, main["label"], font_label)
     scalebar_drawn = False
     if main.get("scalebar_um") is not None:
         scalebar_drawn = _draw_scalebar(
             draw,
-            MAIN_PANEL,
+            main_panel,
             float(main["scalebar_um"]),
             _slide_mpp(slide),
             float(main_summary["scale"]),
@@ -63,7 +67,7 @@ def render_figure_spec_to_image(
 
     rendered_patches: list[dict[str, Any]] = []
     for patch in normalized["patches"]:
-        panel = _patch_panel_for_slot(int(patch["slot"]))
+        panel = layout["patch_panels"][int(patch["slot"])]
         image, summary = _render_panel(
             slide,
             tuple(patch["bbox"]),
@@ -94,7 +98,8 @@ def render_figure_spec_to_image(
         "heatmap_layer_id": normalized["heatmap_layer_id"],
         "show_labels": show_labels,
         "main": {
-            "panel": list(MAIN_PANEL),
+            "panel": list(main_panel),
+            "max_panel": list(MAIN_PANEL),
             "bbox": main["bbox"],
             "mode": main["mode"],
             "fit": main["fit"],
@@ -125,11 +130,7 @@ def normalize_figure_spec(
     main_fit = _fit(main.get("fit", "contain"))
     _require_heatmap_for_overlay(main_mode, heatmap_layer_id, raster_heatmap_paths)
     raw_main_bbox = _bbox(main.get("bbox"), "main.bbox")
-    main_bbox = (
-        _clamp_bbox(raw_main_bbox, slide)
-        if main_fit == "contain"
-        else _adjust_bbox_to_panel_aspect(raw_main_bbox, MAIN_PANEL[2], MAIN_PANEL[3], slide)
-    )
+    main_bbox = _clamp_bbox(raw_main_bbox, slide)
     scalebar_um = main.get("scalebar_um")
     if scalebar_um is not None:
         scalebar_um = float(scalebar_um)
@@ -234,18 +235,65 @@ def _render_panel(
     return image, summary
 
 
-def _patch_panel_for_slot(slot: int) -> tuple[int, int, int, int]:
-    if PATCH_GRID_COLUMNS > 1:
-        column_gap = (MAIN_PANEL[2] - PATCH_GRID_COLUMNS * PATCH_SLOT_SIZE) / float(PATCH_GRID_COLUMNS - 1)
-    else:
-        column_gap = 0.0
+def _resolve_layout(normalized: dict[str, Any]) -> dict[str, Any]:
+    main_panel = _main_panel_for_bbox(tuple(normalized["main"]["bbox"]))
+    patch_panels = {
+        slot: _patch_panel_for_slot(slot, main_panel)
+        for slot in range(PATCH_GRID_COLUMNS * PATCH_GRID_ROWS)
+    }
+    return {"main_panel": main_panel, "patch_panels": patch_panels}
+
+
+def _main_panel_for_bbox(bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    x0, y0, x1, y1 = bbox
+    bbox_width = max(1, x1 - x0)
+    bbox_height = max(1, y1 - y0)
+    aspect = bbox_width / float(bbox_height)
+    available_height = (
+        FIGURE_CANVAS[1]
+        - MAIN_PANEL[1]
+        - BOTTOM_MARGIN
+        - MAIN_PATCH_GAP
+        - (PATCH_GRID_ROWS - 1) * PATCH_ROW_GUTTER
+    )
+    max_main_height = min(
+        MAIN_PANEL[3],
+        MAIN_PANEL[2] / aspect,
+        available_height / (1.0 + PATCH_GRID_ROWS * aspect / PATCH_GRID_COLUMNS),
+    )
+    raw_width = max(1.0, max_main_height * aspect)
+    slot_size = max(1, int(raw_width // PATCH_GRID_COLUMNS))
+
+    while slot_size > 1:
+        width = slot_size * PATCH_GRID_COLUMNS
+        height = max(1, int(round(width / aspect)))
+        total_height = (
+            MAIN_PANEL[1]
+            + height
+            + MAIN_PATCH_GAP
+            + PATCH_GRID_ROWS * slot_size
+            + (PATCH_GRID_ROWS - 1) * PATCH_ROW_GUTTER
+            + BOTTOM_MARGIN
+        )
+        if width <= MAIN_PANEL[2] and height <= MAIN_PANEL[3] and total_height <= FIGURE_CANVAS[1]:
+            break
+        slot_size -= 1
+
+    width = slot_size * PATCH_GRID_COLUMNS
+    height = max(1, int(round(width / aspect)))
+    x = int(round((FIGURE_CANVAS[0] - width) / 2))
+    return x, MAIN_PANEL[1], width, height
+
+
+def _patch_panel_for_slot(slot: int, main_panel: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    slot_size = max(1, main_panel[2] // PATCH_GRID_COLUMNS)
     col = slot % PATCH_GRID_COLUMNS
     row = slot // PATCH_GRID_COLUMNS
     return (
-        int(round(MAIN_PANEL[0] + col * (PATCH_SLOT_SIZE + column_gap))),
-        PATCH_GRID_Y + row * (PATCH_SLOT_SIZE + PATCH_SLOT_GUTTER),
-        PATCH_SLOT_SIZE,
-        PATCH_SLOT_SIZE,
+        main_panel[0] + col * slot_size,
+        main_panel[1] + main_panel[3] + MAIN_PATCH_GAP + row * (slot_size + PATCH_ROW_GUTTER),
+        slot_size,
+        slot_size,
     )
 
 
