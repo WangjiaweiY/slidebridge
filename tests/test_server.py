@@ -249,6 +249,29 @@ def test_server_multiple_raster_heatmap_layers(tmp_path):
         assert response.headers["cache-control"] == "public, max-age=3600"
 
 
+def test_server_raster_heatmap_resize_warning_is_layer_scoped(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=19)
+    heatmap_path = tmp_path / "large.png"
+    Image.new("RGB", (64, 48), (240, 80, 20)).save(heatmap_path)
+    app = create_app(
+        slide_path,
+        raster_heatmap_path=heatmap_path,
+        reader="image",
+        max_raster_heatmap_size=16,
+    )
+    client = TestClient(app)
+
+    payload = client.get("/api/raster-heatmaps").json()
+    assert payload["warnings"] == ["raster_heatmap_resized:64x48:16x12"]
+
+    page = client.get("/").text
+    visible_html = re.sub(r"<script.*?</script>", "", page, flags=re.DOTALL)
+    visible_html = re.sub(r"<style.*?</style>", "", visible_html, flags=re.DOTALL)
+    assert "raster_heatmap_resized:64x48:16x12" not in visible_html
+    assert "humanizeRasterHeatmapWarning" in page
+    assert "resized ${resizeMatch[1]} -> ${resizeMatch[2]}" in page
+
+
 def test_server_rejects_invalid_tile_config(tmp_path):
     slide_path = create_demo_slide(tmp_path / "demo.png", width=256, height=256, seed=2)
 

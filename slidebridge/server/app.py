@@ -460,7 +460,7 @@ def create_app(
                 patch_count=len(patch_context.table),
                 patch_warning=patch_context.warning,
                 raster_heatmap_available=bool(raster_heatmap_payload.get("available")),
-                raster_heatmap_warning="; ".join(raster_heatmap_payload.get("warnings", [])),
+                raster_heatmap_warning=_raster_heatmap_global_warning_text(raster_heatmap_payload.get("warnings", [])),
                 heatmap_opacity=max(0.0, min(float(heatmap_opacity), 1.0)),
                 annotation_count=len(annotation_context.table),
                 annotation_warning=annotation_context.warning,
@@ -777,6 +777,29 @@ def _find_raster_heatmap_spec(
         if spec.id == layer_id:
             return spec
     raise HTTPException(status_code=404, detail="Raster heatmap layer was not found")
+
+
+def _raster_heatmap_global_warning_text(warnings: list[str] | Any) -> str:
+    if not isinstance(warnings, list):
+        return ""
+    global_warnings: list[str] = []
+    for warning in warnings:
+        text = str(warning or "")
+        if _is_layer_raster_heatmap_warning(text):
+            continue
+        if text and text not in global_warnings:
+            global_warnings.append(text)
+    return "; ".join(global_warnings)
+
+
+def _is_layer_raster_heatmap_warning(warning: str) -> bool:
+    return (
+        warning.startswith("raster_heatmap_resized:")
+        or warning == "raster_heatmap_aspect_ratio_mismatch"
+        or warning == "raster_heatmap_no_finite_values"
+        or warning == "raster_heatmap_constant_values"
+        or warning == "raster_heatmap_threshold_hides_all_pixels"
+    )
 
 
 def _collect_slide_entries(source: Path, recursive: bool, max_slides: int) -> list[SlideEntry]:

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.18
+
+Changed:
+
+- cleaned up raster heatmap layer labels and resize messages in the viewer
+- moved per-layer raster heatmap warnings into each layer row instead of the global warning area
+- kept raster heatmap API payloads backward-compatible while improving visible UI text
+
 ## 0.2.17
 
 Added:

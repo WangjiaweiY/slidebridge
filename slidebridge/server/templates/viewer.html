@@ -598,6 +598,16 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .heatmap-layer-warning {
+      display: block;
+      color: #9a5b00;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .annotation-overlay {
       pointer-events: auto;
       overflow: visible;
@@ -2218,9 +2228,18 @@
           const meta = document.createElement("span");
           meta.className = "heatmap-layer-meta";
           meta.textContent = rasterHeatmapLayerMeta(layer);
+          const warnings = rasterHeatmapLayerWarnings(layer);
           const textWrap = document.createElement("span");
           textWrap.appendChild(text);
-          textWrap.appendChild(meta);
+          if (meta.textContent) {
+            textWrap.appendChild(meta);
+          }
+          warnings.forEach(function (message) {
+            const warning = document.createElement("span");
+            warning.className = "heatmap-layer-warning";
+            warning.textContent = message;
+            textWrap.appendChild(warning);
+          });
           label.appendChild(checkbox);
           label.appendChild(textWrap);
           const slider = document.createElement("input");
@@ -2251,7 +2270,7 @@
         renderRasterHeatmapLayerControls(payload);
         updateScoreLegendVisibility();
         if (appendWarningMessages) {
-          appendWarnings(payload.warnings || []);
+          appendWarnings(rasterHeatmapGlobalWarnings(payload));
         }
       }
 
@@ -2441,7 +2460,13 @@
         if (layer.mode) {
           parts.push(layer.mode);
         }
-        if (layer.served_width && layer.served_height) {
+        if (layer.source_width && layer.source_height && layer.served_width && layer.served_height) {
+          if (Number(layer.source_width) !== Number(layer.served_width) || Number(layer.source_height) !== Number(layer.served_height)) {
+            parts.push(`${layer.source_width}x${layer.source_height} -> ${layer.served_width}x${layer.served_height}`);
+          } else {
+            parts.push(`${layer.served_width}x${layer.served_height}`);
+          }
+        } else if (layer.served_width && layer.served_height) {
           parts.push(`${layer.served_width}x${layer.served_height}`);
         }
         if (layer.threshold !== null && layer.threshold !== undefined) {
@@ -2451,6 +2476,53 @@
           parts.push("invert");
         }
         return parts.join(" · ");
+      }
+
+      function rasterHeatmapLayerWarnings(layer) {
+        const raw = Array.isArray(layer && layer.warnings) ? layer.warnings : [];
+        const values = raw
+          .map((message) => humanizeRasterHeatmapWarning(message))
+          .filter((message) => Boolean(message));
+        return Array.from(new Set(values));
+      }
+
+      function rasterHeatmapGlobalWarnings(payload) {
+        const raw = Array.isArray(payload && payload.warnings) ? payload.warnings : [];
+        const values = raw
+          .filter((message) => !isLayerRasterHeatmapWarning(message))
+          .map((message) => humanizeRasterHeatmapWarning(message) || message)
+          .filter((message) => Boolean(message));
+        return Array.from(new Set(values));
+      }
+
+      function isLayerRasterHeatmapWarning(message) {
+        const text = String(message || "");
+        return text.startsWith("raster_heatmap_resized:")
+          || text === "raster_heatmap_aspect_ratio_mismatch"
+          || text === "raster_heatmap_no_finite_values"
+          || text === "raster_heatmap_constant_values"
+          || text === "raster_heatmap_threshold_hides_all_pixels";
+      }
+
+      function humanizeRasterHeatmapWarning(message) {
+        const text = String(message || "");
+        const resizeMatch = text.match(/^raster_heatmap_resized:(\d+x\d+):(\d+x\d+)$/);
+        if (resizeMatch) {
+          return `resized ${resizeMatch[1]} -> ${resizeMatch[2]}`;
+        }
+        if (text === "raster_heatmap_aspect_ratio_mismatch") {
+          return "aspect ratio differs from slide";
+        }
+        if (text === "raster_heatmap_no_finite_values") {
+          return "no finite score values";
+        }
+        if (text === "raster_heatmap_constant_values") {
+          return "constant score values";
+        }
+        if (text === "raster_heatmap_threshold_hides_all_pixels") {
+          return "threshold hides all pixels";
+        }
+        return text;
       }
 
       function appendWarnings(warnings) {
