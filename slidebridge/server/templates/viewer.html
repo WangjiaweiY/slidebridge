@@ -550,7 +550,9 @@
     .raster-heatmap-overlay {
       width: 100%;
       height: 100%;
-      object-fit: fill;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 100% 100%;
       pointer-events: none;
       mix-blend-mode: multiply;
     }
@@ -2342,18 +2344,16 @@
           viewer.removeOverlay(rasterHeatmapElement);
           rasterHeatmapElement = null;
         }
-        const image = document.createElement("img");
-        image.className = "raster-heatmap-overlay";
-        image.src = rasterHeatmapPayload.url;
-        image.alt = "Raster heatmap overlay";
-        image.draggable = false;
-        image.title = `${rasterHeatmapLabel(rasterHeatmapPayload)}\n${rasterHeatmapPayload.mapping || ""}`;
+        const overlay = document.createElement("div");
+        overlay.className = "raster-heatmap-overlay";
+        overlay.style.backgroundImage = `url("${rasterHeatmapPayload.url}")`;
+        overlay.title = `${rasterHeatmapLabel(rasterHeatmapPayload)}\n${rasterHeatmapPayload.mapping || ""}`;
         viewer.addOverlay({
-          element: image,
+          element: overlay,
           location: viewer.viewport.imageToViewportRectangle(0, 0, currentSlideInfo.width, currentSlideInfo.height),
           checkResize: false
         });
-        rasterHeatmapElement = image;
+        rasterHeatmapElement = overlay;
         updatePatchOverlayStyle();
       }
 
