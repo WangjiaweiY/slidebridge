@@ -61,6 +61,8 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "backdrop-filter" in page.text
     assert "raster-heatmap-hidden" in page.text
     assert "overlay.style.backgroundImage" in page.text
+    assert "visible && rasterHeatmapPayload && rasterHeatmapPayload.available && !rasterHeatmapElement" in page.text
+    assert "renderRasterHeatmap();" in page.text
     assert "image.src = rasterHeatmapPayload.url" not in page.text
     assert "object-fit: fill" not in page.text
     assert 'element.style.display = toggle.checked ? "block" : "none"' not in page.text

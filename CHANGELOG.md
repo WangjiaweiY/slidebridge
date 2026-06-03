@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.16
+
+Fixed:
+
+- raster heatmap toggles now create the OpenSeadragon overlay if it was not yet initialized
+- raster heatmaps are rendered again on slide open to avoid first-load timing races
+
 ## 0.2.15
 
 Fixed:
