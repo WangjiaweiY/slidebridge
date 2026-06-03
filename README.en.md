@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.18`
+Current version: `0.2.19`
 
 ## Quick Demo
 
@@ -65,6 +65,7 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - Patch image export
 - Static overlay rendering
 - Static viewport rendering with `render-view`
+- Publication-style figure export with `render-figure`
 - AnnotationTable abstraction
 - QuPath GeoJSON, ASAP XML, and SlideBridge JSON annotation loading
 - Annotation overlay, conversion, and patch labeling
@@ -198,6 +199,27 @@ current viewport or download the current viewport as a PNG.
 It can also copy a viewer URL that restores the selected slide, viewport, panel,
 overlay toggles, and overlay filters after refresh.
 
+## Publication Figure Export
+
+Use `render-figure` to export a main WSI viewport with optional inset patch,
+inset heatmap, title, panel label, and micron scale bar:
+
+```powershell
+slidebridge render-figure outputs\demo_slide.png `
+  --raster-heatmap outputs\demo_heatmap.png `
+  --center-x 2048 --center-y 1536 `
+  --window-width 1600 --window-height 1200 `
+  --inset-x 1800 --inset-y 1300 `
+  --inset-width 512 --inset-height 512 `
+  --title "Model output overview" `
+  --panel-label A `
+  --scalebar-um 500 `
+  --mpp 0.25 `
+  --out outputs\demo_figure.png
+```
+
+See [Figure Rendering](docs/FIGURES.md).
+
 ## Annotation Debugging
 
 Use synthetic annotations to test the annotation workflow without patient data:
@@ -307,6 +329,7 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 - `slidebridge inspect-patches PATCHES --slide PATH`: inspect coordinate files and optional slide bounds.
 - `slidebridge export-patches PATH --patches PATCHES --out DIR`: export patch images and a manifest.
 - `slidebridge render-overlay PATH --patches PATCHES --annotations ANNOTATIONS --out OUTPUT`: render a static overlay image.
+- `slidebridge render-figure PATH --out OUTPUT`: export a static figure with a main view, optional inset, heatmap, title, and scale bar.
 - `slidebridge create-demo --out outputs\demo_slide.png`: create a synthetic H&E-like demo image.
 - `slidebridge create-demo-heatmap --out outputs\demo_heatmap.png`: create a synthetic raster heatmap.
 - `slidebridge create-demo-annotations --out outputs\demo_annotations.geojson`: create synthetic demo annotations.
@@ -457,6 +480,11 @@ v0.2.13:
 
 - restrained glassmorphism viewer styling
 - Playwright viewer visual and interaction regression tests
+
+v0.2.19:
+
+- publication-style `render-figure` export
+- main viewport plus optional inset patch, inset heatmap, title, and scale bar
 
 v0.3:
 

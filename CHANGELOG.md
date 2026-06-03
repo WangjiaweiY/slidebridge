@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.19
+
+Added:
+
+- `render-figure` command for publication-style static figure export
+- main WSI viewport rendering with optional full-slide raster heatmap overlay
+- inset patch and inset heatmap panels
+- title, panel label, and micron scale bar support
+
 ## 0.2.18
 
 Changed:

@@ -15,7 +15,7 @@ def test_release_version_output_contains_0210():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "0.2.18" in result.stdout
+    assert "0.2.19" in result.stdout
 
 
 def test_cli_render_overlay(tmp_path):
@@ -73,6 +73,58 @@ def test_cli_render_view(tmp_path):
     assert view.exists()
     with Image.open(view) as image:
         assert image.size == (320, 240)
+
+
+def test_cli_render_figure(tmp_path):
+    slide = tmp_path / "demo.png"
+    heatmap = tmp_path / "heatmap.png"
+    figure = tmp_path / "figure.png"
+
+    assert runner.invoke(app, ["create-demo", "--out", str(slide), "--width", "512", "--height", "384"]).exit_code == 0
+    Image.new("L", (128, 96), 180).save(heatmap)
+    result = runner.invoke(
+        app,
+        [
+            "render-figure",
+            str(slide),
+            "--raster-heatmap",
+            str(heatmap),
+            "--center-x",
+            "256",
+            "--center-y",
+            "192",
+            "--window-width",
+            "256",
+            "--window-height",
+            "192",
+            "--main-width",
+            "320",
+            "--inset-x",
+            "180",
+            "--inset-y",
+            "120",
+            "--inset-width",
+            "96",
+            "--inset-height",
+            "96",
+            "--title",
+            "Model output overview",
+            "--panel-label",
+            "A",
+            "--scalebar-um",
+            "100",
+            "--mpp",
+            "0.5",
+            "--out",
+            str(figure),
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["inset_bbox"] == [180, 120, 276, 216]
+    assert payload["scalebar_drawn"] is True
+    assert figure.exists()
 
 
 def test_cli_render_overlay_without_scores(tmp_path):
