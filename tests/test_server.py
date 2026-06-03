@@ -59,6 +59,8 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "copy-render-command" in page.text
     assert "download-render-view" in page.text
     assert "backdrop-filter" in page.text
+    assert "raster-heatmap-hidden" in page.text
+    assert 'element.style.display = toggle.checked ? "block" : "none"' not in page.text
     assert "parseViewerStateFromUrl" in page.text
     assert "buildViewerUrl" in page.text
     assert "scheduleViewerStateUrlUpdate" in page.text

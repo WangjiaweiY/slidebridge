@@ -554,6 +554,11 @@
       pointer-events: none;
       mix-blend-mode: multiply;
     }
+    .raster-heatmap-overlay.raster-heatmap-hidden {
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
     .annotation-overlay {
       pointer-events: auto;
       overflow: visible;
@@ -2340,6 +2345,8 @@
         const image = document.createElement("img");
         image.className = "raster-heatmap-overlay";
         image.src = rasterHeatmapPayload.url;
+        image.alt = "Raster heatmap overlay";
+        image.draggable = false;
         image.title = `${rasterHeatmapLabel(rasterHeatmapPayload)}\n${rasterHeatmapPayload.mapping || ""}`;
         viewer.addOverlay({
           element: image,
@@ -2888,9 +2895,11 @@
         const toggle = document.getElementById("overlay-toggle");
         const slider = document.getElementById("opacity-slider");
         const opacity = Number(slider.value);
+        const visible = Boolean(toggle.checked);
         document.querySelectorAll(".raster-heatmap-overlay").forEach(function (element) {
-          element.style.display = toggle.checked ? "block" : "none";
-          element.style.opacity = String(opacity);
+          element.classList.toggle("raster-heatmap-hidden", !visible);
+          element.setAttribute("aria-hidden", visible ? "false" : "true");
+          element.style.opacity = visible ? String(opacity) : "0";
         });
         scheduleCanvasOverlayRedraw();
       }
