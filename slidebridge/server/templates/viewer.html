@@ -1390,6 +1390,7 @@
         isOpen = true;
         renderZoomControl();
         const restored = restoreInitialViewportIfNeeded();
+        renderRasterHeatmap();
         refreshViewerLayout(!restored);
         updateZoomReadout();
         updateSnapshotReadout();
@@ -2896,6 +2897,10 @@
         const slider = document.getElementById("opacity-slider");
         const opacity = Number(slider.value);
         const visible = Boolean(toggle.checked);
+        if (visible && rasterHeatmapPayload && rasterHeatmapPayload.available && !rasterHeatmapElement) {
+          renderRasterHeatmap();
+          return;
+        }
         document.querySelectorAll(".raster-heatmap-overlay").forEach(function (element) {
           element.classList.toggle("raster-heatmap-hidden", !visible);
           element.setAttribute("aria-hidden", visible ? "false" : "true");
