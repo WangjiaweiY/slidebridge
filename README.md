@@ -14,7 +14,7 @@ Debug whole-slide images like a developer.
 
 > 上图是 synthetic demo，不包含任何患者数据。
 
-当前版本：`0.2.19`
+当前版本：`0.2.20`
 
 ## 这是什么？
 
@@ -258,6 +258,11 @@ v0.2.13:
 
 - viewer 玻璃拟态视觉优化
 - Playwright viewer 视觉/交互回归测试
+
+v0.2.20:
+
+- viewer Figure tab for main heatmap plus bottom `2x3` patch figure design
+- copy JSON specs and export fixed `2400x1800` PNG figures through `/api/render-figure`
 
 v0.2.19:
 
