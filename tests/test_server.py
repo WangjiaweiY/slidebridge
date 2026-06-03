@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 from fastapi.testclient import TestClient
@@ -7,6 +8,25 @@ from PIL import Image
 
 from slidebridge.server.app import create_app
 from slidebridge.utils.demo import create_demo_slide
+
+
+def _viewer_config(page_text: str) -> dict:
+    match = re.search(
+        r'<script id="slidebridge-viewer-config" type="application/json">(.*?)</script>',
+        page_text,
+        flags=re.DOTALL,
+    )
+    assert match
+    return json.loads(match.group(1))
+
+
+def _viewer_static_text(client: TestClient) -> tuple[str, str]:
+    js = client.get("/static/viewer.js")
+    css = client.get("/static/viewer.css")
+
+    assert js.status_code == 200
+    assert css.status_code == 200
+    return js.text, css.text
 
 
 def test_server_info_patches_dzi_and_tile(tmp_path):
@@ -41,40 +61,44 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     page = client.get("/")
     assert page.status_code == 200
     assert page.headers["cache-control"] == "no-store"
-    match = re.search(r'const tileCacheKey = "([0-9a-f]+)"', page.text)
-    assert match
-    assert 'fetch(apiUrl("patches"), {cache: "no-store"})' in page.text
-    assert "initialTileCacheStats" in page.text
-    assert "initialTilePerformanceStats" in page.text
-    assert "imageLoaderLimit: 4" in page.text
-    assert "maxImageCacheCount: 200" in page.text
-    assert "blendTime: 0" in page.text
-    assert "immediateRender: false" in page.text
+    viewer_config = _viewer_config(page.text)
+    assert re.fullmatch(r"[0-9a-f]+", viewer_config["tileCacheKey"])
+    assert "/static/viewer.css" in page.text
+    assert "/static/viewer.js" in page.text
+    viewer_js, viewer_css = _viewer_static_text(client)
+    viewer_assets = viewer_js + viewer_css
+    assert 'fetch(apiUrl("patches"), {cache: "no-store"})' in viewer_js
+    assert "initialTileCacheStats" in viewer_js
+    assert "initialTilePerformanceStats" in viewer_js
+    assert "imageLoaderLimit: 4" in viewer_js
+    assert "maxImageCacheCount: 200" in viewer_js
+    assert "blendTime: 0" in viewer_js
+    assert "immediateRender: false" in viewer_js
     assert 'id="overlay-canvas"' in page.text
-    assert "drawCanvasOverlays" in page.text
-    assert "currentImageBounds(0.12)" in page.text
+    assert "drawCanvasOverlays" in viewer_js
+    assert "currentImageBounds(0.12)" in viewer_js
     assert "overlay-render-count" in page.text
-    assert "snapshotOptions" in page.text
+    assert "snapshotOptions" in viewer_js
     assert "copy-viewer-url" in page.text
     assert "copy-render-command" in page.text
     assert "download-render-view" in page.text
-    assert "backdrop-filter" in page.text
-    assert "raster-heatmap-hidden" in page.text
-    assert "overlay.style.backgroundImage" in page.text
-    assert 'fetch(apiUrl("raster-heatmaps"), {cache: "no-store"})' in page.text
-    assert "rasterHeatmapElements = new Map()" in page.text
-    assert "rasterHeatmapLayerState = new Map()" in page.text
+    assert "backdrop-filter" in viewer_css
+    assert "raster-heatmap-hidden" in viewer_assets
+    assert "overlay.style.backgroundImage" in viewer_js
+    assert 'fetch(apiUrl("raster-heatmaps"), {cache: "no-store"})' in viewer_js
+    assert "rasterHeatmapElements = new Map()" in viewer_js
+    assert "rasterHeatmapLayerState = new Map()" in viewer_js
     assert "raster-heatmap-layer-list" in page.text
-    assert "renderRasterHeatmap();" in page.text
-    assert "image.src = rasterHeatmapPayload.url" not in page.text
-    assert "object-fit: fill" not in page.text
-    assert 'element.style.display = toggle.checked ? "block" : "none"' not in page.text
-    assert "parseViewerStateFromUrl" in page.text
-    assert "buildViewerUrl" in page.text
-    assert "scheduleViewerStateUrlUpdate" in page.text
-    assert "buildRenderViewCommand" in page.text
-    assert "buildSnapshotDownloadUrl" in page.text
-    cache_key = match.group(1)
+    assert "renderRasterHeatmap();" in viewer_js
+    assert "image.src = rasterHeatmapPayload.url" not in viewer_js
+    assert "object-fit: fill" not in viewer_css
+    assert 'element.style.display = toggle.checked ? "block" : "none"' not in viewer_js
+    assert "parseViewerStateFromUrl" in viewer_js
+    assert "buildViewerUrl" in viewer_js
+    assert "scheduleViewerStateUrlUpdate" in viewer_js
+    assert "buildRenderViewCommand" in viewer_js
+    assert "buildSnapshotDownloadUrl" in viewer_js
+    cache_key = viewer_config["tileCacheKey"]
     keyed_dzi = client.get(f"/slides/0/{cache_key}/dzi.dzi")
     assert keyed_dzi.status_code == 200
     keyed_tile = client.get(f"/slides/0/{cache_key}/dzi_files/9/0_0.jpeg")
@@ -131,7 +155,7 @@ def test_server_tile_cache_records_hits_misses_and_evictions(tmp_path):
     client = TestClient(app)
 
     page = client.get("/")
-    cache_key = re.search(r'const tileCacheKey = "([0-9a-f]+)"', page.text).group(1)  # type: ignore[union-attr]
+    cache_key = _viewer_config(page.text)["tileCacheKey"]
 
     initial = client.get("/api/cache-stats")
     assert initial.status_code == 200
@@ -176,7 +200,7 @@ def test_server_tile_cache_can_be_disabled(tmp_path):
     client = TestClient(app)
 
     page = client.get("/")
-    cache_key = re.search(r'const tileCacheKey = "([0-9a-f]+)"', page.text).group(1)  # type: ignore[union-attr]
+    cache_key = _viewer_config(page.text)["tileCacheKey"]
     tile = client.get(f"/slides/0/{cache_key}/dzi_files/8/0_0.jpeg")
     assert tile.status_code == 200
 
@@ -202,8 +226,7 @@ def test_server_raster_heatmap_endpoint(tmp_path):
     client = TestClient(app)
 
     page = client.get("/")
-    match = re.search(r'const tileCacheKey = "([0-9a-f]+)"', page.text)
-    assert match
+    assert re.fullmatch(r"[0-9a-f]+", _viewer_config(page.text)["tileCacheKey"])
     payload = client.get("/api/raster-heatmap").json()
     assert payload["available"] is True
     assert payload["mapping"] == "stretch_to_full_slide"
@@ -268,8 +291,9 @@ def test_server_raster_heatmap_resize_warning_is_layer_scoped(tmp_path):
     visible_html = re.sub(r"<script.*?</script>", "", page, flags=re.DOTALL)
     visible_html = re.sub(r"<style.*?</style>", "", visible_html, flags=re.DOTALL)
     assert "raster_heatmap_resized:64x48:16x12" not in visible_html
-    assert "humanizeRasterHeatmapWarning" in page
-    assert "resized ${resizeMatch[1]} -> ${resizeMatch[2]}" in page
+    viewer_js, _ = _viewer_static_text(client)
+    assert "humanizeRasterHeatmapWarning" in viewer_js
+    assert "resized ${resizeMatch[1]} -> ${resizeMatch[2]}" in viewer_js
 
 
 def test_server_rejects_invalid_tile_config(tmp_path):
@@ -337,19 +361,20 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     assert "language-toggle" in page.text
     assert "zoom-control" in page.text
     assert "equiv. magnification" in page.text
-    assert "zoomToImageScale" in page.text
     assert "score-threshold-slider" in page.text
     assert "top-k-input" in page.text
     assert "annotation-label-filter" in page.text
     assert "overlay-detail" in page.text
-    assert "filteredPatches" in page.text
-    assert "filteredAnnotations" in page.text
-    assert "zoomToBbox" in page.text
     assert "data-i18n=\"slideMetadata\"" in page.text
-    assert "flex-direction: column" in page.text
-    assert "overflow-y: auto" in page.text
-    assert "syncLibraryListHeight" not in page.text
-    assert "setupSlideListScroll" not in page.text
+    viewer_js, viewer_css = _viewer_static_text(client)
+    assert "zoomToImageScale" in viewer_js
+    assert "filteredPatches" in viewer_js
+    assert "filteredAnnotations" in viewer_js
+    assert "zoomToBbox" in viewer_js
+    assert "flex-direction: column" in viewer_css
+    assert "overflow-y: auto" in viewer_css
+    assert "syncLibraryListHeight" not in viewer_js
+    assert "setupSlideListScroll" not in viewer_js
 
     info = client.get("/api/info?slide_id=1")
     assert info.status_code == 200
