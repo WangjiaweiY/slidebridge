@@ -45,6 +45,7 @@ from slidebridge.remote.profiles import (
 from slidebridge.remote.spec import RemotePath, is_remote_spec, parse_remote_path
 from slidebridge.remote.ssh import build_ssh_base_command, require_ssh_available
 from slidebridge.remote.tunnel import build_tunnel_command, is_local_port_available, wait_for_http
+from slidebridge.render.figure import render_figure as render_figure_image
 from slidebridge.render.overlay import render_overlay
 from slidebridge.render.view import render_view as render_view_image
 from slidebridge.server.app import create_app
@@ -1163,6 +1164,87 @@ def render_view_command(
             raster_heatmap_threshold=raster_heatmap_threshold,
             raster_heatmap_invert=raster_heatmap_invert,
             raster_heatmap_colormap=raster_heatmap_colormap,
+            image_format=image_format,
+            jpeg_quality=jpeg_quality,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    except Exception as exc:
+        _fail(exc)
+    finally:
+        if slide is not None:
+            slide.close()
+
+
+@app.command("render-figure")
+def render_figure_command(
+    slide_path: Path = typer.Argument(..., help="Path to a WSI or image."),
+    out: Path = typer.Option(..., "--out", help="Output PNG/JPG figure path."),
+    center_x: Optional[float] = typer.Option(None, "--center-x", help="Level-0 x coordinate at main viewport center."),
+    center_y: Optional[float] = typer.Option(None, "--center-y", help="Level-0 y coordinate at main viewport center."),
+    window_width: int = typer.Option(4096, "--window-width", help="Level-0 main viewport width in pixels."),
+    window_height: int = typer.Option(3072, "--window-height", help="Level-0 main viewport height in pixels."),
+    main_width: int = typer.Option(1600, "--main-width", help="Rendered main panel width in pixels."),
+    main_height: Optional[int] = typer.Option(None, "--main-height", help="Rendered main panel height. Defaults from viewport aspect."),
+    raster_heatmap: Optional[Path] = typer.Option(None, "--raster-heatmap", help="Optional PNG/JPG heatmap covering the full slide."),
+    raster_heatmap_opacity: float = typer.Option(0.45, "--raster-heatmap-opacity", min=0.0, max=1.0, help="Main heatmap opacity."),
+    max_raster_heatmap_size: int = typer.Option(4096, "--max-raster-heatmap-size", help="Maximum raster heatmap side used during rendering."),
+    raster_heatmap_threshold: Optional[float] = typer.Option(None, "--raster-heatmap-threshold", min=0.0, max=1.0, help="Hide raster heatmap pixels below this normalized value."),
+    raster_heatmap_invert: bool = typer.Option(False, "--raster-heatmap-invert/--no-raster-heatmap-invert", help="Invert raster heatmap intensity before rendering."),
+    raster_heatmap_colormap: str = typer.Option("auto", "--raster-heatmap-colormap", help="Raster heatmap colormap: auto, score, grayscale, or none."),
+    inset_x: Optional[float] = typer.Option(None, "--inset-x", help="Level-0 x coordinate at inset top-left."),
+    inset_y: Optional[float] = typer.Option(None, "--inset-y", help="Level-0 y coordinate at inset top-left."),
+    inset_width: int = typer.Option(1024, "--inset-width", help="Level-0 inset width in pixels."),
+    inset_height: int = typer.Option(1024, "--inset-height", help="Level-0 inset height in pixels."),
+    inset_size: int = typer.Option(360, "--inset-size", help="Rendered inset square size in pixels."),
+    inset_heatmap: Optional[Path] = typer.Option(None, "--inset-heatmap", help="Optional PNG/JPG heatmap for the inset. Defaults to --raster-heatmap."),
+    include_inset_heatmap: bool = typer.Option(True, "--inset-heatmap-panel/--no-inset-heatmap-panel", help="Render an inset heatmap panel when a heatmap is available."),
+    inset_heatmap_opacity: Optional[float] = typer.Option(None, "--inset-heatmap-opacity", min=0.0, max=1.0, help="Inset heatmap opacity. Defaults to main heatmap opacity."),
+    title: Optional[str] = typer.Option(None, "--title", help="Optional figure title."),
+    panel_label: Optional[str] = typer.Option(None, "--panel-label", help="Main panel label, for example A."),
+    scalebar_um: Optional[float] = typer.Option(None, "--scalebar-um", min=0.0, help="Draw a scale bar with this length in microns."),
+    mpp: Optional[float] = typer.Option(None, "--mpp", min=0.0, help="Override slide microns-per-pixel for scale bar."),
+    background: str = typer.Option("white", "--background", help="Figure background: white, paper, or #RRGGBB."),
+    reader: Optional[str] = typer.Option(None, "--reader", help="Specify a reader by name."),
+    image_format: Optional[str] = typer.Option(None, "--format", help="Output format: png or jpg. Defaults to output suffix."),
+    jpeg_quality: int = typer.Option(95, "--jpeg-quality", min=1, max=100, help="JPEG output quality."),
+) -> None:
+    """Render a publication-style figure with main view, insets, heatmap, and scale bar."""
+
+    slide = None
+    try:
+        if raster_heatmap is not None and not is_raster_heatmap_path(raster_heatmap):
+            raise ValueError("--raster-heatmap must point to a PNG, JPG, or JPEG file.")
+        if inset_heatmap is not None and not is_raster_heatmap_path(inset_heatmap):
+            raise ValueError("--inset-heatmap must point to a PNG, JPG, or JPEG file.")
+        slide = open_slide(slide_path, reader=reader)
+        result = render_figure_image(
+            slide,
+            out,
+            center_x=center_x,
+            center_y=center_y,
+            window_width=window_width,
+            window_height=window_height,
+            main_width=main_width,
+            main_height=main_height,
+            raster_heatmap_path=raster_heatmap,
+            raster_heatmap_opacity=raster_heatmap_opacity,
+            max_raster_heatmap_size=max_raster_heatmap_size,
+            raster_heatmap_threshold=raster_heatmap_threshold,
+            raster_heatmap_invert=raster_heatmap_invert,
+            raster_heatmap_colormap=raster_heatmap_colormap,
+            inset_x=inset_x,
+            inset_y=inset_y,
+            inset_width=inset_width,
+            inset_height=inset_height,
+            inset_size=inset_size,
+            inset_heatmap_path=inset_heatmap,
+            include_inset_heatmap=include_inset_heatmap,
+            inset_heatmap_opacity=inset_heatmap_opacity,
+            title=title,
+            panel_label=panel_label,
+            scalebar_um=scalebar_um,
+            mpp=mpp,
+            background=background,
             image_format=image_format,
             jpeg_quality=jpeg_quality,
         )
