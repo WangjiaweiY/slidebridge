@@ -460,6 +460,10 @@
     .snapshot-status[data-state="ok"] {
       color: #1f6f48;
     }
+    .snapshot-status[data-state="busy"] {
+      color: #0f5260;
+      font-weight: 700;
+    }
     .snapshot-status[data-state="error"] {
       color: #9b2c2c;
     }
@@ -546,6 +550,10 @@
     }
     .figure-slot-mode {
       width: 86px;
+    }
+    .figure-label-toggle {
+      justify-content: flex-start;
+      width: fit-content;
     }
     #figure-heatmap-layer {
       width: min(190px, 100%);

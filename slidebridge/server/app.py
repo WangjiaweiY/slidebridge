@@ -645,11 +645,20 @@ def create_app(
         session = get_session(slide_id)
         normalized_spec = dict(spec)
         normalized_spec["slide_id"] = slide_id
+        heatmap_layer_id = str(normalized_spec.get("heatmap_layer_id") or "").strip()
+        raster_heatmap_sources: dict[str, Any] = {}
+        if heatmap_layer_id:
+            try:
+                context = get_raster_heatmap_context(slide_id, heatmap_layer_id)
+            except HTTPException as exc:
+                raise HTTPException(status_code=400, detail="Figure heatmap layer was not found.") from exc
+            if context.heatmap is not None:
+                raster_heatmap_sources[heatmap_layer_id] = context.heatmap
         try:
             image, _ = render_figure_spec_to_image(
                 session.slide,
                 normalized_spec,
-                raster_heatmap_paths={item.id: item.path for item in raster_heatmap_specs},
+                raster_heatmap_paths=raster_heatmap_sources,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -5,7 +5,7 @@ import pytest
 from PIL import Image
 
 from slidebridge.readers.image_reader import ImageReader
-from slidebridge.render.figure_spec import FIGURE_CANVAS, MAIN_PANEL, PATCH_SLOT_SIZE, normalize_figure_spec, render_figure_spec_to_image
+from slidebridge.render.figure_spec import FIGURE_CANVAS, MAIN_PANEL, PATCH_GRID_COLUMNS, PATCH_SLOT_SIZE, normalize_figure_spec, render_figure_spec_to_image
 from slidebridge.utils.demo import create_demo_slide
 
 
@@ -24,11 +24,13 @@ def _figure_spec(layer_id: str = "0-low", main_mode: str = "overlay") -> dict:
         "main": {
             "bbox": [64, 48, 448, 336],
             "mode": main_mode,
+            "fit": "cover",
             "label": "A",
         },
         "patches": [
             {"slot": 0, "bbox": [90, 70, 180, 140], "mode": "raw", "label": "B"},
             {"slot": 1, "bbox": [210, 120, 300, 210], "mode": "overlay", "label": "C"},
+            {"slot": 2, "bbox": [320, 160, 400, 240], "mode": "raw", "label": "D"},
         ],
     }
 
@@ -50,10 +52,12 @@ def test_render_figure_spec_with_raw_and_overlay_slots(tmp_path):
     assert image.size == FIGURE_CANVAS
     assert summary["main"]["panel"] == list(MAIN_PANEL)
     assert summary["main"]["scalebar_drawn"] is True
-    assert len(summary["patches"]) == 2
+    assert len(summary["patches"]) == 3
     assert summary["patches"][0]["mode"] == "raw"
     assert summary["patches"][1]["mode"] == "overlay"
     assert summary["patches"][0]["panel"][2:] == [PATCH_SLOT_SIZE, PATCH_SLOT_SIZE]
+    assert summary["patches"][0]["panel"][0] == MAIN_PANEL[0]
+    assert summary["patches"][PATCH_GRID_COLUMNS - 1]["panel"][0] + PATCH_SLOT_SIZE == MAIN_PANEL[0] + MAIN_PANEL[2]
 
 
 def test_figure_spec_adjusts_bboxes_to_panel_aspect(tmp_path):
@@ -75,6 +79,28 @@ def test_figure_spec_adjusts_bboxes_to_panel_aspect(tmp_path):
     assert main_ratio == pytest.approx(MAIN_PANEL[2] / MAIN_PANEL[3], rel=0.03)
     patch = normalized["patches"][0]["bbox"]
     assert patch[2] - patch[0] == patch[3] - patch[1]
+
+
+def test_figure_spec_main_contain_keeps_full_slide_bbox(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=55)
+    heatmap_path = _demo_heatmap(tmp_path / "heatmap.png")
+    slide = ImageReader().open(slide_path)
+    spec = _figure_spec()
+    spec["show_labels"] = False
+    spec["main"] = {"bbox": [0, 0, 512, 384], "mode": "overlay", "fit": "contain", "label": "A"}
+    spec["patches"] = []
+
+    try:
+        image, summary = render_figure_spec_to_image(slide, spec, raster_heatmap_paths={"0-low": heatmap_path})
+    finally:
+        slide.close()
+
+    assert image.size == FIGURE_CANVAS
+    assert summary["show_labels"] is False
+    assert summary["main"]["bbox"] == [0, 0, 512, 384]
+    assert summary["main"]["fit"] == "contain"
+    assert summary["main"]["view"]["content_box"][2] <= MAIN_PANEL[2]
+    assert summary["main"]["view"]["content_box"][3] <= MAIN_PANEL[3]
 
 
 def test_figure_spec_overlay_requires_heatmap_layer(tmp_path):

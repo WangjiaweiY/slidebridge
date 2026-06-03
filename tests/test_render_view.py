@@ -10,6 +10,36 @@ from slidebridge.render.view import render_view, render_view_to_image
 from slidebridge.utils.demo import create_demo_slide
 
 
+class _PyramidSlide:
+    path = None
+    reader_name = "fake"
+    dimensions = (4096, 3072)
+    level_count = 3
+    level_dimensions = [(4096, 3072), (1024, 768), (256, 192)]
+    level_downsamples = [1.0, 4.0, 16.0]
+    properties = {}
+    metadata = {}
+    mpp = (None, None)
+    objective_power = None
+    vendor = None
+
+    def __init__(self):
+        self.calls = []
+
+    def read_region(self, x: int, y: int, width: int, height: int, level: int = 0) -> Image.Image:
+        self.calls.append((x, y, width, height, level))
+        return Image.new("RGB", (width, height), (230, 230, 230))
+
+    def get_thumbnail(self, max_size: int = 1024) -> Image.Image:
+        return Image.new("RGB", (max_size, max_size), (230, 230, 230))
+
+    def get_best_level_for_downsample(self, downsample: float) -> int:
+        return 2 if downsample >= 12 else 1 if downsample >= 3 else 0
+
+    def close(self) -> None:
+        pass
+
+
 def test_render_view_with_patches_annotations_and_raster_heatmap(tmp_path):
     slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=21)
     heatmap_path = tmp_path / "heatmap.png"
@@ -105,6 +135,25 @@ def test_render_view_to_image_returns_image_and_summary(tmp_path):
     assert result["view_bbox"] == [128, 96, 384, 288]
     assert result["window_width"] == 256
     assert result["window_height"] == 192
+
+
+def test_render_view_to_image_uses_pyramid_level_for_downsampled_view():
+    slide = _PyramidSlide()
+
+    image, result = render_view_to_image(
+        slide,
+        center_x=2048,
+        center_y=1536,
+        window_width=4096,
+        window_height=3072,
+        out_width=512,
+        out_height=384,
+    )
+
+    assert image.size == (512, 384)
+    assert slide.calls[0] == (0, 0, 1024, 768, 1)
+    assert result["read_level"] == 1
+    assert result["read_level_downsample"] == 4.0
 
 
 def test_render_view_rejects_scale_and_magnification_together(tmp_path):

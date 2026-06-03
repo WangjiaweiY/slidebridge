@@ -6,8 +6,11 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from slidebridge.core.protocol import Slide
+from slidebridge.overlays.raster_heatmap import RasterHeatmap
 from slidebridge.render.view import render_view_to_image
 
+
+HeatmapSource = str | Path | RasterHeatmap
 
 FIGURE_CANVAS = (2400, 1800)
 MAIN_PANEL = (80, 80, 2240, 980)
@@ -21,7 +24,7 @@ PATCH_GRID_Y = 1088
 def render_figure_spec_to_image(
     slide: Slide,
     spec: dict[str, Any],
-    raster_heatmap_paths: dict[str, str | Path] | None = None,
+    raster_heatmap_paths: dict[str, HeatmapSource] | None = None,
 ) -> tuple[Image.Image, dict[str, Any]]:
     raster_heatmap_paths = raster_heatmap_paths or {}
     normalized = normalize_figure_spec(spec, slide, raster_heatmap_paths)
@@ -29,7 +32,8 @@ def render_figure_spec_to_image(
     draw = ImageDraw.Draw(canvas)
     font_label = _font(28)
     font_small = _font(15)
-    heatmap_path = raster_heatmap_paths.get(normalized["heatmap_layer_id"])
+    heatmap_source = raster_heatmap_paths.get(normalized["heatmap_layer_id"])
+    show_labels = bool(normalized["show_labels"])
 
     main = normalized["main"]
     main_image, main_summary = _render_panel(
@@ -38,12 +42,14 @@ def render_figure_spec_to_image(
         MAIN_PANEL[2],
         MAIN_PANEL[3],
         main["mode"],
-        heatmap_path,
+        heatmap_source,
         normalized["overlay_opacity"],
+        fit=main["fit"],
     )
     canvas.paste(main_image, MAIN_PANEL[:2])
     _draw_border(draw, MAIN_PANEL, width=3)
-    _draw_panel_label(draw, MAIN_PANEL, main["label"], font_label)
+    if show_labels:
+        _draw_panel_label(draw, MAIN_PANEL, main["label"], font_label)
     scalebar_drawn = False
     if main.get("scalebar_um") is not None:
         scalebar_drawn = _draw_scalebar(
@@ -64,12 +70,13 @@ def render_figure_spec_to_image(
             panel[2],
             panel[3],
             patch["mode"],
-            heatmap_path,
+            heatmap_source,
             normalized["overlay_opacity"],
         )
         canvas.paste(image, panel[:2])
         _draw_border(draw, panel, width=2)
-        _draw_panel_label(draw, panel, patch["label"], font_label)
+        if show_labels:
+            _draw_panel_label(draw, panel, patch["label"], font_label)
         rendered_patches.append(
             {
                 "slot": patch["slot"],
@@ -85,10 +92,12 @@ def render_figure_spec_to_image(
         "figure_size": list(FIGURE_CANVAS),
         "slide_id": normalized["slide_id"],
         "heatmap_layer_id": normalized["heatmap_layer_id"],
+        "show_labels": show_labels,
         "main": {
             "panel": list(MAIN_PANEL),
             "bbox": main["bbox"],
             "mode": main["mode"],
+            "fit": main["fit"],
             "label": main["label"],
             "view": main_summary,
             "scalebar_um": main.get("scalebar_um"),
@@ -101,7 +110,7 @@ def render_figure_spec_to_image(
 def normalize_figure_spec(
     spec: dict[str, Any],
     slide: Slide,
-    raster_heatmap_paths: dict[str, str | Path] | None = None,
+    raster_heatmap_paths: dict[str, HeatmapSource] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(spec, dict):
         raise ValueError("Figure spec must be a JSON object.")
@@ -109,11 +118,18 @@ def normalize_figure_spec(
     canvas = spec.get("canvas") or {}
     heatmap_layer_id = str(spec.get("heatmap_layer_id") or "").strip()
     overlay_opacity = _clamp_float(spec.get("overlay_opacity", 0.45), 0.0, 1.0)
+    show_labels = bool(spec.get("show_labels", True))
 
     main = spec.get("main") or {}
     main_mode = _mode(main.get("mode", "overlay" if heatmap_layer_id else "raw"))
+    main_fit = _fit(main.get("fit", "contain"))
     _require_heatmap_for_overlay(main_mode, heatmap_layer_id, raster_heatmap_paths)
-    main_bbox = _adjust_bbox_to_panel_aspect(_bbox(main.get("bbox"), "main.bbox"), MAIN_PANEL[2], MAIN_PANEL[3], slide)
+    raw_main_bbox = _bbox(main.get("bbox"), "main.bbox")
+    main_bbox = (
+        _clamp_bbox(raw_main_bbox, slide)
+        if main_fit == "contain"
+        else _adjust_bbox_to_panel_aspect(raw_main_bbox, MAIN_PANEL[2], MAIN_PANEL[3], slide)
+    )
     scalebar_um = main.get("scalebar_um")
     if scalebar_um is not None:
         scalebar_um = float(scalebar_um)
@@ -158,9 +174,11 @@ def normalize_figure_spec(
         },
         "heatmap_layer_id": heatmap_layer_id,
         "overlay_opacity": overlay_opacity,
+        "show_labels": show_labels,
         "main": {
             "bbox": list(main_bbox),
             "mode": main_mode,
+            "fit": main_fit,
             "label": str(main.get("label") or "A"),
             "scalebar_um": scalebar_um,
         },
@@ -174,30 +192,57 @@ def _render_panel(
     width: int,
     height: int,
     mode: str,
-    heatmap_path: str | Path | None,
+    heatmap_source: HeatmapSource | None,
     opacity: float,
+    fit: str = "cover",
 ) -> tuple[Image.Image, dict[str, Any]]:
     x0, y0, x1, y1 = bbox
-    return render_view_to_image(
+    heatmap_path = heatmap_source if isinstance(heatmap_source, (str, Path)) else None
+    heatmap = heatmap_source if isinstance(heatmap_source, RasterHeatmap) else None
+    target_width, target_height = width, height
+    offset_x = 0
+    offset_y = 0
+    if fit == "contain":
+        bbox_width = max(1, x1 - x0)
+        bbox_height = max(1, y1 - y0)
+        scale = min(width / float(bbox_width), height / float(bbox_height))
+        target_width = max(1, int(round(bbox_width * scale)))
+        target_height = max(1, int(round(bbox_height * scale)))
+        offset_x = int(round((width - target_width) / 2))
+        offset_y = int(round((height - target_height) / 2))
+
+    image, summary = render_view_to_image(
         slide,
         center_x=(x0 + x1) / 2,
         center_y=(y0 + y1) / 2,
         window_width=x1 - x0,
         window_height=y1 - y0,
-        out_width=width,
-        out_height=height,
+        out_width=target_width,
+        out_height=target_height,
         raster_heatmap_path=heatmap_path if mode == "overlay" else None,
+        raster_heatmap=heatmap if mode == "overlay" else None,
         raster_heatmap_opacity=opacity,
     )
+    if fit == "contain" and (target_width != width or target_height != height):
+        panel = Image.new("RGB", (width, height), (255, 255, 255))
+        panel.paste(image, (offset_x, offset_y))
+        summary = dict(summary)
+        summary["content_box"] = [offset_x, offset_y, target_width, target_height]
+        return panel, summary
+    summary = dict(summary)
+    summary["content_box"] = [0, 0, width, height]
+    return image, summary
 
 
 def _patch_panel_for_slot(slot: int) -> tuple[int, int, int, int]:
-    grid_width = PATCH_GRID_COLUMNS * PATCH_SLOT_SIZE + (PATCH_GRID_COLUMNS - 1) * PATCH_SLOT_GUTTER
-    x0 = int(round((FIGURE_CANVAS[0] - grid_width) / 2))
+    if PATCH_GRID_COLUMNS > 1:
+        column_gap = (MAIN_PANEL[2] - PATCH_GRID_COLUMNS * PATCH_SLOT_SIZE) / float(PATCH_GRID_COLUMNS - 1)
+    else:
+        column_gap = 0.0
     col = slot % PATCH_GRID_COLUMNS
     row = slot // PATCH_GRID_COLUMNS
     return (
-        x0 + col * (PATCH_SLOT_SIZE + PATCH_SLOT_GUTTER),
+        int(round(MAIN_PANEL[0] + col * (PATCH_SLOT_SIZE + column_gap))),
         PATCH_GRID_Y + row * (PATCH_SLOT_SIZE + PATCH_SLOT_GUTTER),
         PATCH_SLOT_SIZE,
         PATCH_SLOT_SIZE,
@@ -219,12 +264,9 @@ def _adjust_bbox_to_panel_aspect(
     panel_height: int,
     slide: Slide,
 ) -> tuple[int, int, int, int]:
+    bbox = _clamp_bbox(bbox, slide)
     slide_width, slide_height = slide.dimensions
     x0, y0, x1, y1 = bbox
-    x0 = max(0, min(slide_width - 1, x0))
-    y0 = max(0, min(slide_height - 1, y0))
-    x1 = max(x0 + 1, min(slide_width, x1))
-    y1 = max(y0 + 1, min(slide_height, y1))
     width = max(1.0, float(x1 - x0))
     height = max(1.0, float(y1 - y0))
     target = max(1.0, float(panel_width)) / max(1.0, float(panel_height))
@@ -249,6 +291,16 @@ def _adjust_bbox_to_panel_aspect(
     return left, top, right, bottom
 
 
+def _clamp_bbox(bbox: tuple[int, int, int, int], slide: Slide) -> tuple[int, int, int, int]:
+    slide_width, slide_height = slide.dimensions
+    x0, y0, x1, y1 = bbox
+    x0 = max(0, min(slide_width - 1, x0))
+    y0 = max(0, min(slide_height - 1, y0))
+    x1 = max(x0 + 1, min(slide_width, x1))
+    y1 = max(y0 + 1, min(slide_height, y1))
+    return x0, y0, x1, y1
+
+
 def _mode(value: Any) -> str:
     mode = str(value or "raw").strip().lower()
     if mode not in {"raw", "overlay"}:
@@ -256,10 +308,17 @@ def _mode(value: Any) -> str:
     return mode
 
 
+def _fit(value: Any) -> str:
+    fit = str(value or "cover").strip().lower()
+    if fit not in {"cover", "contain"}:
+        raise ValueError("panel fit must be cover or contain.")
+    return fit
+
+
 def _require_heatmap_for_overlay(
     mode: str,
     heatmap_layer_id: str,
-    raster_heatmap_paths: dict[str, str | Path],
+    raster_heatmap_paths: dict[str, HeatmapSource],
 ) -> None:
     if mode == "overlay" and (not heatmap_layer_id or heatmap_layer_id not in raster_heatmap_paths):
         raise ValueError("overlay mode requires an available heatmap_layer_id.")
