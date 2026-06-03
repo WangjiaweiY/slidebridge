@@ -15,14 +15,14 @@ def test_root_version_option():
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert "SlideBridge Core 0.2.13" in result.stdout
+    assert "SlideBridge Core 0.2.14" in result.stdout
 
 
 def test_version_command():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "SlideBridge Core version: 0.2.13" in result.stdout
+    assert "SlideBridge Core version: 0.2.14" in result.stdout
     assert "Python version:" in result.stdout
 
 

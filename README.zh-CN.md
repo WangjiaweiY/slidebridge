@@ -14,7 +14,7 @@ Debug whole-slide images like a developer.
 
 > 上图是 synthetic demo，不包含任何患者数据。
 
-当前版本：`0.2.13`
+当前版本：`0.2.14`
 
 ## 这是什么？
 

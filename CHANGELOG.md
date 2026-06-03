@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.14
+
+Fixed:
+
+- raster heatmap visibility now stays synchronized with the overlay toggle during pan and zoom
+- raster heatmap overlays no longer rely on `display` toggling that can be overwritten by OpenSeadragon overlay layout updates
+
 ## 0.2.13
 
 Added:
