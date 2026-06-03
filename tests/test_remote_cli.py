@@ -134,6 +134,26 @@ def test_remote_view_dry_run_with_raster_heatmap():
     assert "--raster-heatmap /data/model_outputs/demo_heatmap.png" in output
 
 
+def test_remote_view_dry_run_with_multiple_raster_heatmap_layers():
+    result = runner.invoke(
+        app,
+        [
+            "remote-view",
+            "user@example.org:/data/slides/demo.svs",
+            "--raster-heatmap-layer",
+            "low=/data/model_outputs/low.png",
+            "--raster-heatmap-layer",
+            "high=/data/model_outputs/high.png",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = " ".join(result.stdout.split())
+    assert "--raster-heatmap-layer low=/data/model_outputs/low.png" in output
+    assert "--raster-heatmap-layer high=/data/model_outputs/high.png" in output
+
+
 def test_remote_view_dry_run_with_raster_heatmap_options():
     result = runner.invoke(
         app,

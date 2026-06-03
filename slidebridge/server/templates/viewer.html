@@ -561,6 +561,43 @@
       opacity: 0 !important;
       pointer-events: none !important;
     }
+    .heatmap-layer-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .heatmap-layer-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 120px;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid rgba(15, 86, 110, 0.16);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.52);
+    }
+    .heatmap-layer-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .heatmap-layer-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .heatmap-layer-meta {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .annotation-overlay {
       pointer-events: auto;
       overflow: visible;
@@ -894,6 +931,7 @@
                 <input id="opacity-slider" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}">
                 <div class="legend" id="score-legend" hidden><span data-i18n="low">low</span><span class="legend-bar"></span><span data-i18n="high">high</span></div>
               </div>
+              <div id="raster-heatmap-layer-list" class="heatmap-layer-list" hidden></div>
               <div class="control-row" id="score-threshold-row">
                 <label class="control-label">
                   <span data-i18n="scoreThreshold">score threshold</span>
@@ -1018,6 +1056,7 @@
         snapshotUnavailable: "Viewport is not ready yet.",
         modelOverlay: "model/debug overlay",
         rasterHeatmap: "raster heatmap",
+        rasterHeatmaps: "raster heatmaps",
         annotationOverlay: "annotation overlay for research/debugging",
         scoreThreshold: "score threshold",
         topK: "top-k patches",
@@ -1096,6 +1135,7 @@
         snapshotUnavailable: "视野尚未准备好。",
         modelOverlay: "模型/调试叠加层",
         rasterHeatmap: "整图热图",
+        rasterHeatmaps: "整图热图",
         annotationOverlay: "标注叠加层（研究/调试）",
         low: "低",
         high: "高",
@@ -1343,7 +1383,8 @@
       let rasterHeatmapPayload = null;
       let cacheStatsPayload = initialTileCacheStats;
       let performanceStatsPayload = initialTilePerformanceStats;
-      let rasterHeatmapElement = null;
+      const rasterHeatmapElements = new Map();
+      const rasterHeatmapLayerState = new Map();
       let currentSlideInfo = null;
       let currentZoomLevels = [];
       const overlayCanvas = document.getElementById("overlay-canvas");
@@ -1619,7 +1660,7 @@
       }
 
       async function loadRasterHeatmap(renderNow = true) {
-        const response = await fetch(apiUrl("raster-heatmap"), {cache: "no-store"});
+        const response = await fetch(apiUrl("raster-heatmaps"), {cache: "no-store"});
         const payload = await response.json();
         rasterHeatmapPayload = payload;
         updateRasterHeatmapHeader(payload);
@@ -2124,13 +2165,90 @@
         appendWarnings(payload.warnings || []);
       }
 
+      function rasterHeatmapLayers(payload) {
+        if (!payload || !payload.available) {
+          return [];
+        }
+        if (Array.isArray(payload.layers)) {
+          return payload.layers.filter((layer) => layer && layer.available);
+        }
+        return [payload];
+      }
+
+      function ensureRasterHeatmapLayerState(layers) {
+        const baseOpacity = Number(document.getElementById("opacity-slider").value || {{ heatmap_opacity }});
+        layers.forEach(function (layer, index) {
+          const id = String(layer.id || index);
+          if (!rasterHeatmapLayerState.has(id)) {
+            rasterHeatmapLayerState.set(id, {
+              enabled: index === 0,
+              opacity: Math.max(0, Math.min(1, Number.isFinite(baseOpacity) ? baseOpacity : {{ heatmap_opacity }}))
+            });
+          }
+        });
+      }
+
+      function renderRasterHeatmapLayerControls(payload) {
+        const container = document.getElementById("raster-heatmap-layer-list");
+        if (!container) {
+          return;
+        }
+        const layers = rasterHeatmapLayers(payload);
+        container.hidden = layers.length === 0;
+        container.innerHTML = "";
+        ensureRasterHeatmapLayerState(layers);
+        layers.forEach(function (layer, index) {
+          const id = String(layer.id || index);
+          const state = rasterHeatmapLayerState.get(id) || {enabled: index === 0, opacity: {{ heatmap_opacity }}};
+          const row = document.createElement("div");
+          row.className = "heatmap-layer-row";
+          const label = document.createElement("label");
+          label.className = "heatmap-layer-label";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = Boolean(state.enabled);
+          checkbox.addEventListener("change", function () {
+            const current = rasterHeatmapLayerState.get(id) || state;
+            rasterHeatmapLayerState.set(id, {...current, enabled: checkbox.checked});
+            updatePatchOverlayStyle();
+          });
+          const text = document.createElement("span");
+          text.className = "heatmap-layer-name";
+          text.textContent = layer.name || rasterHeatmapLabel(layer);
+          const meta = document.createElement("span");
+          meta.className = "heatmap-layer-meta";
+          meta.textContent = rasterHeatmapLayerMeta(layer);
+          const textWrap = document.createElement("span");
+          textWrap.appendChild(text);
+          textWrap.appendChild(meta);
+          label.appendChild(checkbox);
+          label.appendChild(textWrap);
+          const slider = document.createElement("input");
+          slider.type = "range";
+          slider.min = "0";
+          slider.max = "1";
+          slider.step = "0.05";
+          slider.value = String(state.opacity);
+          slider.addEventListener("input", function () {
+            const current = rasterHeatmapLayerState.get(id) || state;
+            rasterHeatmapLayerState.set(id, {...current, opacity: Number(slider.value)});
+            updatePatchOverlayStyle();
+          });
+          row.appendChild(label);
+          row.appendChild(slider);
+          container.appendChild(row);
+        });
+      }
+
       function updateRasterHeatmapHeader(payload, appendWarningMessages = true) {
         const element = document.getElementById("raster-heatmap-count");
         if (!element) {
           return;
         }
+        const layers = rasterHeatmapLayers(payload);
         element.hidden = !payload.available;
-        element.textContent = rasterHeatmapLabel(payload);
+        element.textContent = layers.length > 1 ? `${layers.length} ${t("rasterHeatmaps")}` : rasterHeatmapLabel(layers[0] || payload);
+        renderRasterHeatmapLayerControls(payload);
         updateScoreLegendVisibility();
         if (appendWarningMessages) {
           appendWarnings(payload.warnings || []);
@@ -2145,7 +2263,7 @@
 
       function updateScoreLegendVisibility() {
         const hasPatchScores = Boolean(patchPayload && patchPayload.has_scores);
-        const hasRasterHeatmap = Boolean(rasterHeatmapPayload && rasterHeatmapPayload.available);
+        const hasRasterHeatmap = Boolean(rasterHeatmapLayers(rasterHeatmapPayload).length);
         document.getElementById("score-legend").hidden = !(hasPatchScores || hasRasterHeatmap);
       }
 
@@ -2302,6 +2420,9 @@
         if (!payload || !payload.available) {
           return t("rasterHeatmap");
         }
+        if (payload.name) {
+          return payload.name;
+        }
         const details = [];
         if (payload.mode) {
           details.push(payload.mode);
@@ -2313,6 +2434,23 @@
           details.push("invert");
         }
         return details.length ? `${t("rasterHeatmap")} (${details.join(", ")})` : t("rasterHeatmap");
+      }
+
+      function rasterHeatmapLayerMeta(layer) {
+        const parts = [];
+        if (layer.mode) {
+          parts.push(layer.mode);
+        }
+        if (layer.served_width && layer.served_height) {
+          parts.push(`${layer.served_width}x${layer.served_height}`);
+        }
+        if (layer.threshold !== null && layer.threshold !== undefined) {
+          parts.push(`>=${layer.threshold}`);
+        }
+        if (layer.invert) {
+          parts.push("invert");
+        }
+        return parts.join(" · ");
       }
 
       function appendWarnings(warnings) {
@@ -2329,32 +2467,43 @@
       }
 
       function clearOverlays() {
-        if (rasterHeatmapElement) {
-          viewer.removeOverlay(rasterHeatmapElement);
-          rasterHeatmapElement = null;
-        }
+        rasterHeatmapElements.forEach((element) => viewer.removeOverlay(element));
+        rasterHeatmapElements.clear();
         overlayHitItems = [];
         clearCanvasOverlay();
       }
 
       function renderRasterHeatmap() {
-        if (!isOpen || !rasterHeatmapPayload || !rasterHeatmapPayload.available || !currentSlideInfo) {
+        const layers = rasterHeatmapLayers(rasterHeatmapPayload);
+        if (!isOpen || !layers.length || !currentSlideInfo) {
           return;
         }
-        if (rasterHeatmapElement) {
-          viewer.removeOverlay(rasterHeatmapElement);
-          rasterHeatmapElement = null;
-        }
-        const overlay = document.createElement("div");
-        overlay.className = "raster-heatmap-overlay";
-        overlay.style.backgroundImage = `url("${rasterHeatmapPayload.url}")`;
-        overlay.title = `${rasterHeatmapLabel(rasterHeatmapPayload)}\n${rasterHeatmapPayload.mapping || ""}`;
-        viewer.addOverlay({
-          element: overlay,
-          location: viewer.viewport.imageToViewportRectangle(0, 0, currentSlideInfo.width, currentSlideInfo.height),
-          checkResize: false
+        ensureRasterHeatmapLayerState(layers);
+        const seen = new Set();
+        layers.forEach(function (layer, index) {
+          const id = String(layer.id || index);
+          seen.add(id);
+          if (rasterHeatmapElements.has(id)) {
+            return;
+          }
+          const overlay = document.createElement("div");
+          overlay.className = "raster-heatmap-overlay";
+          overlay.dataset.layerId = id;
+          overlay.style.backgroundImage = `url("${layer.url}")`;
+          overlay.title = `${rasterHeatmapLabel(layer)}\n${layer.mapping || ""}`;
+          viewer.addOverlay({
+            element: overlay,
+            location: viewer.viewport.imageToViewportRectangle(0, 0, currentSlideInfo.width, currentSlideInfo.height),
+            checkResize: false
+          });
+          rasterHeatmapElements.set(id, overlay);
         });
-        rasterHeatmapElement = overlay;
+        rasterHeatmapElements.forEach(function (element, id) {
+          if (!seen.has(id)) {
+            viewer.removeOverlay(element);
+            rasterHeatmapElements.delete(id);
+          }
+        });
         updatePatchOverlayStyle();
       }
 
@@ -2897,14 +3046,19 @@
         const slider = document.getElementById("opacity-slider");
         const opacity = Number(slider.value);
         const visible = Boolean(toggle.checked);
-        if (visible && rasterHeatmapPayload && rasterHeatmapPayload.available && !rasterHeatmapElement) {
+        const rasterLayers = rasterHeatmapLayers(rasterHeatmapPayload);
+        const hasMissingRasterLayer = rasterLayers.some((layer, index) => !rasterHeatmapElements.has(String(layer.id || index)));
+        if (visible && rasterLayers.length && hasMissingRasterLayer) {
           renderRasterHeatmap();
           return;
         }
         document.querySelectorAll(".raster-heatmap-overlay").forEach(function (element) {
-          element.classList.toggle("raster-heatmap-hidden", !visible);
-          element.setAttribute("aria-hidden", visible ? "false" : "true");
-          element.style.opacity = visible ? String(opacity) : "0";
+          const layerId = String(element.dataset.layerId || "");
+          const layerState = rasterHeatmapLayerState.get(layerId) || {enabled: true, opacity};
+          const layerVisible = visible && Boolean(layerState.enabled);
+          element.classList.toggle("raster-heatmap-hidden", !layerVisible);
+          element.setAttribute("aria-hidden", layerVisible ? "false" : "true");
+          element.style.opacity = layerVisible ? String(layerState.opacity) : "0";
         });
         scheduleCanvasOverlayRedraw();
       }

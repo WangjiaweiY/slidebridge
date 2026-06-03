@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.17
+
+Added:
+
+- multiple raster heatmap layers in the interactive viewer
+- repeated `--raster-heatmap-layer name=path` support for local and remote viewer commands
+- per-layer raster heatmap toggles and opacity controls
+
 ## 0.2.16
 
 Fixed:

@@ -63,6 +63,18 @@ slidebridge view C:\path\to\your\slide.svs --raster-heatmap outputs\heatmap.png 
 slidebridge inspect-heatmap outputs\heatmap.png --slide C:\path\to\your\slide.svs
 ```
 
+For comparing multiple whole-slide heatmap images, pass repeated raster
+heatmap layers:
+
+```powershell
+slidebridge view C:\path\to\your\slide.svs `
+  --raster-heatmap-layer low=outputs\low.png `
+  --raster-heatmap-layer high=outputs\high.png
+```
+
+The overlay panel shows each raster layer with its own toggle and opacity
+control. The global model/debug overlay toggle still works as a master switch.
+
 If `--heatmap` points to a PNG/JPG/JPEG file, SlideBridge treats it as a raster
 heatmap automatically:
 

@@ -14,7 +14,7 @@ Debug whole-slide images like a developer.
 
 > 上图是 synthetic demo，不包含任何患者数据。
 
-当前版本：`0.2.16`
+当前版本：`0.2.17`
 
 ## 这是什么？
 
@@ -105,6 +105,15 @@ slidebridge create-demo-heatmap --out outputs\demo_heatmap.png
 slidebridge inspect-heatmap outputs\demo_heatmap.png --slide outputs\demo_slide.png
 slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --port 7860 --open-browser
 slidebridge render-overlay outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --out outputs\demo_raster_heatmap.png
+```
+
+Multiple full-slide heatmaps can be compared in the viewer:
+
+```powershell
+slidebridge view outputs\demo_slide.png `
+  --raster-heatmap-layer low=outputs\heatmap_low.png `
+  --raster-heatmap-layer high=outputs\heatmap_high.png `
+  --port 7860 --open-browser
 ```
 
 这些 heatmap 只用于 model/debug visualization，不是诊断结果。

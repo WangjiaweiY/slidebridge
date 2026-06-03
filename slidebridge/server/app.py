@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import secrets
 import time
 from collections import OrderedDict
@@ -83,6 +84,13 @@ class RasterHeatmapContext:
     heatmap: RasterHeatmap | None
     summary: dict[str, Any]
     warning: str
+
+
+@dataclass(frozen=True)
+class RasterHeatmapLayerSpec:
+    id: str
+    name: str
+    path: Path
 
 
 class TileCache:
@@ -200,6 +208,7 @@ def create_app(
     jpeg_quality: int = 85,
     heatmap_path: str | Path | None = None,
     raster_heatmap_path: str | Path | None = None,
+    raster_heatmap_layers: list[dict[str, Any]] | None = None,
     default_patch_size: int = 256,
     heatmap_opacity: float = 0.45,
     score_normalization: str = "minmax",
@@ -272,10 +281,17 @@ def create_app(
     if heatmap_path is not None and patches_path is None:
         raise ValueError("--heatmap requires --patches so scores can be aligned to coordinates")
 
+    raster_heatmap_specs = _normalize_raster_heatmap_specs(raster_heatmap_path, raster_heatmap_layers)
+    first_raster_heatmap_path = raster_heatmap_specs[0].path if raster_heatmap_specs else None
+
     snapshot_options = {
         "patches": str(patches_path) if patches_path is not None else None,
         "heatmap": str(heatmap_path) if heatmap_path is not None else None,
-        "raster_heatmap": str(raster_heatmap_path) if raster_heatmap_path is not None else None,
+        "raster_heatmap": str(first_raster_heatmap_path) if first_raster_heatmap_path is not None else None,
+        "raster_heatmap_layers": [
+            {"name": spec.name, "path": str(spec.path), "id": spec.id}
+            for spec in raster_heatmap_specs
+        ],
         "annotations": str(annotations_path) if annotations_path is not None else None,
         "annotation_format": annotation_format,
         "default_patch_size": default_patch_size,
@@ -292,7 +308,7 @@ def create_app(
     sessions: dict[int, SlideSession] = {}
     patch_cache: dict[int, OverlayContext] = {}
     annotation_cache: dict[int, AnnotationContext] = {}
-    raster_heatmap_cache: dict[int, RasterHeatmapContext] = {}
+    raster_heatmap_cache: dict[tuple[int, str], RasterHeatmapContext] = {}
     tile_cache = TileCache(tile_cache_size, max_bytes=tile_cache_mb * 1024 * 1024)
     tile_metrics = TileMetrics()
     tile_semaphore = Semaphore(tile_workers)
@@ -359,29 +375,51 @@ def create_app(
         annotation_cache[slide_id] = context
         return context
 
-    def get_raster_heatmap_context(slide_id: int = 0) -> RasterHeatmapContext:
-        if slide_id in raster_heatmap_cache:
-            return raster_heatmap_cache[slide_id]
+    def get_raster_heatmap_context(slide_id: int = 0, layer_id: str | None = None) -> RasterHeatmapContext:
         session = get_session(slide_id)
-        if raster_heatmap_path is None:
+        spec = _find_raster_heatmap_spec(raster_heatmap_specs, layer_id)
+        if spec is None:
             context = RasterHeatmapContext(None, {"available": False, "warnings": []}, "")
-            raster_heatmap_cache[slide_id] = context
             return context
+        cache_key = (slide_id, spec.id)
+        if cache_key in raster_heatmap_cache:
+            return raster_heatmap_cache[cache_key]
         heatmap = load_raster_heatmap(
-            raster_heatmap_path,
+            spec.path,
             max_size=max_raster_heatmap_size,
             threshold=raster_heatmap_threshold,
             invert=raster_heatmap_invert,
             colormap=raster_heatmap_colormap,
         )
         summary_payload = heatmap.summary(slide_width=session.width, slide_height=session.height)
+        summary_payload["id"] = spec.id
+        summary_payload["name"] = spec.name
         warnings = list(summary_payload.get("warnings", []))
         if library_mode:
             warnings.append("The same raster heatmap is applied to the selected slide in directory viewer mode.")
         summary_payload["warnings"] = warnings
         context = RasterHeatmapContext(heatmap, summary_payload, "; ".join(warnings))
-        raster_heatmap_cache[slide_id] = context
+        raster_heatmap_cache[cache_key] = context
         return context
+
+    def get_raster_heatmap_payload(slide_id: int = 0) -> dict[str, Any]:
+        if not raster_heatmap_specs:
+            return {"available": False, "count": 0, "layers": [], "warnings": []}
+        layers = []
+        warnings: list[str] = []
+        for spec in raster_heatmap_specs:
+            context = get_raster_heatmap_context(slide_id, spec.id)
+            payload = dict(context.summary)
+            if context.heatmap is not None:
+                payload["url"] = f"/slides/{int(slide_id)}/{tile_cache_key}/raster_heatmaps/{spec.id}.png"
+                layers.append(payload)
+            warnings.extend(payload.get("warnings", []))
+        return {
+            "available": bool(layers),
+            "count": len(layers),
+            "layers": layers,
+            "warnings": warnings,
+        }
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -405,7 +443,7 @@ def create_app(
         session = get_session(0)
         patch_context = get_patch_context(0)
         annotation_context = get_annotation_context(0)
-        raster_heatmap_context = get_raster_heatmap_context(0)
+        raster_heatmap_payload = get_raster_heatmap_payload(0)
         template_path = Path(__file__).parent / "templates" / "viewer.html"
         template = Template(template_path.read_text(encoding="utf-8"))
         return HTMLResponse(
@@ -421,8 +459,8 @@ def create_app(
                 warnings=session.info["warnings"],
                 patch_count=len(patch_context.table),
                 patch_warning=patch_context.warning,
-                raster_heatmap_available=raster_heatmap_context.heatmap is not None,
-                raster_heatmap_warning=raster_heatmap_context.warning,
+                raster_heatmap_available=bool(raster_heatmap_payload.get("available")),
+                raster_heatmap_warning="; ".join(raster_heatmap_payload.get("warnings", [])),
                 heatmap_opacity=max(0.0, min(float(heatmap_opacity), 1.0)),
                 annotation_count=len(annotation_context.table),
                 annotation_warning=annotation_context.warning,
@@ -508,11 +546,19 @@ def create_app(
 
     @app.get("/api/raster-heatmap")
     def api_raster_heatmap(slide_id: int = Query(0, ge=0)) -> JSONResponse:
-        context = get_raster_heatmap_context(slide_id)
-        payload = dict(context.summary)
-        if context.heatmap is not None:
-            payload["url"] = f"/slides/{int(slide_id)}/{tile_cache_key}/raster_heatmap.png"
+        payload = get_raster_heatmap_payload(slide_id)
+        if payload["layers"]:
+            first = dict(payload["layers"][0])
+            first["url"] = f"/slides/{int(slide_id)}/{tile_cache_key}/raster_heatmap.png"
+            first["layers"] = payload["layers"]
+            first["count"] = payload["count"]
+            first["warnings"] = payload["warnings"]
+            payload = first
         return _json_response(payload)
+
+    @app.get("/api/raster-heatmaps")
+    def api_raster_heatmaps(slide_id: int = Query(0, ge=0)) -> JSONResponse:
+        return _json_response(get_raster_heatmap_payload(slide_id))
 
     @app.get("/api/cache-stats")
     def api_cache_stats() -> JSONResponse:
@@ -553,7 +599,7 @@ def create_app(
             labels = _split_query_labels(annotation_labels)
             if labels:
                 annotation_table = annotation_table.filter_labels(labels)
-        raster_path = raster_heatmap_path if include_raster_heatmap else None
+        raster_path = first_raster_heatmap_path if include_raster_heatmap else None
         image, _ = render_view_to_image(
             session.slide,
             patch_table=patch_table,
@@ -669,7 +715,68 @@ def create_app(
             headers=CACHEABLE_TILE_HEADERS,
         )
 
+    @app.get("/slides/{slide_id}/{cache_key}/raster_heatmaps/{layer_id}.png")
+    def slide_raster_heatmap_layer(slide_id: int, cache_key: str, layer_id: str) -> Response:
+        _validate_cache_key(cache_key, tile_cache_key)
+        if slide_id < 0:
+            raise HTTPException(status_code=404, detail="Slide id must be non-negative")
+        context = get_raster_heatmap_context(slide_id, layer_id)
+        if context.heatmap is None:
+            raise HTTPException(status_code=404, detail="No raster heatmap layer is loaded")
+        return Response(
+            content=context.heatmap.to_png_bytes(),
+            media_type="image/png",
+            headers=CACHEABLE_TILE_HEADERS,
+        )
+
     return app
+
+
+def _normalize_raster_heatmap_specs(
+    raster_heatmap_path: str | Path | None,
+    raster_heatmap_layers: list[dict[str, Any]] | None,
+) -> list[RasterHeatmapLayerSpec]:
+    raw: list[tuple[str | None, str | Path]] = []
+    if raster_heatmap_path is not None:
+        raw.append((None, raster_heatmap_path))
+    for layer in raster_heatmap_layers or []:
+        if not isinstance(layer, dict):
+            raise ValueError("Raster heatmap layers must be dictionaries with path and optional name.")
+        path = layer.get("path")
+        if not path:
+            raise ValueError("Raster heatmap layer is missing a path.")
+        raw.append((str(layer.get("name") or "").strip() or None, path))
+
+    specs: list[RasterHeatmapLayerSpec] = []
+    for index, (name, path_value) in enumerate(raw):
+        path = Path(path_value)
+        if not is_raster_heatmap_path(path):
+            raise ValueError("Raster heatmap layers must point to PNG, JPG, or JPEG files.")
+        label = name or path.stem or f"heatmap {index + 1}"
+        specs.append(RasterHeatmapLayerSpec(_raster_heatmap_layer_id(index, label, path), label, path))
+    return specs
+
+
+def _raster_heatmap_layer_id(index: int, name: str, path: Path) -> str:
+    base = str(name or path.stem or f"heatmap-{index + 1}").strip().lower()
+    base = re.sub(r"[^a-z0-9_-]+", "-", base).strip("-")
+    if not base:
+        base = f"heatmap-{index + 1}"
+    return f"{int(index)}-{base}"
+
+
+def _find_raster_heatmap_spec(
+    specs: list[RasterHeatmapLayerSpec],
+    layer_id: str | None,
+) -> RasterHeatmapLayerSpec | None:
+    if not specs:
+        return None
+    if layer_id is None:
+        return specs[0]
+    for spec in specs:
+        if spec.id == layer_id:
+            return spec
+    raise HTTPException(status_code=404, detail="Raster heatmap layer was not found")
 
 
 def _collect_slide_entries(source: Path, recursive: bool, max_slides: int) -> list[SlideEntry]:
