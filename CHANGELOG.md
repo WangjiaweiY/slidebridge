@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.15
+
+Fixed:
+
+- raster heatmap overlays now render as OpenSeadragon-positioned background layers instead of image elements
+- raster heatmap display is more stable during initial load, pan, zoom, and overlay toggle changes
+
 ## 0.2.14
 
 Fixed:
