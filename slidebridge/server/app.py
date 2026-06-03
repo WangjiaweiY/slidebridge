@@ -446,6 +446,15 @@ def create_app(
         raster_heatmap_payload = get_raster_heatmap_payload(0)
         template_path = Path(__file__).parent / "templates" / "viewer.html"
         template = Template(template_path.read_text(encoding="utf-8"))
+        viewer_config = {
+            "slideEntries": [entry.to_dict() for entry in entries],
+            "tileCacheKey": tile_cache_key,
+            "initialTileCacheStats": tile_cache.stats(tile_workers),
+            "initialTilePerformanceStats": tile_metrics.stats(),
+            "snapshotOptions": snapshot_options,
+            "heatmapOpacity": max(0.0, min(float(heatmap_opacity), 1.0)),
+        }
+        viewer_config_json = json.dumps(viewer_config, ensure_ascii=False).replace("</", "<\\/")
         return HTMLResponse(
             template.render(
                 filename=session.info["filename"],
@@ -466,20 +475,15 @@ def create_app(
                 annotation_warning=annotation_context.warning,
                 annotation_opacity=max(0.0, min(float(annotation_opacity), 1.0)),
                 library_mode=library_mode,
-                library_root=str(source),
                 library_recursive=recursive,
                 library_warning=library_warning,
                 slide_count=len(entries),
-                slides_json=json.dumps([entry.to_dict() for entry in entries], ensure_ascii=False),
-                tile_cache_key=tile_cache_key,
                 viewer_context=viewer_context,
                 viewer_remote_user=viewer_remote_user,
                 viewer_remote_host=viewer_remote_host,
                 viewer_remote_ssh_port=viewer_remote_ssh_port,
                 viewer_source=viewer_source,
-                snapshot_options=json.dumps(snapshot_options, ensure_ascii=False),
-                tile_cache_stats=json.dumps(tile_cache.stats(tile_workers), ensure_ascii=False),
-                tile_performance_stats=json.dumps(tile_metrics.stats(), ensure_ascii=False),
+                viewer_config_json=viewer_config_json,
             ),
             headers=NO_STORE_HEADERS,
         )
