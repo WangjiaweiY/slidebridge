@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.20
+
+Added:
+
+- viewer Figure tab for interactive main-view plus bottom `2x3` patch figure design
+- backend `POST /api/render-figure` export for fixed `2400x1800` PNG figures from level-0 coordinates
+- JSON figure spec copy/export flow using loaded slides and raster heatmap layers without embedding local data paths
+
 ## 0.2.19
 
 Added:

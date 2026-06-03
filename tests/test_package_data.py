@@ -16,6 +16,7 @@ def test_viewer_template_is_packaged():
     text = template.read_text(encoding="utf-8")
     assert "/static/viewer.css" in text
     assert "/static/viewer.js" in text
+    assert "/static/viewer_figure.js" in text
     assert "slidebridge-viewer-config" in text
 
 
@@ -34,11 +35,14 @@ def test_viewer_static_assets_are_packaged():
     static_root = resources.files("slidebridge.server").joinpath("static")
     css = static_root.joinpath("viewer.css")
     js = static_root.joinpath("viewer.js")
+    figure_js = static_root.joinpath("viewer_figure.js")
 
     assert css.is_file()
     assert js.is_file()
+    assert figure_js.is_file()
     assert "backdrop-filter" in css.read_text(encoding="utf-8")
     assert "OpenSeadragon" in js.read_text(encoding="utf-8")
+    assert "render-figure" in figure_js.read_text(encoding="utf-8")
 
 
 def test_viewer_index_returns_html(tmp_path):
@@ -52,5 +56,6 @@ def test_viewer_index_returns_html(tmp_path):
     assert "SlideBridge Viewer" in response.text
     assert "/static/viewer.css" in response.text
     assert "/static/viewer.js" in response.text
+    assert "/static/viewer_figure.js" in response.text
     assert "slidebridge-viewer-config" in response.text
-    assert slidebridge.__version__ == "0.2.19"
+    assert slidebridge.__version__ == "0.2.20"

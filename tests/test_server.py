@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from io import BytesIO
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -20,13 +21,15 @@ def _viewer_config(page_text: str) -> dict:
     return json.loads(match.group(1))
 
 
-def _viewer_static_text(client: TestClient) -> tuple[str, str]:
+def _viewer_static_text(client: TestClient) -> tuple[str, str, str]:
     js = client.get("/static/viewer.js")
     css = client.get("/static/viewer.css")
+    figure_js = client.get("/static/viewer_figure.js")
 
     assert js.status_code == 200
     assert css.status_code == 200
-    return js.text, css.text
+    assert figure_js.status_code == 200
+    return js.text, css.text, figure_js.text
 
 
 def test_server_info_patches_dzi_and_tile(tmp_path):
@@ -65,8 +68,10 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert re.fullmatch(r"[0-9a-f]+", viewer_config["tileCacheKey"])
     assert "/static/viewer.css" in page.text
     assert "/static/viewer.js" in page.text
-    viewer_js, viewer_css = _viewer_static_text(client)
-    viewer_assets = viewer_js + viewer_css
+    assert "/static/viewer_figure.js" in page.text
+    assert "figure-tab" in page.text
+    viewer_js, viewer_css, viewer_figure_js = _viewer_static_text(client)
+    viewer_assets = viewer_js + viewer_css + viewer_figure_js
     assert 'fetch(apiUrl("patches"), {cache: "no-store"})' in viewer_js
     assert "initialTileCacheStats" in viewer_js
     assert "initialTilePerformanceStats" in viewer_js
@@ -98,6 +103,9 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "scheduleViewerStateUrlUpdate" in viewer_js
     assert "buildRenderViewCommand" in viewer_js
     assert "buildSnapshotDownloadUrl" in viewer_js
+    assert "SlideBridgeViewer" in viewer_js
+    assert "selectSquareRegion" in viewer_js
+    assert 'fetch("/api/render-figure"' in viewer_figure_js
     cache_key = viewer_config["tileCacheKey"]
     keyed_dzi = client.get(f"/slides/0/{cache_key}/dzi.dzi")
     assert keyed_dzi.status_code == 200
@@ -147,6 +155,80 @@ def test_server_render_view_endpoint_returns_png(tmp_path):
     image_path.write_bytes(response.content)
     with Image.open(image_path) as image:
         assert image.size == (320, 240)
+
+
+def test_server_render_figure_endpoint_returns_png(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=14)
+    app = create_app(slide_path, reader="image", tile_size=128)
+    client = TestClient(app)
+    spec = {
+        "slide_id": 0,
+        "canvas": {"width": 2400, "height": 1800, "background": "white"},
+        "heatmap_layer_id": "",
+        "overlay_opacity": 0.45,
+        "main": {"bbox": [64, 48, 448, 336], "mode": "raw", "label": "A", "scalebar_um": None},
+        "patches": [{"slot": 0, "bbox": [100, 80, 180, 160], "mode": "raw", "label": "B"}],
+    }
+
+    response = client.post("/api/render-figure", json=spec)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "no-store"
+    assert "attachment" in response.headers["content-disposition"]
+    assert response.content.startswith(b"\x89PNG")
+    with Image.open(BytesIO(response.content)) as image:
+        assert image.size == (2400, 1800)
+
+
+def test_server_render_figure_uses_selected_raster_heatmap_layer(tmp_path):
+    slide_path = tmp_path / "white.png"
+    Image.new("RGB", (512, 384), (255, 255, 255)).save(slide_path)
+    low_path = tmp_path / "low.png"
+    high_path = tmp_path / "high.png"
+    Image.new("RGB", (64, 48), (20, 40, 240)).save(low_path)
+    Image.new("RGB", (64, 48), (240, 40, 20)).save(high_path)
+    app = create_app(
+        slide_path,
+        raster_heatmap_path=low_path,
+        raster_heatmap_layers=[{"name": "high", "path": str(high_path)}],
+        reader="image",
+    )
+    client = TestClient(app)
+    spec = {
+        "slide_id": 0,
+        "canvas": {"width": 2400, "height": 1800, "background": "white"},
+        "heatmap_layer_id": "1-high",
+        "overlay_opacity": 1.0,
+        "main": {"bbox": [0, 0, 512, 384], "mode": "overlay", "label": "A", "scalebar_um": None},
+        "patches": [],
+    }
+
+    response = client.post("/api/render-figure", json=spec)
+
+    assert response.status_code == 200
+    with Image.open(BytesIO(response.content)).convert("RGB") as image:
+        red, _, blue = image.getpixel((80 + 1120, 80 + 490))
+    assert red > blue
+
+
+def test_server_render_figure_overlay_without_heatmap_returns_400(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=15)
+    app = create_app(slide_path, reader="image")
+    client = TestClient(app)
+    spec = {
+        "slide_id": 0,
+        "canvas": {"width": 2400, "height": 1800, "background": "white"},
+        "heatmap_layer_id": "",
+        "overlay_opacity": 0.45,
+        "main": {"bbox": [64, 48, 448, 336], "mode": "overlay", "label": "A", "scalebar_um": None},
+        "patches": [],
+    }
+
+    response = client.post("/api/render-figure", json=spec)
+
+    assert response.status_code == 400
+    assert "overlay mode requires" in response.json()["detail"]
 
 
 def test_server_tile_cache_records_hits_misses_and_evictions(tmp_path):
@@ -291,7 +373,7 @@ def test_server_raster_heatmap_resize_warning_is_layer_scoped(tmp_path):
     visible_html = re.sub(r"<script.*?</script>", "", page, flags=re.DOTALL)
     visible_html = re.sub(r"<style.*?</style>", "", visible_html, flags=re.DOTALL)
     assert "raster_heatmap_resized:64x48:16x12" not in visible_html
-    viewer_js, _ = _viewer_static_text(client)
+    viewer_js, _, _ = _viewer_static_text(client)
     assert "humanizeRasterHeatmapWarning" in viewer_js
     assert "resized ${resizeMatch[1]} -> ${resizeMatch[2]}" in viewer_js
 
@@ -366,7 +448,7 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     assert "annotation-label-filter" in page.text
     assert "overlay-detail" in page.text
     assert "data-i18n=\"slideMetadata\"" in page.text
-    viewer_js, viewer_css = _viewer_static_text(client)
+    viewer_js, viewer_css, _ = _viewer_static_text(client)
     assert "zoomToImageScale" in viewer_js
     assert "filteredPatches" in viewer_js
     assert "filteredAnnotations" in viewer_js

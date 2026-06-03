@@ -13,7 +13,7 @@ from pathlib import Path
 from threading import RLock, Semaphore
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Template
@@ -27,6 +27,7 @@ from slidebridge.overlays.heatmap import attach_scores, load_scores
 from slidebridge.overlays.patch_table import PatchTable
 from slidebridge.overlays.patches import load_patch_table
 from slidebridge.overlays.raster_heatmap import RasterHeatmap, is_raster_heatmap_path, load_raster_heatmap
+from slidebridge.render.figure_spec import render_figure_spec_to_image
 from slidebridge.render.view import render_view_to_image
 from slidebridge.utils.image import ensure_rgb
 from slidebridge.utils.paths import SUPPORTED_IMAGE_EXTENSIONS, SUPPORTED_WSI_EXTENSIONS
@@ -626,6 +627,35 @@ def create_app(
         buffer = BytesIO()
         image.save(buffer, format="PNG")
         filename = f"slidebridge_view_s{int(slide_id)}_x{int(round(center_x))}_y{int(round(center_y))}.png"
+        return Response(
+            content=buffer.getvalue(),
+            media_type="image/png",
+            headers={
+                **NO_STORE_HEADERS,
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+
+    @app.post("/api/render-figure")
+    def api_render_figure(spec: dict[str, Any] = Body(...)) -> Response:
+        try:
+            slide_id = int(spec.get("slide_id", 0))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="slide_id must be an integer.") from exc
+        session = get_session(slide_id)
+        normalized_spec = dict(spec)
+        normalized_spec["slide_id"] = slide_id
+        try:
+            image, _ = render_figure_spec_to_image(
+                session.slide,
+                normalized_spec,
+                raster_heatmap_paths={item.id: item.path for item in raster_heatmap_specs},
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        filename = f"slidebridge_figure_s{slide_id}.png"
         return Response(
             content=buffer.getvalue(),
             media_type="image/png",

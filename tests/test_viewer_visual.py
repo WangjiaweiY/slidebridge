@@ -90,6 +90,48 @@ def test_viewer_url_state_restores_panel_and_filters(tmp_path):
         _stop_viewer_server(server, thread)
 
 
+def test_viewer_figure_tab_selects_patch_and_exports(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=402)
+    heatmap_path = tmp_path / "heatmap.png"
+    Image.new("RGB", (64, 48), (240, 40, 20)).save(heatmap_path)
+    server, thread, url = _start_viewer_server(slide_path, raster_heatmap_path=heatmap_path)
+
+    try:
+        with playwright_sync.sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            page = browser.new_page(viewport={"width": 1280, "height": 820}, device_scale_factor=1)
+            page.goto(url, wait_until="domcontentloaded")
+            _wait_for_viewer_ready(page)
+
+            page.locator('[data-tab-target="figure-tab"]').click()
+            assert page.locator("#figure-tab").evaluate("(el) => el.classList.contains('active')") is True
+            page.locator("#figure-set-main").click()
+            assert page.locator("#figure-export").is_enabled()
+
+            page.locator("#figure-select-patch").click()
+            box = page.locator("#viewer").bounding_box()
+            assert box is not None
+            start_x = box["x"] + box["width"] * 0.55
+            start_y = box["y"] + box["height"] * 0.52
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(start_x + 90, start_y + 90)
+            page.mouse.up()
+            page.wait_for_function(
+                "() => document.querySelector('.figure-slot-row[data-slot=\"0\"]')"
+                " && document.querySelector('.figure-slot-row[data-slot=\"0\"]').dataset.ready === 'true'",
+                timeout=15000,
+            )
+
+            with page.expect_download(timeout=15000) as download_info:
+                page.locator("#figure-export").click()
+            download = download_info.value
+            assert download.suggested_filename.endswith(".png")
+            browser.close()
+    finally:
+        _stop_viewer_server(server, thread)
+
+
 def _start_viewer_server(source: Path, **kwargs):
     app = create_app(source, reader="image", tile_size=128, **kwargs)
     port = _free_port()

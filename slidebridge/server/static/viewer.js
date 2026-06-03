@@ -16,7 +16,17 @@
         tabLibrary: "Library",
         tabInfo: "Info",
         tabOverlays: "Overlays",
+        tabFigure: "Figure",
         slideLibrary: "Slide Library",
+        figureDesigner: "Figure Designer",
+        setMainView: "Set main from current view",
+        figureHeatmapLayer: "heatmap layer",
+        mainMode: "main mode",
+        overlayOpacity: "overlay opacity",
+        mainScalebar: "main scale bar um",
+        selectPatchArea: "Select patch area",
+        copyFigureSpec: "Copy JSON spec",
+        exportFigurePng: "Export PNG",
         filterSlides: "Filter slides",
         session: "Session",
         slideMetadata: "Slide Metadata",
@@ -262,7 +272,7 @@
         return "";
       }
       const normalized = String(value).trim();
-      return ["library-tab", "info-tab", "overlays-tab"].includes(normalized) ? normalized : "";
+      return ["library-tab", "info-tab", "overlays-tab", "figure-tab"].includes(normalized) ? normalized : "";
     }
 
     function boolParam(value) {
@@ -479,7 +489,10 @@
       if (search) {
         search.addEventListener("input", renderSlideList);
       }
+      exposeSlideBridgeViewerApi();
       await selectSlide(selectedSlideId, {initial: true});
+      emitViewerStateChange();
+      window.dispatchEvent(new CustomEvent("slidebridge-viewer-ready"));
 
       async function selectSlide(slideId, options = {}) {
         selectedSlideId = Number(slideId);
@@ -501,6 +514,7 @@
         renderAnnotations();
         updateSnapshotReadout();
         scheduleViewerStateUrlUpdate();
+        emitViewerStateChange();
       }
 
       function refreshViewerLayout(goHome) {
@@ -672,6 +686,7 @@
         const payload = await response.json();
         rasterHeatmapPayload = payload;
         updateRasterHeatmapHeader(payload);
+        emitViewerStateChange();
         if (renderNow) {
           renderRasterHeatmap();
         }
@@ -929,6 +944,205 @@
           });
         }
         updateSnapshotReadout();
+      }
+
+      function exposeSlideBridgeViewerApi() {
+        window.SlideBridgeViewer = {
+          getSelectedSlideId: function () {
+            return selectedSlideId;
+          },
+          getCurrentSlideInfo: function () {
+            return currentSlideInfo ? {...currentSlideInfo} : null;
+          },
+          getCurrentViewportBbox: currentViewportBbox,
+          getCurrentViewportSnapshot: function () {
+            const snapshot = currentViewportSnapshot();
+            return snapshot ? {...snapshot} : null;
+          },
+          getRasterHeatmapLayers: function () {
+            return rasterHeatmapLayers(rasterHeatmapPayload).map((layer) => ({...layer}));
+          },
+          getDefaultOverlayOpacity: function () {
+            const slider = document.getElementById("opacity-slider");
+            const value = slider ? Number(slider.value) : defaultHeatmapOpacity;
+            return Number.isFinite(value) ? value : defaultHeatmapOpacity;
+          },
+          selectSquareRegion: selectSquareRegion
+        };
+      }
+
+      function emitViewerStateChange() {
+        window.dispatchEvent(new CustomEvent("slidebridge-viewer-state"));
+      }
+
+      function currentViewportBbox() {
+        const snapshot = currentViewportSnapshot();
+        if (!snapshot || !currentSlideInfo) {
+          return null;
+        }
+        const width = Math.max(1, Number(currentSlideInfo.width || 1));
+        const height = Math.max(1, Number(currentSlideInfo.height || 1));
+        const x0 = Math.max(0, Math.min(width - 1, Math.round(snapshot.centerX - snapshot.windowWidth / 2)));
+        const y0 = Math.max(0, Math.min(height - 1, Math.round(snapshot.centerY - snapshot.windowHeight / 2)));
+        const x1 = Math.max(x0 + 1, Math.min(width, Math.round(snapshot.centerX + snapshot.windowWidth / 2)));
+        const y1 = Math.max(y0 + 1, Math.min(height, Math.round(snapshot.centerY + snapshot.windowHeight / 2)));
+        return [x0, y0, x1, y1];
+      }
+
+      function selectSquareRegion() {
+        if (!isOpen || !currentSlideInfo || !viewer.viewport) {
+          return Promise.reject(new Error("Viewer is not ready."));
+        }
+        const container = document.querySelector("main");
+        if (!container) {
+          return Promise.reject(new Error("Viewer container is not available."));
+        }
+        return new Promise(function (resolve, reject) {
+          let start = null;
+          let active = false;
+          let selectionRect = null;
+          const box = document.createElement("div");
+          box.className = "figure-selection-box";
+          box.hidden = true;
+          container.appendChild(box);
+          container.classList.add("figure-selecting");
+          const hadMouseNav = viewer.isMouseNavEnabled ? viewer.isMouseNavEnabled() : true;
+          if (viewer.setMouseNavEnabled) {
+            viewer.setMouseNavEnabled(false);
+          }
+
+          function cleanup() {
+            container.classList.remove("figure-selecting");
+            box.remove();
+            container.removeEventListener("pointerdown", onPointerDown, true);
+            window.removeEventListener("pointermove", onPointerMove, true);
+            window.removeEventListener("pointerup", onPointerUp, true);
+            window.removeEventListener("keydown", onKeyDown, true);
+            if (viewer.setMouseNavEnabled) {
+              viewer.setMouseNavEnabled(hadMouseNav);
+            }
+          }
+
+          function finish(result, error) {
+            cleanup();
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve(result);
+          }
+
+          function onPointerDown(event) {
+            if (event.target && event.target.closest && event.target.closest(".zoom-control")) {
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            start = containerPointFromEvent(event, container);
+            active = true;
+            selectionRect = squareSelectionRect(start, start);
+            updateSelectionBox(box, selectionRect);
+            box.hidden = false;
+            window.addEventListener("pointermove", onPointerMove, true);
+            window.addEventListener("pointerup", onPointerUp, true);
+          }
+
+          function onPointerMove(event) {
+            if (!active || !start) {
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            selectionRect = squareSelectionRect(start, containerPointFromEvent(event, container));
+            updateSelectionBox(box, selectionRect);
+          }
+
+          function onPointerUp(event) {
+            if (!active || !start) {
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            active = false;
+            selectionRect = squareSelectionRect(start, containerPointFromEvent(event, container));
+            if (!selectionRect || selectionRect.width < 8 || selectionRect.height < 8) {
+              finish(null, new Error("Selection is too small."));
+              return;
+            }
+            const bbox = selectionRectToBbox(selectionRect, container);
+            if (!bbox) {
+              finish(null, new Error("Selection is outside the slide."));
+              return;
+            }
+            finish(bbox, null);
+          }
+
+          function onKeyDown(event) {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              finish(null, new Error("Selection cancelled."));
+            }
+          }
+
+          container.addEventListener("pointerdown", onPointerDown, true);
+          window.addEventListener("keydown", onKeyDown, true);
+        });
+      }
+
+      function containerPointFromEvent(event, container) {
+        const rect = container.getBoundingClientRect();
+        return {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top
+        };
+      }
+
+      function squareSelectionRect(start, current) {
+        const dx = Number(current.x) - Number(start.x);
+        const dy = Number(current.y) - Number(start.y);
+        const side = Math.max(Math.abs(dx), Math.abs(dy));
+        const x = dx < 0 ? Number(start.x) - side : Number(start.x);
+        const y = dy < 0 ? Number(start.y) - side : Number(start.y);
+        return {x, y, width: side, height: side};
+      }
+
+      function updateSelectionBox(box, rect) {
+        box.style.left = `${rect.x}px`;
+        box.style.top = `${rect.y}px`;
+        box.style.width = `${rect.width}px`;
+        box.style.height = `${rect.height}px`;
+      }
+
+      function selectionRectToBbox(rect, container) {
+        const p0 = containerPointToImage(rect.x, rect.y, container);
+        const p1 = containerPointToImage(rect.x + rect.width, rect.y + rect.height, container);
+        if (!p0 || !p1 || !currentSlideInfo) {
+          return null;
+        }
+        const slideWidth = Math.max(1, Number(currentSlideInfo.width || 1));
+        const slideHeight = Math.max(1, Number(currentSlideInfo.height || 1));
+        const x0 = Math.max(0, Math.min(slideWidth - 1, Math.round(Math.min(p0.x, p1.x))));
+        const y0 = Math.max(0, Math.min(slideHeight - 1, Math.round(Math.min(p0.y, p1.y))));
+        const x1 = Math.max(x0 + 1, Math.min(slideWidth, Math.round(Math.max(p0.x, p1.x))));
+        const y1 = Math.max(y0 + 1, Math.min(slideHeight, Math.round(Math.max(p0.y, p1.y))));
+        return [x0, y0, x1, y1];
+      }
+
+      function containerPointToImage(x, y, container) {
+        const rect = container.getBoundingClientRect();
+        return clientPointToImage(rect.left + Number(x), rect.top + Number(y));
+      }
+
+      function clientPointToImage(clientX, clientY) {
+        const viewerElement = document.getElementById("viewer");
+        if (!viewerElement || !viewer.viewport) {
+          return null;
+        }
+        const rect = viewerElement.getBoundingClientRect();
+        const pixel = new OpenSeadragon.Point(Number(clientX) - rect.left, Number(clientY) - rect.top);
+        const viewportPoint = viewer.viewport.pointFromPixel(pixel, true);
+        const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
+        return {x: Number(imagePoint.x), y: Number(imagePoint.y)};
       }
 
       function currentViewportSnapshot() {
@@ -2174,6 +2388,7 @@
       document.getElementById("opacity-slider").addEventListener("input", function () {
         updatePatchOverlayStyle();
         scheduleViewerStateUrlUpdate();
+        emitViewerStateChange();
       });
       document.getElementById("score-threshold-slider").addEventListener("input", function () {
         updateScoreThresholdValue();

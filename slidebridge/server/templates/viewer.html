@@ -34,6 +34,7 @@
         <button class="tab-button {{ 'active' if library_mode else 'hidden' }}" type="button" data-tab-target="library-tab" data-i18n="tabLibrary">Library</button>
         <button class="tab-button {{ '' if library_mode else 'active' }}" type="button" data-tab-target="info-tab" data-i18n="tabInfo">Info</button>
         <button class="tab-button" type="button" data-tab-target="overlays-tab" data-i18n="tabOverlays">Overlays</button>
+        <button class="tab-button" type="button" data-tab-target="figure-tab" data-i18n="tabFigure">Figure</button>
       </nav>
       <div class="scroll">
         <div id="library-tab" class="tab-panel {{ 'active' if library_mode else 'hidden' }}">
@@ -181,6 +182,55 @@
             </div>
           </section>
         </div>
+        <div id="figure-tab" class="tab-panel">
+          <section>
+            <div class="section-title"><span data-i18n="figureDesigner">Figure Designer</span></div>
+            <div class="figure-preview" id="figure-preview">
+              <div class="figure-preview-main" id="figure-preview-main">A</div>
+              <div class="figure-preview-grid" id="figure-preview-grid"></div>
+            </div>
+            <div class="controls">
+              <div class="control-actions">
+                <button id="figure-set-main" class="small-button" type="button" data-i18n="setMainView">Set main from current view</button>
+              </div>
+              <div class="control-row">
+                <label class="control-label" for="figure-heatmap-layer">
+                  <span data-i18n="figureHeatmapLayer">heatmap layer</span>
+                </label>
+                <select id="figure-heatmap-layer" class="inline-input"></select>
+              </div>
+              <div class="control-row">
+                <label class="control-label" for="figure-main-mode">
+                  <span data-i18n="mainMode">main mode</span>
+                </label>
+                <select id="figure-main-mode" class="inline-input">
+                  <option value="raw">raw</option>
+                  <option value="overlay">overlay</option>
+                </select>
+              </div>
+              <div class="control-row">
+                <label class="control-label" for="figure-opacity">
+                  <span data-i18n="overlayOpacity">overlay opacity</span>
+                  <output id="figure-opacity-value" class="control-value">{{ heatmap_opacity }}</output>
+                </label>
+                <input id="figure-opacity" type="range" min="0" max="1" step="0.05" value="{{ heatmap_opacity }}">
+              </div>
+              <div class="control-row">
+                <label class="control-label" for="figure-scalebar">
+                  <span data-i18n="mainScalebar">main scale bar um</span>
+                  <input id="figure-scalebar" class="inline-input" type="number" min="0" step="50" placeholder="none">
+                </label>
+              </div>
+              <div class="figure-slot-list" id="figure-slot-list"></div>
+              <div class="control-actions">
+                <button id="figure-select-patch" class="small-button" type="button" data-i18n="selectPatchArea">Select patch area</button>
+                <button id="figure-copy-spec" class="small-button" type="button" data-i18n="copyFigureSpec">Copy JSON spec</button>
+                <button id="figure-export" class="small-button" type="button" data-i18n="exportFigurePng">Export PNG</button>
+              </div>
+              <div id="figure-status" class="snapshot-status"></div>
+            </div>
+          </section>
+        </div>
       </div>
       <div class="footer" data-i18n="footer">Coordinates are level-0 pixels. Viewer is for research/debugging only.</div>
     </aside>
@@ -201,6 +251,7 @@
   </div>
   <script id="slidebridge-viewer-config" type="application/json">{{ viewer_config_json | safe }}</script>
   <script src="/static/viewer.js"></script>
+  <script src="/static/viewer_figure.js"></script>
 </body>
 </html>
 
