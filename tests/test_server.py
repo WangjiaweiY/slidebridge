@@ -61,7 +61,10 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "backdrop-filter" in page.text
     assert "raster-heatmap-hidden" in page.text
     assert "overlay.style.backgroundImage" in page.text
-    assert "visible && rasterHeatmapPayload && rasterHeatmapPayload.available && !rasterHeatmapElement" in page.text
+    assert 'fetch(apiUrl("raster-heatmaps"), {cache: "no-store"})' in page.text
+    assert "rasterHeatmapElements = new Map()" in page.text
+    assert "rasterHeatmapLayerState = new Map()" in page.text
+    assert "raster-heatmap-layer-list" in page.text
     assert "renderRasterHeatmap();" in page.text
     assert "image.src = rasterHeatmapPayload.url" not in page.text
     assert "object-fit: fill" not in page.text
@@ -213,6 +216,37 @@ def test_server_raster_heatmap_endpoint(tmp_path):
     assert image.status_code == 200
     assert image.headers["content-type"] == "image/png"
     assert image.headers["cache-control"] == "public, max-age=3600"
+
+
+def test_server_multiple_raster_heatmap_layers(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=18)
+    low_path = tmp_path / "low.png"
+    high_path = tmp_path / "high.png"
+    Image.new("RGB", (64, 48), (20, 80, 240)).save(low_path)
+    Image.new("RGB", (64, 48), (240, 80, 20)).save(high_path)
+    app = create_app(
+        slide_path,
+        raster_heatmap_path=low_path,
+        raster_heatmap_layers=[{"name": "high", "path": str(high_path)}],
+        reader="image",
+    )
+    client = TestClient(app)
+
+    payload = client.get("/api/raster-heatmaps").json()
+    assert payload["available"] is True
+    assert payload["count"] == 2
+    assert [layer["name"] for layer in payload["layers"]] == ["low", "high"]
+    assert payload["layers"][0]["url"].endswith("/raster_heatmaps/0-low.png")
+    assert payload["layers"][1]["url"].endswith("/raster_heatmaps/1-high.png")
+
+    first = client.get("/api/raster-heatmap").json()
+    assert first["url"].endswith("/raster_heatmap.png")
+    assert first["count"] == 2
+    for layer in payload["layers"]:
+        response = client.get(layer["url"])
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
+        assert response.headers["cache-control"] == "public, max-age=3600"
 
 
 def test_server_rejects_invalid_tile_config(tmp_path):

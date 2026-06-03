@@ -62,6 +62,15 @@ slidebridge view C:\path\to\your\slide.svs --raster-heatmap outputs\demo_heatmap
 slidebridge view C:\path\to\your\slide.svs --heatmap outputs\heatmap.jpg
 ```
 
+Multiple raster heatmaps can be compared in one viewer session. Each layer gets
+its own show/hide checkbox and opacity slider in the overlay panel:
+
+```powershell
+slidebridge view C:\path\to\your\slide.svs `
+  --raster-heatmap-layer low=outputs\case_low.png `
+  --raster-heatmap-layer high=outputs\case_high.png
+```
+
 Useful raster tuning options:
 
 ```powershell

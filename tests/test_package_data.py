@@ -37,4 +37,4 @@ def test_viewer_index_returns_html(tmp_path):
     assert response.status_code == 200
     assert "SlideBridge Viewer" in response.text
     assert "/static/vendor/openseadragon/openseadragon.min.js" in response.text
-    assert slidebridge.__version__ == "0.2.16"
+    assert slidebridge.__version__ == "0.2.17"

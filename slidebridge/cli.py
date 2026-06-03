@@ -475,6 +475,7 @@ def view(
     tile_workers: int = typer.Option(4, "--tile-workers", min=1, max=64, help="Maximum concurrent tile generation workers."),
     heatmap: Optional[Path] = typer.Option(None, "--heatmap", help="Optional score/attention file."),
     raster_heatmap: Optional[Path] = typer.Option(None, "--raster-heatmap", help="Optional PNG/JPG heatmap covering the full slide."),
+    raster_heatmap_layer: list[str] = typer.Option([], "--raster-heatmap-layer", help="Additional raster heatmap layer as name=path or path. May be repeated."),
     default_patch_size: int = typer.Option(256, "--default-patch-size", help="Default patch size for coordinate files."),
     heatmap_opacity: float = typer.Option(0.45, "--heatmap-opacity", min=0.0, max=1.0, help="Heatmap opacity."),
     score_normalization: str = typer.Option("minmax", "--score-normalization", help="minmax, percentile, or none."),
@@ -498,6 +499,7 @@ def view(
 ) -> None:
     try:
         patch_score_heatmap, full_slide_heatmap = _resolve_heatmap_paths(heatmap, raster_heatmap)
+        raster_layers = _parse_raster_heatmap_layers(raster_heatmap_layer)
         viewer_app = create_app(
             path,
             patches_path=patches,
@@ -509,6 +511,7 @@ def view(
             tile_workers=tile_workers,
             heatmap_path=patch_score_heatmap,
             raster_heatmap_path=full_slide_heatmap,
+            raster_heatmap_layers=raster_layers,
             default_patch_size=default_patch_size,
             heatmap_opacity=heatmap_opacity,
             score_normalization=score_normalization,
@@ -901,6 +904,7 @@ def remote_view(
     patches: Optional[str] = typer.Option(None, "--patches", help="Remote patch coordinate path."),
     heatmap: Optional[str] = typer.Option(None, "--heatmap", help="Remote heatmap/score path."),
     raster_heatmap: Optional[str] = typer.Option(None, "--raster-heatmap", help="Remote PNG/JPG heatmap covering the full slide."),
+    raster_heatmap_layer: list[str] = typer.Option([], "--raster-heatmap-layer", help="Additional remote raster heatmap layer as name=path or path. May be repeated."),
     annotations: Optional[str] = typer.Option(None, "--annotations", help="Remote annotation path."),
     annotation_format: Optional[str] = typer.Option(None, "--annotation-format", help="Annotation format override."),
     default_patch_size: int = typer.Option(256, "--default-patch-size", help="Default patch size for remote coordinate files."),
@@ -938,6 +942,7 @@ def remote_view(
                 patches=patches,
                 heatmap=patch_score_heatmap,
                 raster_heatmap=full_slide_heatmap,
+                raster_heatmap_layers=list(raster_heatmap_layer),
                 annotations=annotations,
                 annotation_format=annotation_format,
                 default_patch_size=default_patch_size,
@@ -1404,6 +1409,7 @@ def _remote_view_args(
     patches: Optional[str] = None,
     heatmap: Optional[str] = None,
     raster_heatmap: Optional[str] = None,
+    raster_heatmap_layers: Optional[list[str]] = None,
     annotations: Optional[str] = None,
     annotation_format: Optional[str] = None,
     default_patch_size: int = 256,
@@ -1479,6 +1485,8 @@ def _remote_view_args(
         args.extend(["--heatmap", heatmap])
     if raster_heatmap:
         args.extend(["--raster-heatmap", raster_heatmap])
+    for layer in raster_heatmap_layers or []:
+        args.extend(["--raster-heatmap-layer", layer])
     if annotations:
         args.extend(["--annotations", annotations])
     if annotation_format:
@@ -1693,6 +1701,27 @@ def _resolve_heatmap_paths(heatmap, raster_heatmap):
             raise ValueError("Use either --heatmap PNG/JPG or --raster-heatmap, not both.")
         return None, heatmap
     return heatmap, raster_heatmap
+
+
+def _parse_raster_heatmap_layers(values: list[str] | None) -> list[dict[str, str]]:
+    layers: list[dict[str, str]] = []
+    for raw_value in values or []:
+        value = str(raw_value).strip()
+        if not value:
+            continue
+        if "=" in value:
+            name, path = value.split("=", 1)
+            name = name.strip()
+            path = path.strip()
+        else:
+            name = ""
+            path = value
+        if not path:
+            raise ValueError("--raster-heatmap-layer requires a PNG/JPG path.")
+        if not is_raster_heatmap_path(path):
+            raise ValueError("--raster-heatmap-layer must point to a PNG, JPG, or JPEG file.")
+        layers.append({"name": name, "path": path})
+    return layers
 
 
 def _write_sample_patches(

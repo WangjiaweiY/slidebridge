@@ -20,7 +20,7 @@ SlideBridge Core helps computational pathology researchers and AI engineers
 inspect whole-slide images, normalize metadata, visualize patch coordinates, and
 generate lightweight QC reports.
 
-Current version: `0.2.16`
+Current version: `0.2.17`
 
 ## Quick Demo
 
@@ -161,6 +161,15 @@ slidebridge render-overlay outputs\demo_slide.png --heatmap outputs\demo_heatmap
 Raster heatmaps currently cover the full slide extent and are stretched to the
 level-0 coordinate space. They are model/debug visualizations, not diagnostic
 outputs.
+
+Multiple full-slide heatmaps can be loaded as independent layers:
+
+```powershell
+slidebridge view outputs\demo_slide.png `
+  --raster-heatmap-layer low=outputs\heatmap_low.png `
+  --raster-heatmap-layer high=outputs\heatmap_high.png `
+  --port 7860 --open-browser
+```
 
 Useful tuning options:
 
