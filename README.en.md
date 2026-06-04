@@ -6,34 +6,63 @@
 
 [中文 README](README.md)
 
-A lightweight WSI inspection and debugging toolkit for computational pathology.
+SlideBridge Core is a WSI inspection, model-output debugging, and publication-figure toolkit for computational pathology and pathology AI.
 
 Debug whole-slide images like a developer.
 
-![SlideBridge viewer heatmap overlays](docs/assets/viewer_heatmap_layers.png)
+![SlideBridge remote WSI heatmap viewer](docs/assets/readme_remote_heatmap_viewer.png)
 
-> Browser viewer screenshot showing heatmap, patch, and annotation debugging.
+> View remote WSI data in a local browser with model heatmaps, patches, and annotations overlaid.
 
 ## What is SlideBridge Core?
 
-SlideBridge Core helps computational pathology researchers and AI engineers
-inspect whole-slide images, normalize metadata, visualize patch coordinates, and
-generate lightweight QC reports.
+SlideBridge Core helps computational pathology researchers and AI engineers inspect WSI metadata, browse remote slides, debug heatmaps/patches/annotations, and export reproducible paper or presentation figures. It is built for research and algorithm debugging, not clinical diagnosis.
 
 Current version: `0.2.21`
 
-## Quick Demo
+## Core Highlights
 
-```powershell
-git clone https://github.com/WangjiaweiY/slidebridge.git
-cd slidebridge
-pip install -e .
-slidebridge create-demo --out outputs\demo_slide.png
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
-slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\demo_overlay.png
-slidebridge render-view outputs\demo_slide.png --patches outputs\demo_coords.csv --center-x 2048 --center-y 1536 --window-width 1200 --window-height 900 --out outputs\demo_view.png
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
+### 1. View Remote WSI Locally
+
+`remote-view` runs the tile server on the remote machine and opens a local browser through an SSH tunnel. The slide stays on the server, which is useful for large cohorts and workstation/server workflows. It uses your local `ssh` client: SSH keys are recommended, but password authentication also works if the server allows it; enter the password in the terminal when SSH prompts for it.
+
+![SlideBridge remote viewer info panel](docs/assets/readme_remote_info_panel.png)
+
+```cmd
+slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
 ```
+
+A remote directory can also be opened as a browser-selectable slide library:
+
+```cmd
+slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
+```
+
+### 2. Debug Heatmaps and Attention
+
+SlideBridge supports patch-level score/attention overlays and full-slide PNG/JPG raster heatmaps. The viewer can compare multiple heatmap layers, adjust opacity, threshold overlays, and keep everything aligned to level-0 WSI coordinates.
+
+```cmd
+slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --open-browser
+```
+
+```cmd
+slidebridge view outputs\demo_slide.png --raster-heatmap-layer low=outputs\heatmap_low.png --raster-heatmap-layer high=outputs\heatmap_high.png --open-browser
+```
+
+### 3. Debug Patches and Annotations
+
+The viewer overlays patch coordinates, score thresholding, top-k patches, and annotation labels. Public annotation inputs include QuPath GeoJSON, ASAP XML, and SlideBridge JSON.
+
+```cmd
+slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --open-browser
+```
+
+### 4. Design Publication Figures
+
+The Figure Designer lets users arrange a main panel and patch panels in the browser. Exported PNGs are rendered again by the backend from level-0 coordinates; they are not browser screenshots.
+
+![SlideBridge figure designer](docs/assets/readme_figure_designer.png)
 
 ## Important Notice
 
@@ -46,43 +75,31 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
 - This project is not affiliated with, endorsed by, or certified by any scanner
   vendor.
 
-## Viewer Screenshots
-
-| Info panel | Heatmap / annotation overlays | Figure Designer |
-| --- | --- | --- |
-| ![SlideBridge viewer info panel](docs/assets/viewer_info_panel.png) | ![SlideBridge heatmap and annotation overlay controls](docs/assets/viewer_heatmap_layers.png) | ![SlideBridge custom figure designer](docs/assets/viewer_figure_designer.png) |
-
-## Features
-
-- Unified slide reader interface
-- OpenSlide / TiffSlide based public readers
-- Metadata inspection
-- Thumbnail export
-- Local browser-based WSI viewer
-- Bundled local OpenSeadragon viewer asset with CDN fallback
-- Patch coordinate overlay
-- Lightweight QC report
-- Plugin-friendly architecture
-- Environment and reader diagnostics
-- Synthetic demo image generation
-- PatchTable coordinate abstraction
-- CSV/NPY/H5/JSON/PT optional coordinate loading
-- Score/attention heatmap overlay
-- Patch image export
-- Static overlay rendering
-- Static viewport rendering with `render-view`
-- Publication-style figure export with `render-figure`
-- AnnotationTable abstraction
-- QuPath GeoJSON, ASAP XML, and SlideBridge JSON annotation loading
-- Annotation overlay, conversion, and patch labeling
-- Remote WSI viewing over SSH tunnel
-
-## Installation
+## Installation and Command Invocation
 
 ### From GitHub
 
 ```powershell
 pip install git+https://github.com/WangjiaweiY/slidebridge.git
+```
+
+Check that the console command is available:
+
+```cmd
+slidebridge version
+```
+
+If your terminal cannot find `slidebridge`, use the Python module form instead. Every `slidebridge ...` command in this README can be rewritten this way:
+
+```cmd
+python -m slidebridge.cli version
+python -m slidebridge.cli view outputs\demo_slide.png --open-browser
+```
+
+On Windows / Anaconda, you can also call the environment Python directly:
+
+```cmd
+D:\Anaconda3\envs\slidebridge\python.exe -m slidebridge.cli version
 ```
 
 ### Development Install
@@ -113,15 +130,96 @@ Windows note: `openslide-bin` can provide the OpenSlide DLLs needed by
 `openslide-python`. If OpenSlide is unavailable, SlideBridge can still run
 supported workflows through TiffSlide or the image reader where applicable.
 
-## Quick Start with Synthetic Demo
+### Windows Shell Notes
+
+PowerShell uses the backtick `` ` `` for multi-line commands:
+
+```powershell
+slidebridge view outputs\demo_slide.png `
+  --raster-heatmap outputs\demo_heatmap.png `
+  --open-browser
+```
+
+Anaconda Prompt / cmd cannot use the PowerShell backtick continuation. Prefer a single-line command there:
+
+```cmd
+slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --open-browser
+```
+
+If the `slidebridge` command is unavailable, replace the prefix with `python -m slidebridge.cli`:
+
+```cmd
+python -m slidebridge.cli view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --open-browser
+```
+
+## Quick Start
+
+Local synthetic demo:
 
 ```powershell
 slidebridge create-demo --out outputs\demo_slide.png
-slidebridge inspect outputs\demo_slide.png
-slidebridge thumbnail outputs\demo_slide.png --out outputs\demo_thumbnail.jpg
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --patch-size 256 --count 100
-slidebridge doctor outputs\demo_slide.png --out outputs\demo_report.html
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
+slidebridge create-demo-heatmap --out outputs\demo_heatmap.png --slide outputs\demo_slide.png
+slidebridge create-demo-annotations --out outputs\demo_annotations.geojson
+slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --annotations outputs\demo_annotations.geojson --open-browser
+```
+
+Remote WSI viewer:
+
+```cmd
+slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
+```
+
+## Remote WSI Viewing over SSH
+
+This is the primary SlideBridge workflow: slides remain on the remote server,
+SlideBridge reads WSI data remotely, and your local browser connects through an
+SSH tunnel. `remote-view` uses your local `ssh` client, so SSH keys, password
+login, non-22 ports, and `~/.ssh/config` aliases all follow your own SSH setup.
+
+SSH-key and password login use the same command; if the server requires a
+password, SSH will prompt for it in the terminal:
+
+```cmd
+slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
+```
+
+Non-22 port:
+
+```cmd
+slidebridge remote-view user@server:/data/slides/case.svs --ssh-port 20022 --remote-runner "conda run -n slidebridge slidebridge"
+```
+
+You can also pass a remote directory and choose slides in the browser:
+
+```cmd
+slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
+```
+
+With remote patch coordinates and annotations:
+
+```powershell
+slidebridge remote-view user@server:/data/slides/case.svs `
+  --patches /data/features/case_coords.h5 `
+  --annotations /data/annotations/case.geojson `
+  --remote-runner "conda run -n slidebridge slidebridge"
+```
+
+Use `slidebridge remote-view --dry-run` to inspect the SSH tunnel and remote
+command before connecting. See [Remote WSI Viewing](docs/REMOTE_VIEWING.md).
+
+For repeated use, save a local remote profile once and reuse shorter commands:
+
+```powershell
+slidebridge remote-profile add lab `
+  --host server.example.org `
+  --user user `
+  --ssh-port 22 `
+  --remote-runner "conda run -n slidebridge slidebridge" `
+  --root /data/slides
+
+slidebridge remote-view lab:case.svs
+slidebridge remote-view lab:cohort-a/ --recursive
+slidebridge remote-ls lab:
 ```
 
 ## Model Output Debugging
@@ -249,49 +347,6 @@ not a clinical or gold-standard labeling workflow.
 ```powershell
 slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
 slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --out outputs\demo_coords_labeled.csv
-```
-
-## Remote WSI Viewing over SSH
-
-View slides stored on a remote server from your local browser. The slide remains
-on the server; SlideBridge runs the tile server remotely and forwards it to
-localhost over SSH.
-
-```powershell
-slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
-```
-
-You can also pass a remote directory and choose slides in the browser:
-
-```powershell
-slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
-```
-
-With remote patch coordinates and annotations:
-
-```powershell
-slidebridge remote-view user@server:/data/slides/case.svs `
-  --patches /data/features/case_coords.h5 `
-  --annotations /data/annotations/case.geojson `
-  --remote-runner "conda run -n slidebridge slidebridge"
-```
-
-Use `slidebridge remote-view --dry-run` to inspect the SSH tunnel and remote
-command before connecting. See [Remote WSI Viewing](docs/REMOTE_VIEWING.md).
-
-For repeated use, save a local remote profile once and reuse shorter commands:
-
-```powershell
-slidebridge remote-profile add lab `
-  --host server.example.org `
-  --user user `
-  --ssh-port 22 `
-  --remote-runner "conda run -n slidebridge slidebridge" `
-  --root /data/slides
-
-slidebridge remote-view lab:case.svs
-slidebridge remote-view lab:cohort-a/ --recursive
-slidebridge remote-ls lab:
 ```
 
 ## Viewer Performance Options
