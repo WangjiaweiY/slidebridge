@@ -18,6 +18,8 @@ PATCH_SLOT_SIZE = 300
 PATCH_SLOT_GUTTER = 32
 PATCH_GRID_COLUMNS = 3
 PATCH_GRID_ROWS = 2
+LEGACY_PATCH_SLOTS = PATCH_GRID_COLUMNS * PATCH_GRID_ROWS
+MAX_PATCH_SLOTS = 12
 MAIN_PATCH_GAP = 32
 PATCH_ROW_GUTTER = PATCH_SLOT_GUTTER
 BOTTOM_MARGIN = 80
@@ -40,37 +42,49 @@ def render_figure_spec_to_image(
     main_panel = layout["main_panel"]
 
     main = normalized["main"]
-    main_image, main_summary = _render_panel(
-        slide,
-        tuple(main["bbox"]),
-        main_panel[2],
-        main_panel[3],
-        main["mode"],
-        heatmap_source,
-        normalized["overlay_opacity"],
-        fit="cover",
-    )
-    canvas.paste(main_image, main_panel[:2])
-    _draw_border(draw, main_panel, width=3)
-    if show_labels:
-        _draw_panel_label(draw, main_panel, main["label"], font_label)
     scalebar_drawn = False
-    if main.get("scalebar_um") is not None:
-        scalebar_drawn = _draw_scalebar(
-            draw,
-            main_panel,
-            float(main["scalebar_um"]),
-            _slide_mpp(slide),
-            float(main_summary["scale"]),
-            font_small,
-        )
-
     rendered_patches: list[dict[str, Any]] = []
-    for patch in normalized["patches"]:
-        panel = layout["patch_panels"][int(patch["slot"])]
+    main_summary: dict[str, Any] | None = None
+    main_render_bbox = tuple(main["bbox"])
+    patches_by_slot = {int(patch["slot"]): patch for patch in normalized["patches"]}
+
+    for panel_spec in layout["ordered_panels"]:
+        panel = tuple(panel_spec["panel"])
+        if panel_spec["role"] == "main":
+            main_render_bbox = _adjust_bbox_to_panel_aspect(tuple(main["bbox"]), panel[2], panel[3], slide)
+            image, main_summary = _render_panel(
+                slide,
+                main_render_bbox,
+                panel[2],
+                panel[3],
+                main["mode"],
+                heatmap_source,
+                normalized["overlay_opacity"],
+                fit="cover",
+            )
+            canvas.paste(image, panel[:2])
+            _draw_border(draw, panel, width=3)
+            if show_labels:
+                _draw_panel_label(draw, panel, main["label"], font_label)
+            if main.get("scalebar_um") is not None:
+                scalebar_drawn = _draw_scalebar(
+                    draw,
+                    panel,
+                    float(main["scalebar_um"]),
+                    _slide_mpp(slide),
+                    float(main_summary["scale"]),
+                    font_small,
+                )
+            continue
+
+        slot = int(panel_spec["slot"])
+        patch = patches_by_slot.get(slot)
+        if patch is None:
+            continue
+        patch_render_bbox = _adjust_bbox_to_panel_aspect(tuple(patch["bbox"]), panel[2], panel[3], slide)
         image, summary = _render_panel(
             slide,
-            tuple(patch["bbox"]),
+            patch_render_bbox,
             panel[2],
             panel[3],
             patch["mode"],
@@ -86,21 +100,27 @@ def render_figure_spec_to_image(
                 "slot": patch["slot"],
                 "panel": list(panel),
                 "bbox": patch["bbox"],
+                "render_bbox": list(patch_render_bbox),
                 "mode": patch["mode"],
                 "label": patch["label"],
                 "view": summary,
             }
         )
 
+    if main_summary is None:
+        raise ValueError("layout.panels must include a main panel.")
+
     return canvas, {
         "figure_size": list(FIGURE_CANVAS),
         "slide_id": normalized["slide_id"],
         "heatmap_layer_id": normalized["heatmap_layer_id"],
         "show_labels": show_labels,
+        "layout": normalized.get("layout"),
         "main": {
             "panel": list(main_panel),
             "max_panel": list(MAIN_PANEL),
             "bbox": main["bbox"],
+            "render_bbox": list(main_render_bbox),
             "mode": main["mode"],
             "fit": main["fit"],
             "label": main["label"],
@@ -124,6 +144,8 @@ def normalize_figure_spec(
     heatmap_layer_id = str(spec.get("heatmap_layer_id") or "").strip()
     overlay_opacity = _clamp_float(spec.get("overlay_opacity", 0.45), 0.0, 1.0)
     show_labels = bool(spec.get("show_labels", True))
+    layout = _normalize_layout(spec.get("layout"))
+    patch_slots_with_panels = _layout_patch_slots(layout)
 
     main = spec.get("main") or {}
     main_mode = _mode(main.get("mode", "overlay" if heatmap_layer_id else "raw"))
@@ -145,10 +167,13 @@ def normalize_figure_spec(
         if not isinstance(raw_patch, dict):
             raise ValueError("Each patch entry must be a JSON object.")
         slot = int(raw_patch.get("slot", index))
-        if slot < 0 or slot >= PATCH_GRID_COLUMNS * PATCH_GRID_ROWS:
-            raise ValueError("patch.slot must be between 0 and 5.")
+        max_slot = MAX_PATCH_SLOTS if layout is not None else LEGACY_PATCH_SLOTS
+        if slot < 0 or slot >= max_slot:
+            raise ValueError(f"patch.slot must be between 0 and {max_slot - 1}.")
         if slot in used_slots:
             raise ValueError(f"patch.slot {slot} is duplicated.")
+        if layout is not None and slot not in patch_slots_with_panels:
+            raise ValueError(f"layout.panels must include a patch panel for patch.slot {slot}.")
         used_slots.add(slot)
         mode = _mode(raw_patch.get("mode", "raw"))
         _require_heatmap_for_overlay(mode, heatmap_layer_id, raster_heatmap_paths)
@@ -162,7 +187,7 @@ def normalize_figure_spec(
                     slide,
                 )),
                 "mode": mode,
-                "label": str(raw_patch.get("label") or chr(ord("B") + slot)),
+                "label": str(raw_patch.get("label") or _slot_label(slot)),
             }
         )
 
@@ -176,6 +201,7 @@ def normalize_figure_spec(
         "heatmap_layer_id": heatmap_layer_id,
         "overlay_opacity": overlay_opacity,
         "show_labels": show_labels,
+        "layout": layout,
         "main": {
             "bbox": list(main_bbox),
             "mode": main_mode,
@@ -236,12 +262,93 @@ def _render_panel(
 
 
 def _resolve_layout(normalized: dict[str, Any]) -> dict[str, Any]:
+    if normalized.get("layout") is not None:
+        panels = normalized["layout"]["panels"]
+        main_panel = next(panel["panel"] for panel in panels if panel["role"] == "main")
+        patch_panels = {
+            int(panel["slot"]): tuple(panel["panel"])
+            for panel in panels
+            if panel["role"] == "patch"
+        }
+        return {
+            "main_panel": tuple(main_panel),
+            "patch_panels": patch_panels,
+            "ordered_panels": panels,
+        }
     main_panel = _main_panel_for_bbox(tuple(normalized["main"]["bbox"]))
     patch_panels = {
         slot: _patch_panel_for_slot(slot, main_panel)
         for slot in range(PATCH_GRID_COLUMNS * PATCH_GRID_ROWS)
     }
-    return {"main_panel": main_panel, "patch_panels": patch_panels}
+    ordered_panels = [{"id": "A", "role": "main", "panel": main_panel}]
+    ordered_panels.extend(
+        {"id": _slot_label(slot), "role": "patch", "slot": slot, "panel": patch_panels[slot]}
+        for slot in range(PATCH_GRID_COLUMNS * PATCH_GRID_ROWS)
+    )
+    return {"main_panel": main_panel, "patch_panels": patch_panels, "ordered_panels": ordered_panels}
+
+
+def _normalize_layout(value: Any) -> dict[str, Any] | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("layout must be a JSON object.")
+    panels_value = value.get("panels")
+    if panels_value in (None, ""):
+        return None
+    if str(value.get("template") or "custom").strip().lower() != "custom":
+        raise ValueError("layout.template must be custom.")
+    if not isinstance(panels_value, list) or not panels_value:
+        raise ValueError("layout.panels must be a non-empty list.")
+
+    panels: list[dict[str, Any]] = []
+    seen_main = False
+    used_slots: set[int] = set()
+    for index, item in enumerate(panels_value):
+        if not isinstance(item, dict):
+            raise ValueError("Each layout panel must be a JSON object.")
+        role = str(item.get("role") or "").strip().lower()
+        rect = _rect(item.get("rect"), f"layout.panels[{index}].rect")
+        if role == "main":
+            if seen_main:
+                raise ValueError("layout.panels must include only one main panel.")
+            seen_main = True
+            panels.append({"id": str(item.get("id") or "A"), "role": "main", "panel": rect})
+        elif role == "patch":
+            try:
+                slot = int(item.get("slot"))
+            except Exception as exc:
+                raise ValueError("layout patch panel requires an integer slot.") from exc
+            if slot < 0 or slot >= MAX_PATCH_SLOTS:
+                raise ValueError(f"layout patch slot must be between 0 and {MAX_PATCH_SLOTS - 1}.")
+            if slot in used_slots:
+                raise ValueError(f"layout patch slot {slot} is duplicated.")
+            if rect[2] != rect[3]:
+                raise ValueError("layout patch panel rect must be square.")
+            used_slots.add(slot)
+            panels.append({"id": str(item.get("id") or _slot_label(slot)), "role": "patch", "slot": slot, "panel": rect})
+        else:
+            raise ValueError("layout panel role must be main or patch.")
+    if not seen_main:
+        raise ValueError("layout.panels must include a main panel.")
+    return {"template": "custom", "panels": panels}
+
+
+def _layout_patch_slots(layout: dict[str, Any] | None) -> set[int]:
+    if layout is None:
+        return set()
+    return {int(panel["slot"]) for panel in layout["panels"] if panel["role"] == "patch"}
+
+
+def _rect(value: Any, name: str) -> tuple[int, int, int, int]:
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        raise ValueError(f"{name} must be [x, y, width, height].")
+    x, y, width, height = [int(round(float(item))) for item in value]
+    if x < 0 or y < 0 or width <= 0 or height <= 0:
+        raise ValueError(f"{name} must have non-negative origin and positive size.")
+    if x + width > FIGURE_CANVAS[0] or y + height > FIGURE_CANVAS[1]:
+        raise ValueError(f"{name} must stay within the fixed figure canvas.")
+    return x, y, width, height
 
 
 def _main_panel_for_bbox(bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
@@ -295,6 +402,10 @@ def _patch_panel_for_slot(slot: int, main_panel: tuple[int, int, int, int]) -> t
         slot_size,
         slot_size,
     )
+
+
+def _slot_label(slot: int) -> str:
+    return chr(ord("B") + int(slot))
 
 
 def _bbox(value: Any, name: str) -> tuple[int, int, int, int]:

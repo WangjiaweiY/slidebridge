@@ -140,6 +140,103 @@ def test_figure_spec_patch_grid_uses_main_content_width(tmp_path):
     assert patches[5][0] + patch_size == main_panel[0] + main_panel[2]
 
 
+def test_figure_spec_custom_layout_renders_arbitrary_panels_and_slot_11(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=57)
+    heatmap_path = _demo_heatmap(tmp_path / "heatmap.png")
+    slide = ImageReader().open(slide_path)
+    spec = _figure_spec()
+    spec["main"] = {"bbox": [0, 0, 512, 384], "mode": "overlay", "fit": "contain", "label": "A"}
+    spec["layout"] = {
+        "template": "custom",
+        "panels": [
+            {"id": "A", "role": "main", "rect": [300, 100, 900, 450]},
+            {"id": "M", "role": "patch", "slot": 11, "rect": [1300, 100, 300, 300]},
+            {"id": "B", "role": "patch", "slot": 0, "rect": [300, 700, 260, 260]},
+        ],
+    }
+    spec["patches"] = [
+        {"slot": 11, "bbox": [64, 64, 160, 160], "mode": "overlay", "label": "M"},
+        {"slot": 0, "bbox": [180, 100, 260, 180], "mode": "raw", "label": "B"},
+    ]
+
+    try:
+        image, summary = render_figure_spec_to_image(slide, spec, raster_heatmap_paths={"0-low": heatmap_path})
+    finally:
+        slide.close()
+
+    assert image.size == FIGURE_CANVAS
+    assert summary["layout"]["template"] == "custom"
+    assert summary["main"]["panel"] == [300, 100, 900, 450]
+    main_render_bbox = summary["main"]["render_bbox"]
+    assert (main_render_bbox[2] - main_render_bbox[0]) / (main_render_bbox[3] - main_render_bbox[1]) == pytest.approx(2.0, rel=0.02)
+    patches = {patch["slot"]: patch for patch in summary["patches"]}
+    assert patches[11]["panel"] == [1300, 100, 300, 300]
+    assert patches[0]["panel"] == [300, 700, 260, 260]
+    assert patches[11]["render_bbox"][2] - patches[11]["render_bbox"][0] == patches[11]["render_bbox"][3] - patches[11]["render_bbox"][1]
+
+
+@pytest.mark.parametrize(
+    ("layout", "match"),
+    [
+        (
+            {"template": "custom", "panels": [{"id": "B", "role": "patch", "slot": 0, "rect": [80, 80, 300, 300]}]},
+            "main panel",
+        ),
+        (
+            {"template": "custom", "panels": [{"id": "A", "role": "main", "rect": [80, 80, 3000, 400]}]},
+            "fixed figure canvas",
+        ),
+        (
+            {
+                "template": "custom",
+                "panels": [
+                    {"id": "A", "role": "main", "rect": [80, 80, 800, 400]},
+                    {"id": "B", "role": "patch", "slot": 0, "rect": [80, 560, 300, 240]},
+                ],
+            },
+            "must be square",
+        ),
+        (
+            {
+                "template": "custom",
+                "panels": [
+                    {"id": "A", "role": "main", "rect": [80, 80, 800, 400]},
+                    {"id": "B", "role": "patch", "slot": 0, "rect": [80, 560, 300, 300]},
+                    {"id": "C", "role": "patch", "slot": 0, "rect": [420, 560, 300, 300]},
+                ],
+            },
+            "duplicated",
+        ),
+    ],
+)
+def test_figure_spec_custom_layout_validation_errors(tmp_path, layout, match):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=58)
+    slide = ImageReader().open(slide_path)
+    spec = _figure_spec(layer_id="", main_mode="raw")
+    spec["layout"] = layout
+    spec["patches"] = []
+
+    try:
+        with pytest.raises(ValueError, match=match):
+            render_figure_spec_to_image(slide, spec, raster_heatmap_paths={})
+    finally:
+        slide.close()
+
+
+def test_figure_spec_custom_layout_requires_panel_for_patch_slot(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=59)
+    slide = ImageReader().open(slide_path)
+    spec = _figure_spec(layer_id="", main_mode="raw")
+    spec["layout"] = {"template": "custom", "panels": [{"id": "A", "role": "main", "rect": [80, 80, 800, 400]}]}
+    spec["patches"] = [{"slot": 0, "bbox": [64, 64, 160, 160], "mode": "raw", "label": "B"}]
+
+    try:
+        with pytest.raises(ValueError, match="patch panel for patch.slot 0"):
+            render_figure_spec_to_image(slide, spec, raster_heatmap_paths={})
+    finally:
+        slide.close()
+
+
 def test_figure_spec_overlay_requires_heatmap_layer(tmp_path):
     slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=53)
     slide = ImageReader().open(slide_path)

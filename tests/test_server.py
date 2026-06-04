@@ -89,7 +89,14 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "copy-viewer-url" in page.text
     assert "copy-render-command" in page.text
     assert "download-render-view" in page.text
+    assert "figure-add-patch" in page.text
+    assert "figure-delete-patch" in page.text
+    assert "figure-reset-layout" in page.text
+    assert "figure-snap-toggle" in page.text
     assert "backdrop-filter" in viewer_css
+    assert "figure-layout-canvas" in viewer_css
+    assert "MAX_PATCH_SLOTS = 12" in viewer_figure_js
+    assert 'template: "custom"' in viewer_figure_js
     assert "raster-heatmap-hidden" in viewer_assets
     assert "overlay.style.backgroundImage" in viewer_js
     assert 'fetch(apiUrl("raster-heatmaps"), {cache: "no-store"})' in viewer_js
@@ -181,6 +188,64 @@ def test_server_render_figure_endpoint_returns_png(tmp_path):
     assert response.content.startswith(b"\x89PNG")
     with Image.open(BytesIO(response.content)) as image:
         assert image.size == (2400, 1800)
+
+
+def test_server_render_figure_custom_layout_returns_png(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=17)
+    app = create_app(slide_path, reader="image", tile_size=128)
+    client = TestClient(app)
+    spec = {
+        "slide_id": 0,
+        "canvas": {"width": 2400, "height": 1800, "background": "white"},
+        "heatmap_layer_id": "",
+        "overlay_opacity": 0.45,
+        "layout": {
+            "template": "custom",
+            "panels": [
+                {"id": "A", "role": "main", "rect": [120, 120, 1200, 700]},
+                {"id": "B", "role": "patch", "slot": 0, "rect": [1480, 120, 320, 320]},
+                {"id": "M", "role": "patch", "slot": 11, "rect": [1480, 480, 320, 320]},
+            ],
+        },
+        "main": {"bbox": [0, 0, 512, 384], "mode": "raw", "label": "A", "scalebar_um": None},
+        "patches": [
+            {"slot": 0, "bbox": [100, 80, 180, 160], "mode": "raw", "label": "B"},
+            {"slot": 11, "bbox": [200, 120, 280, 200], "mode": "raw", "label": "M"},
+        ],
+    }
+
+    response = client.post("/api/render-figure", json=spec)
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"\x89PNG")
+    with Image.open(BytesIO(response.content)) as image:
+        assert image.size == (2400, 1800)
+
+
+def test_server_render_figure_invalid_custom_layout_returns_400(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=512, height=384, seed=18)
+    app = create_app(slide_path, reader="image", tile_size=128)
+    client = TestClient(app)
+    spec = {
+        "slide_id": 0,
+        "canvas": {"width": 2400, "height": 1800, "background": "white"},
+        "heatmap_layer_id": "",
+        "overlay_opacity": 0.45,
+        "layout": {
+            "template": "custom",
+            "panels": [
+                {"id": "A", "role": "main", "rect": [120, 120, 1200, 700]},
+                {"id": "B", "role": "patch", "slot": 0, "rect": [1480, 120, 320, 260]},
+            ],
+        },
+        "main": {"bbox": [0, 0, 512, 384], "mode": "raw", "label": "A", "scalebar_um": None},
+        "patches": [],
+    }
+
+    response = client.post("/api/render-figure", json=spec)
+
+    assert response.status_code == 400
+    assert "must be square" in response.json()["detail"]
 
 
 def test_server_render_figure_uses_selected_raster_heatmap_layer(tmp_path):

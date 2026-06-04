@@ -108,6 +108,25 @@ def test_viewer_figure_tab_selects_patch_and_exports(tmp_path):
             page.locator("#figure-set-main").click()
             assert page.locator("#figure-export").is_enabled()
 
+            main_box = page.locator(".figure-layout-main").bounding_box()
+            assert main_box is not None
+            page.mouse.move(main_box["x"] + main_box["width"] * 0.5, main_box["y"] + main_box["height"] * 0.5)
+            page.mouse.down()
+            page.mouse.move(main_box["x"] + main_box["width"] * 0.5 + 24, main_box["y"] + main_box["height"] * 0.5 + 18)
+            page.mouse.up()
+
+            patch_handle = page.locator('.figure-layout-patch[data-slot="0"] .figure-panel-resize').bounding_box()
+            assert patch_handle is not None
+            page.mouse.move(patch_handle["x"] + patch_handle["width"] * 0.5, patch_handle["y"] + patch_handle["height"] * 0.5)
+            page.mouse.down()
+            page.mouse.move(patch_handle["x"] + patch_handle["width"] * 0.5 + 18, patch_handle["y"] + patch_handle["height"] * 0.5 + 18)
+            page.mouse.up()
+
+            page.locator("#figure-add-patch").click()
+            assert page.locator('.figure-slot-row[data-slot="6"]').is_visible()
+            page.locator("#figure-delete-patch").click()
+            assert page.locator('.figure-slot-row[data-slot="6"]').count() == 0
+
             page.locator("#figure-select-patch").click()
             box = page.locator("#viewer").bounding_box()
             assert box is not None
