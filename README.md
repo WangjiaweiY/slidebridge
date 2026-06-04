@@ -14,7 +14,7 @@ Debug whole-slide images like a developer.
 
 > 上图是 synthetic demo，不包含任何患者数据。
 
-当前版本：`0.2.20`
+当前版本：`0.2.21`
 
 ## 这是什么？
 
@@ -258,6 +258,12 @@ v0.2.13:
 
 - viewer 玻璃拟态视觉优化
 - Playwright viewer 视觉/交互回归测试
+
+v0.2.21:
+
+- viewer Figure Designer custom layout editing with draggable/resizable panels
+- add/delete up to 12 patch panels and export custom `2400x1800` PNG figures through `/api/render-figure`
+- legacy bottom `2x3` figure specs remain supported
 
 v0.2.20:
 

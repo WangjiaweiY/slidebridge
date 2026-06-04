@@ -468,50 +468,80 @@
       color: #9b2c2c;
     }
     .figure-preview {
-      display: grid;
-      gap: 8px;
       padding: 8px;
       border: 1px solid #d4e0e8;
       border-radius: 6px;
       background: rgba(255, 255, 255, 0.58);
     }
-    .figure-preview-main {
+    .figure-layout-canvas {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      border: 1px solid #c8d7df;
+      border-radius: 5px;
+      background:
+        linear-gradient(to right, rgba(63, 89, 104, 0.12) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(63, 89, 104, 0.12) 1px, transparent 1px),
+        #f8fbfc;
+      background-size: 16px 16px;
+    }
+    .figure-layout-panel {
+      position: absolute;
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 88px;
-      border: 2px solid #3f5968;
-      border-radius: 4px;
-      background: #f6fafb;
-      color: #193744;
-      font-size: 20px;
-      font-weight: 700;
-    }
-    .figure-preview-main[data-ready="true"] {
-      border-color: var(--accent);
-      background: #eaf7f8;
-    }
-    .figure-preview-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
-    }
-    .figure-preview-slot {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      aspect-ratio: 1;
+      min-width: 12px;
+      min-height: 12px;
       border: 1px solid #b9c9d4;
       border-radius: 4px;
       background: #fff;
       color: #60717d;
       font-size: 12px;
       font-weight: 700;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
     }
-    .figure-preview-slot[data-ready="true"] {
+    .figure-layout-main {
+      border-width: 2px;
+      border-color: #3f5968;
+      background: #f6fafb;
+      color: #193744;
+      font-size: 20px;
+    }
+    .figure-layout-panel[data-ready="true"] {
       border-color: #1f6f48;
       background: #edf8f1;
       color: #1f6f48;
+    }
+    .figure-layout-main[data-ready="true"] {
+      border-color: var(--accent);
+      background: #eaf7f8;
+      color: #193744;
+    }
+    .figure-layout-panel[data-active="true"] {
+      outline: 2px solid #0e7490;
+      outline-offset: 2px;
+      z-index: 4;
+    }
+    .figure-panel-resize {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 13px;
+      height: 13px;
+      border-left: 1px solid rgba(15, 82, 96, 0.45);
+      border-top: 1px solid rgba(15, 82, 96, 0.45);
+      background: rgba(255, 255, 255, 0.76);
+      cursor: nwse-resize;
+    }
+    .figure-layout-actions {
+      align-items: center;
+    }
+    .figure-snap-toggle {
+      justify-content: flex-start;
+      width: fit-content;
     }
     .figure-slot-list {
       display: grid;

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.21
+
+Added:
+
+- custom viewer Figure Designer layout editing with draggable and resizable main/patch panels
+- support for up to 12 patch panels in `/api/render-figure` custom layout specs
+- snap-to-grid, add/delete patch, reset layout, and copied custom JSON figure specs
+
+Changed:
+
+- figure export can render custom panel rectangles while preserving legacy bottom `2x3` specs
+
 ## 0.2.20
 
 Added:
