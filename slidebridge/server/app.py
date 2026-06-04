@@ -485,6 +485,7 @@ def create_app(
                 viewer_remote_ssh_port=viewer_remote_ssh_port,
                 viewer_source=viewer_source,
                 viewer_config_json=viewer_config_json,
+                static_cache_key=tile_cache_key,
             ),
             headers=NO_STORE_HEADERS,
         )
