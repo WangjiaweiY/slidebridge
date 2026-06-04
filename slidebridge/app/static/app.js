@@ -8,15 +8,166 @@
     sessions: []
   };
   const els = {};
+  const LANGUAGE_STORAGE_KEY = "slidebridge-app-language";
+  const DEFAULT_LANGUAGE = "zh-CN";
+  let currentLanguage = loadLanguagePreference();
+  const translations = {
+    "zh-CN": {
+      documentTitle: "SlideBridge 启动器",
+      appTitle: "Viewer 启动器",
+      appSubtitle: "通过 SSH 浏览远端 WSI，并加载 heatmap、patch、annotation 和论文图工作流。",
+      sshConnection: "SSH 连接",
+      profile: "连接配置",
+      manual: "手动填写",
+      host: "主机",
+      user: "用户",
+      sshPort: "SSH 端口",
+      remoteRunner: "远端 slidebridge 命令",
+      identityFile: "SSH key 文件",
+      remoteWorkdir: "远端工作目录",
+      sshOptions: "SSH 额外参数",
+      optional: "可选",
+      testConnection: "测试连接",
+      buildCommand: "生成命令",
+      sshHint: "支持 SSH key、ssh-agent 和 ssh config alias。如果服务器需要密码，密码提示会出现在启动本应用的终端里。",
+      viewerInputs: "Viewer 输入",
+      remoteDirectory: "远端目录",
+      browse: "浏览",
+      parentDir: "上级目录",
+      slidePath: "切片路径",
+      localPort: "本地端口",
+      remotePort: "远端端口",
+      patches: "Patch 坐标",
+      annotations: "Annotation",
+      annotationFormat: "Annotation 格式",
+      heatmapLayers: "Heatmap 图层",
+      addHeatmapLayer: "添加 heatmap 图层",
+      language: "语言",
+      launchViewer: "启动 viewer",
+      remoteFileBrowser: "远端文件浏览器",
+      noDirectoryLoaded: "尚未加载目录",
+      filterFiles: "筛选文件",
+      launchSummary: "启动摘要",
+      slide: "切片",
+      viewerUrl: "Viewer 地址",
+      equivalentCommand: "等价命令",
+      copyCommand: "复制命令",
+      openViewer: "打开 viewer",
+      viewerSessions: "Viewer 会话",
+      layerName: "图层名",
+      remove: "删除",
+      directory: "目录",
+      file: "文件",
+      slideTag: "切片",
+      directoryTag: "目录",
+      patchTag: "patch",
+      noFilesLoaded: "尚未加载文件。",
+      noSessions: "暂无 viewer 会话。",
+      notSelected: "未选择",
+      none: "无",
+      remoteDirectoryFallback: "远端目录",
+      profileLoaded: "已加载连接配置：{name}",
+      testingSsh: "正在测试 SSH 连接...",
+      remoteResponded: "远端 SlideBridge 已响应。",
+      remoteFailed: "远端测试失败。",
+      loadingRemoteDir: "正在加载远端目录...",
+      listingFailed: "远端目录列表获取失败。",
+      entriesLoaded: "已加载 {count} 个条目。",
+      commandReady: "命令已生成。",
+      startingViewer: "正在启动 viewer 会话...",
+      viewerStarted: "viewer 会话已启动。隧道就绪后打开 viewer。",
+      commandCopied: "命令已复制。",
+      requestFailed: "请求失败。",
+      prepared: "已准备",
+      running: "运行中",
+      stopped: "已停止",
+      open: "打开",
+      stop: "停止"
+    },
+    en: {
+      documentTitle: "SlideBridge App",
+      appTitle: "Viewer Launcher",
+      appSubtitle: "Browse remote WSI over SSH and load heatmaps, patches, annotations, and figure workflows.",
+      sshConnection: "SSH connection",
+      profile: "Profile",
+      manual: "manual",
+      host: "Host",
+      user: "User",
+      sshPort: "SSH port",
+      remoteRunner: "Remote slidebridge command",
+      identityFile: "SSH key file",
+      remoteWorkdir: "Remote workdir",
+      sshOptions: "SSH options",
+      optional: "optional",
+      testConnection: "Test connection",
+      buildCommand: "Build command",
+      sshHint: "SSH key, ssh-agent, and config aliases are supported. Password prompts appear in the terminal that started this app.",
+      viewerInputs: "Viewer inputs",
+      remoteDirectory: "Remote directory",
+      browse: "Browse",
+      parentDir: "Parent",
+      slidePath: "Slide path",
+      localPort: "Local port",
+      remotePort: "Remote port",
+      patches: "Patch coordinates",
+      annotations: "Annotations",
+      annotationFormat: "Annotation format",
+      heatmapLayers: "Heatmap layers",
+      addHeatmapLayer: "Add heatmap layer",
+      language: "Language",
+      launchViewer: "Launch viewer",
+      remoteFileBrowser: "Remote file browser",
+      noDirectoryLoaded: "No directory loaded",
+      filterFiles: "Filter files",
+      launchSummary: "Launch summary",
+      slide: "Slide",
+      viewerUrl: "Viewer URL",
+      equivalentCommand: "Equivalent command",
+      copyCommand: "Copy command",
+      openViewer: "Open viewer",
+      viewerSessions: "Viewer sessions",
+      layerName: "name",
+      remove: "Remove",
+      directory: "directory",
+      file: "file",
+      slideTag: "slide",
+      directoryTag: "dir",
+      patchTag: "patches",
+      noFilesLoaded: "No files loaded.",
+      noSessions: "No viewer sessions yet.",
+      notSelected: "not selected",
+      none: "none",
+      remoteDirectoryFallback: "remote directory",
+      profileLoaded: "Profile {name} loaded.",
+      testingSsh: "Testing SSH connection...",
+      remoteResponded: "Remote SlideBridge responded.",
+      remoteFailed: "Remote test failed.",
+      loadingRemoteDir: "Loading remote directory...",
+      listingFailed: "Remote directory listing failed.",
+      entriesLoaded: "{count} entries loaded.",
+      commandReady: "Command ready.",
+      startingViewer: "Starting viewer session...",
+      viewerStarted: "Viewer session started. Open the viewer when the tunnel is ready.",
+      commandCopied: "Command copied.",
+      requestFailed: "Request failed.",
+      prepared: "prepared",
+      running: "running",
+      stopped: "stopped",
+      open: "Open",
+      stop: "Stop"
+    }
+  };
 
   document.addEventListener("DOMContentLoaded", initialize);
 
   function initialize() {
     collectElements();
+    els.languageSelect.value = currentLanguage;
     els.version.textContent = config.version || "";
     renderProfiles();
     addHeatmapLayer("low", "");
     bindEvents();
+    applyLanguage();
     renderSummary();
     refreshSessions();
   }
@@ -25,6 +176,7 @@
     Object.assign(els, {
       version: document.getElementById("app-version"),
       status: document.getElementById("status"),
+      languageSelect: document.getElementById("language-select"),
       profileSelect: document.getElementById("profile-select"),
       host: document.getElementById("remote-host"),
       user: document.getElementById("remote-user"),
@@ -56,6 +208,7 @@
   }
 
   function bindEvents() {
+    els.languageSelect.addEventListener("change", changeLanguage);
     els.profileSelect.addEventListener("change", applySelectedProfile);
     document.getElementById("test-connection").addEventListener("click", testConnection);
     document.getElementById("browse-remote").addEventListener("click", browseRemote);
@@ -84,6 +237,37 @@
       els.annotations,
       els.annotationFormat
     ].forEach((element) => element.addEventListener("input", debounce(onInputsChanged, 150)));
+  }
+
+  function changeLanguage() {
+    currentLanguage = normalizeLanguage(els.languageSelect.value);
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage);
+    applyLanguage();
+  }
+
+  function applyLanguage() {
+    document.documentElement.lang = currentLanguage;
+    document.title = t("documentTitle");
+    document.querySelectorAll("[data-i18n]").forEach((element) => {
+      element.textContent = t(element.dataset.i18n);
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+      element.placeholder = t(element.dataset.i18nPlaceholder);
+    });
+    if (!els.browserPath.dataset.loaded) {
+      els.browserPath.textContent = t("noDirectoryLoaded");
+    }
+    updateGeneratedLanguage();
+  }
+
+  function updateGeneratedLanguage() {
+    els.heatmapLayers.querySelectorAll(".layer-row").forEach((row) => {
+      row.querySelector("[data-layer-name]").placeholder = t("layerName");
+      row.querySelector("[data-remove-layer]").textContent = t("remove");
+    });
+    renderFiles();
+    renderSessions();
+    renderSummary();
   }
 
   function connectionPayload() {
@@ -150,14 +334,14 @@
     els.localPort.value = profile.local_port || "7860";
     els.remotePort.value = profile.remote_port || "7860";
     onInputsChanged();
-    setStatus(`Profile ${profileName} loaded.`, "ok");
+    setStatus(t("profileLoaded", {name: profileName}), "ok");
   }
 
   async function testConnection() {
-    setBusy("Testing SSH connection...");
+    setBusy(t("testingSsh"));
     try {
       const result = await postJson("/api/remote/test", connectionPayload());
-      setStatus(result.ok ? "Remote SlideBridge responded." : (result.stderr || "Remote test failed."), result.ok ? "ok" : "error");
+      setStatus(result.ok ? t("remoteResponded") : (result.stderr || t("remoteFailed")), result.ok ? "ok" : "error");
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -165,17 +349,18 @@
 
   async function browseRemote() {
     const payload = {...connectionPayload(), remote_dir: els.remoteDir.value.trim()};
-    setBusy("Loading remote directory...");
+    setBusy(t("loadingRemoteDir"));
     try {
       const result = await postJson("/api/remote/list", payload);
       if (!result.ok) {
-        setStatus(result.stderr || "Remote directory listing failed.", "error");
+        setStatus(result.stderr || t("listingFailed"), "error");
         return;
       }
       state.entries = result.entries || [];
-      els.browserPath.textContent = payload.remote_dir || "remote directory";
+      els.browserPath.dataset.loaded = "true";
+      els.browserPath.textContent = payload.remote_dir || t("remoteDirectoryFallback");
       renderFiles();
-      setStatus(`${state.entries.length} entries loaded.`, "ok");
+      setStatus(t("entriesLoaded", {count: state.entries.length}), "ok");
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -199,7 +384,7 @@
     if (!entries.length) {
       const empty = document.createElement("div");
       empty.className = "file-row";
-      empty.textContent = "No files loaded.";
+      empty.textContent = t("noFilesLoaded");
       els.fileTable.appendChild(empty);
       return;
     }
@@ -210,7 +395,7 @@
       row.dataset.kind = entry.kind;
       row.title = entry.path;
       row.innerHTML = [
-        `<span>${escapeHtml(entry.kind)}</span>`,
+        `<span>${escapeHtml(formatKind(entry.kind))}</span>`,
         `<span class="file-name">${escapeHtml(entry.name)}</span>`,
         `<span class="file-size">${entry.size === null || entry.size === undefined ? "" : escapeHtml(String(entry.size))}</span>`,
         `<span class="file-modified">${escapeHtml(entry.modified || "")}</span>`
@@ -233,14 +418,20 @@
 
   function fileTags(entry) {
     if (entry.kind === "directory") {
-      return ["dir"];
+      return [t("directoryTag")];
     }
     const tags = [];
-    if (entry.is_slide) tags.push("slide");
+    if (entry.is_slide) tags.push(t("slideTag"));
     if (entry.is_heatmap) tags.push("heatmap");
-    if (entry.is_patches) tags.push("patches");
+    if (entry.is_patches) tags.push(t("patchTag"));
     if (entry.is_annotation) tags.push("annotation");
     return tags;
+  }
+
+  function formatKind(kind) {
+    if (kind === "directory") return t("directory");
+    if (kind === "file") return t("file");
+    return kind || "";
   }
 
   function selectEntry(entry) {
@@ -276,9 +467,9 @@
     const row = document.createElement("div");
     row.className = "layer-row";
     row.innerHTML = [
-      `<input data-layer-name placeholder="name" value="${escapeAttribute(name || "")}">`,
+      `<input data-layer-name placeholder="${escapeAttribute(t("layerName"))}" value="${escapeAttribute(name || "")}">`,
       `<input data-layer-path placeholder="/data/heatmaps/case.png" value="${escapeAttribute(path || "")}">`,
-      `<button type="button" data-remove-layer>Remove</button>`
+      `<button type="button" data-remove-layer>${escapeHtml(t("remove"))}</button>`
     ].join("");
     row.querySelector("[data-remove-layer]").addEventListener("click", function () {
       row.remove();
@@ -293,19 +484,19 @@
     try {
       const result = await postJson("/api/session/command", launchPayload());
       updateCommand(result);
-      setStatus("Command ready.", "ok");
+      setStatus(t("commandReady"), "ok");
     } catch (error) {
       setStatus(error.message, "error");
     }
   }
 
   async function launchViewer() {
-    setBusy("Starting viewer session...");
+    setBusy(t("startingViewer"));
     try {
       const result = await postJson("/api/session/launch", launchPayload());
       updateCommand(result);
       await refreshSessions();
-      setStatus("Viewer session started. Open the viewer when the tunnel is ready.", "ok");
+      setStatus(t("viewerStarted"), "ok");
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -320,15 +511,15 @@
   function renderSessions() {
     els.sessionList.innerHTML = "";
     if (!state.sessions.length) {
-      els.sessionList.textContent = "No viewer sessions yet.";
+      els.sessionList.textContent = t("noSessions");
       return;
     }
     state.sessions.forEach((session) => {
       const row = document.createElement("div");
       row.className = "session-row";
       row.innerHTML = [
-        `<div><strong>${escapeHtml(session.id)}</strong><br><span>${escapeHtml(session.status)} - ${escapeHtml(session.slide || "")}</span></div>`,
-        `<div class="action-row"><a href="${escapeAttribute(session.viewer_url)}" target="_blank" rel="noreferrer">Open</a><button type="button" data-stop="${escapeAttribute(session.id)}">Stop</button></div>`
+        `<div><strong>${escapeHtml(session.id)}</strong><br><span>${escapeHtml(formatStatus(session.status))} - ${escapeHtml(session.slide || "")}</span></div>`,
+        `<div class="action-row"><a href="${escapeAttribute(session.viewer_url)}" target="_blank" rel="noreferrer">${escapeHtml(t("open"))}</a><button type="button" data-stop="${escapeAttribute(session.id)}">${escapeHtml(t("stop"))}</button></div>`
       ].join("");
       row.querySelector("[data-stop]").addEventListener("click", async function () {
         await postJson(`/api/session/${encodeURIComponent(session.id)}/stop`, {});
@@ -347,10 +538,10 @@
 
   function renderSummary() {
     const layers = heatmapLayerPayload();
-    els.summarySlide.textContent = els.remotePath.value.trim() || "not selected";
-    els.summaryHeatmaps.textContent = layers.length ? layers.map((layer) => layer.name || layer.path).join(", ") : "none";
-    els.summaryPatches.textContent = els.patches.value.trim() || "none";
-    els.summaryAnnotations.textContent = els.annotations.value.trim() || "none";
+    els.summarySlide.textContent = els.remotePath.value.trim() || t("notSelected");
+    els.summaryHeatmaps.textContent = layers.length ? layers.map((layer) => layer.name || layer.path).join(", ") : t("none");
+    els.summaryPatches.textContent = els.patches.value.trim() || t("none");
+    els.summaryAnnotations.textContent = els.annotations.value.trim() || t("none");
   }
 
   function onInputsChanged() {
@@ -363,7 +554,7 @@
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(els.commandOutput.value);
-      setStatus("Command copied.", "ok");
+      setStatus(t("commandCopied"), "ok");
     }
   }
 
@@ -384,9 +575,38 @@
   async function parseResponse(response) {
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.detail || response.statusText || "Request failed.");
+      throw new Error(payload.detail || response.statusText || t("requestFailed"));
     }
     return payload;
+  }
+
+  function formatStatus(status) {
+    if (status === "prepared") return t("prepared");
+    if (status === "running") return t("running");
+    if (status === "stopped") return t("stopped");
+    return status || "";
+  }
+
+  function t(key, values) {
+    const table = translations[currentLanguage] || translations[DEFAULT_LANGUAGE];
+    const fallback = translations[DEFAULT_LANGUAGE][key] || key;
+    let text = table[key] || fallback;
+    Object.entries(values || {}).forEach(([name, value]) => {
+      text = text.replaceAll(`{${name}}`, String(value));
+    });
+    return text;
+  }
+
+  function loadLanguagePreference() {
+    try {
+      return normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY));
+    } catch (error) {
+      return DEFAULT_LANGUAGE;
+    }
+  }
+
+  function normalizeLanguage(language) {
+    return language === "en" ? "en" : DEFAULT_LANGUAGE;
   }
 
   function setBusy(message) {

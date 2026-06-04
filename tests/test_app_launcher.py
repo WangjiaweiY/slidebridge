@@ -16,19 +16,22 @@ def test_launcher_index_and_static_assets_are_available(monkeypatch, tmp_path):
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
-    assert "SlideBridge App" in response.text
+    assert "SlideBridge 启动器" in response.text
     assert "slidebridge-app-config" in response.text
     assert "/static/app.css" in response.text
     assert "/static/app.js" in response.text
     assert "profile-select" in response.text
+    assert "language-select" in response.text
 
     css = client.get("/static/app.css")
     js = client.get("/static/app.js")
     assert css.status_code == 200
     assert js.status_code == 200
-    assert "Remote file browser" in response.text
+    assert "远端文件浏览器" in response.text
+    assert 'remoteFileBrowser: "Remote file browser"' in js.text
     assert "renderProfiles" in js.text
     assert "applySelectedProfile" in js.text
+    assert "changeLanguage" in js.text
 
 
 def test_launcher_assets_are_packaged():
@@ -41,8 +44,10 @@ def test_launcher_assets_are_packaged():
     assert css.is_file()
     assert js.is_file()
     assert "slidebridge-app-config" in template.read_text(encoding="utf-8")
-    assert "Remote file browser" in template.read_text(encoding="utf-8")
+    assert "远端文件浏览器" in template.read_text(encoding="utf-8")
+    assert "language-select" in template.read_text(encoding="utf-8")
     assert "fetchJson" in js.read_text(encoding="utf-8")
+    assert "Viewer Launcher" in js.read_text(encoding="utf-8")
 
 
 def test_session_command_builds_remote_view_command(monkeypatch, tmp_path):

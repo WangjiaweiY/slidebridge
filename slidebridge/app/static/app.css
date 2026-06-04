@@ -79,6 +79,24 @@ textarea {
   gap: 16px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.language-control {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+
+.language-control select {
+  width: auto;
+  min-width: 104px;
+}
+
 .panel,
 .browser-pane {
   padding: 12px;
