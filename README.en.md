@@ -10,9 +10,9 @@ A lightweight WSI inspection and debugging toolkit for computational pathology.
 
 Debug whole-slide images like a developer.
 
-![SlideBridge demo overlay](docs/assets/demo_overlay.png)
+![SlideBridge viewer heatmap overlays](docs/assets/viewer_heatmap_layers.png)
 
-> The demo image above is synthetic and contains no patient data.
+> Browser viewer screenshot showing heatmap, patch, and annotation debugging.
 
 ## What is SlideBridge Core?
 
@@ -45,6 +45,12 @@ slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port
   private plugins.
 - This project is not affiliated with, endorsed by, or certified by any scanner
   vendor.
+
+## Viewer Screenshots
+
+| Info panel | Heatmap / annotation overlays | Figure Designer |
+| --- | --- | --- |
+| ![SlideBridge viewer info panel](docs/assets/viewer_info_panel.png) | ![SlideBridge heatmap and annotation overlay controls](docs/assets/viewer_heatmap_layers.png) | ![SlideBridge custom figure designer](docs/assets/viewer_figure_designer.png) |
 
 ## Features
 
