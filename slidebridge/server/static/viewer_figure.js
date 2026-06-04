@@ -101,8 +101,8 @@
       : 4 / 3;
     const top = 80;
     const bottomMargin = 80;
-    const mainPatchGap = 32;
-    const rowGap = 32;
+    const mainPatchGap = 40;
+    const rowGap = 40;
     const availableHeight = CANVAS.height - top - bottomMargin - mainPatchGap - rowGap;
     const maxMainWidth = 2240;
     const maxMainHeight = 980;
@@ -111,30 +111,30 @@
       maxMainWidth / aspect,
       availableHeight / (1 + 2 * aspect / 3)
     );
-    let slotSize = Math.max(1, Math.floor((maxMainHeightByLayout * aspect) / 3));
-    while (slotSize > 1) {
+    let slotSize = Math.max(SNAP_STEP, snapDown((maxMainHeightByLayout * aspect) / 3));
+    while (slotSize > SNAP_STEP) {
       const mainWidth = slotSize * 3;
-      const mainHeight = Math.max(1, Math.round(mainWidth / aspect));
+      const mainHeight = Math.max(SNAP_STEP, snapToStep(mainWidth / aspect));
       const totalHeight = top + mainHeight + mainPatchGap + slotSize * 2 + rowGap + bottomMargin;
       if (mainWidth <= maxMainWidth && mainHeight <= maxMainHeight && totalHeight <= CANVAS.height) {
         break;
       }
-      slotSize -= 1;
+      slotSize -= SNAP_STEP;
     }
     const mainWidth = slotSize * 3;
-    const mainHeight = Math.max(1, Math.round(mainWidth / aspect));
-    const mainX = Math.round((CANVAS.width - mainWidth) / 2);
-    const main = [mainX, top, mainWidth, mainHeight];
+    const mainHeight = Math.max(SNAP_STEP, snapToStep(mainWidth / aspect));
+    const mainX = snapToStep((CANVAS.width - mainWidth) / 2);
+    const main = normalizePanelRect([mainX, top, mainWidth, mainHeight], "main");
     const patches = [];
     for (let slot = 0; slot < DEFAULT_PATCH_SLOTS; slot += 1) {
       const col = slot % 3;
       const row = Math.floor(slot / 3);
-      patches.push([
+      patches.push(normalizePanelRect([
         mainX + col * slotSize,
         top + mainHeight + mainPatchGap + row * (slotSize + rowGap),
         slotSize,
         slotSize
-      ]);
+      ], "patch"));
     }
     return {main, patches};
   }
@@ -265,6 +265,12 @@
 
     elements.snapToggle.addEventListener("change", function () {
       state.snapToGrid = Boolean(elements.snapToggle.checked);
+      if (state.snapToGrid) {
+        snapAllPanels();
+        setStatus(tr("figureSnapEnabled"), "ok");
+      } else {
+        setStatus(tr("figureSnapDisabled"), "");
+      }
       render();
     });
 
@@ -465,7 +471,7 @@
       if (mode === "resize") {
         panel.rect = resizedRect(startRect, dx, dy, role);
       } else {
-        panel.rect = movedRect(startRect, dx, dy);
+        panel.rect = movedRect(startRect, dx, dy, role);
       }
       if (role === "main") {
         state.mainPanel = panel.rect;
@@ -484,31 +490,16 @@
     render();
   }
 
-  function movedRect(rect, dx, dy) {
-    const width = rect[2];
-    const height = rect[3];
-    return [
-      clamp(snap(rect[0] + dx), 0, CANVAS.width - width),
-      clamp(snap(rect[1] + dy), 0, CANVAS.height - height),
-      width,
-      height
-    ];
+  function movedRect(rect, dx, dy, role) {
+    return normalizePanelRect([rect[0] + dx, rect[1] + dy, rect[2], rect[3]], role);
   }
 
   function resizedRect(rect, dx, dy, role) {
     if (role === "patch") {
-      const size = snap(Math.max(MIN_PATCH_SIZE, rect[2] + Math.max(dx, dy)));
-      const bounded = Math.max(MIN_PATCH_SIZE, Math.min(size, CANVAS.width - rect[0], CANVAS.height - rect[1]));
-      return [rect[0], rect[1], bounded, bounded];
+      const size = Math.max(MIN_PATCH_SIZE, rect[2] + Math.max(dx, dy));
+      return normalizePanelRect([rect[0], rect[1], size, size], role);
     }
-    const width = snap(Math.max(MIN_MAIN_SIZE.width, rect[2] + dx));
-    const height = snap(Math.max(MIN_MAIN_SIZE.height, rect[3] + dy));
-    return [
-      rect[0],
-      rect[1],
-      Math.max(MIN_MAIN_SIZE.width, Math.min(width, CANVAS.width - rect[0])),
-      Math.max(MIN_MAIN_SIZE.height, Math.min(height, CANVAS.height - rect[1]))
-    ];
+    return normalizePanelRect([rect[0], rect[1], rect[2] + dx, rect[3] + dy], role);
   }
 
   function renderSlots() {
@@ -659,9 +650,58 @@
     return String.fromCharCode("B".charCodeAt(0) + Number(slot));
   }
 
+  function snapAllPanels() {
+    if (state.mainPanel) {
+      state.mainPanel = normalizePanelRect(state.mainPanel, "main");
+    }
+    state.slots.forEach(function (slot) {
+      slot.rect = normalizePanelRect(slot.rect, "patch");
+    });
+  }
+
+  function normalizePanelRect(rect, role) {
+    let x = snap(rect[0]);
+    let y = snap(rect[1]);
+    if (role === "patch") {
+      const maxSize = Math.min(CANVAS.width, CANVAS.height);
+      let size = snap(Math.max(MIN_PATCH_SIZE, rect[2], rect[3]));
+      size = clamp(size, MIN_PATCH_SIZE, maxSize);
+      x = clampToGrid(x, 0, CANVAS.width - size);
+      y = clampToGrid(y, 0, CANVAS.height - size);
+      return [x, y, size, size];
+    }
+    let width = snap(Math.max(MIN_MAIN_SIZE.width, rect[2]));
+    let height = snap(Math.max(MIN_MAIN_SIZE.height, rect[3]));
+    width = clamp(width, MIN_MAIN_SIZE.width, CANVAS.width);
+    height = clamp(height, MIN_MAIN_SIZE.height, CANVAS.height);
+    x = clampToGrid(x, 0, CANVAS.width - width);
+    y = clampToGrid(y, 0, CANVAS.height - height);
+    return [x, y, width, height];
+  }
+
   function snap(value) {
     const numeric = Math.round(Number(value));
-    return state.snapToGrid ? Math.round(numeric / SNAP_STEP) * SNAP_STEP : numeric;
+    return state.snapToGrid ? snapToStep(numeric) : numeric;
+  }
+
+  function snapToStep(value) {
+    return Math.round(Number(value) / SNAP_STEP) * SNAP_STEP;
+  }
+
+  function snapDown(value) {
+    return Math.floor(Number(value) / SNAP_STEP) * SNAP_STEP;
+  }
+
+  function clampToGrid(value, minValue, maxValue) {
+    if (!state.snapToGrid) {
+      return clamp(value, minValue, maxValue);
+    }
+    const minGrid = snapToStep(minValue);
+    const maxGrid = snapDown(maxValue);
+    if (maxGrid < minGrid) {
+      return minGrid;
+    }
+    return clamp(snapToStep(value), minGrid, maxGrid);
   }
 
   function clamp(value, minValue, maxValue) {

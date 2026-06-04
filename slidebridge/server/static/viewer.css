@@ -481,10 +481,16 @@
       border: 1px solid #c8d7df;
       border-radius: 5px;
       background:
-        linear-gradient(to right, rgba(63, 89, 104, 0.12) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(63, 89, 104, 0.12) 1px, transparent 1px),
+        linear-gradient(to right, rgba(63, 89, 104, 0.18) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(63, 89, 104, 0.18) 1px, transparent 1px),
+        linear-gradient(to right, rgba(63, 89, 104, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(63, 89, 104, 0.08) 1px, transparent 1px),
         #f8fbfc;
-      background-size: 16px 16px;
+      background-size:
+        calc(100% / 24) 100%,
+        100% calc(100% / 18),
+        calc(100% / 120) 100%,
+        100% calc(100% / 90);
     }
     .figure-layout-panel {
       position: absolute;

@@ -121,6 +121,9 @@ def test_viewer_figure_tab_selects_patch_and_exports(tmp_path):
             page.mouse.down()
             page.mouse.move(patch_handle["x"] + patch_handle["width"] * 0.5 + 18, patch_handle["y"] + patch_handle["height"] * 0.5 + 18)
             page.mouse.up()
+            slot_summary = page.locator('.figure-slot-row[data-slot="0"] .figure-slot-summary').inner_text()
+            snapped_rect = [int(value.strip()) for value in slot_summary.split("|")[-1].split(",")]
+            assert all(value % 20 == 0 for value in snapped_rect)
 
             page.locator("#figure-add-patch").click()
             assert page.locator('.figure-slot-row[data-slot="6"]').is_visible()

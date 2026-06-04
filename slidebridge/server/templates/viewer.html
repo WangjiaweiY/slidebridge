@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SlideBridge Viewer - {{ filename }}</title>
-  <link rel="stylesheet" href="/static/viewer.css">
+  <link rel="stylesheet" href="/static/viewer.css?v={{ static_cache_key }}">
 </head>
 <body>
   <div class="app-shell">
@@ -265,8 +265,8 @@
     </main>
   </div>
   <script id="slidebridge-viewer-config" type="application/json">{{ viewer_config_json | safe }}</script>
-  <script src="/static/viewer.js"></script>
-  <script src="/static/viewer_figure.js"></script>
+  <script src="/static/viewer.js?v={{ static_cache_key }}"></script>
+  <script src="/static/viewer_figure.js?v={{ static_cache_key }}"></script>
 </body>
 </html>
 

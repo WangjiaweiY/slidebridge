@@ -68,9 +68,13 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert page.headers["cache-control"] == "no-store"
     viewer_config = _viewer_config(page.text)
     assert re.fullmatch(r"[0-9a-f]+", viewer_config["tileCacheKey"])
+    cache_key = viewer_config["tileCacheKey"]
     assert "/static/viewer.css" in page.text
     assert "/static/viewer.js" in page.text
     assert "/static/viewer_figure.js" in page.text
+    assert f"/static/viewer.css?v={cache_key}" in page.text
+    assert f"/static/viewer.js?v={cache_key}" in page.text
+    assert f"/static/viewer_figure.js?v={cache_key}" in page.text
     assert "figure-tab" in page.text
     viewer_js, viewer_css, viewer_figure_js = _viewer_static_text(client)
     viewer_assets = viewer_js + viewer_css + viewer_figure_js
@@ -115,7 +119,6 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "SlideBridgeViewer" in viewer_js
     assert "selectSquareRegion" in viewer_js
     assert 'fetch("/api/render-figure"' in viewer_figure_js
-    cache_key = viewer_config["tileCacheKey"]
     keyed_dzi = client.get(f"/slides/0/{cache_key}/dzi.dzi")
     assert keyed_dzi.status_code == 200
     keyed_tile = client.get(f"/slides/0/{cache_key}/dzi_files/9/0_0.jpeg")
