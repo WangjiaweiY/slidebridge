@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from slidebridge import __version__
-from slidebridge.app.remote import RemoteConnection, list_remote_directory, test_remote_connection
+from slidebridge.app.remote import RemoteConnection, list_remote_directory, test_remote_connection, test_ssh_connection
 from slidebridge.app.sessions import ViewerSessionManager
 from slidebridge.remote.profiles import load_profiles
 
@@ -55,6 +55,19 @@ def create_launcher_app(session_manager: ViewerSessionManager | None = None) -> 
 
     @app.post("/api/remote/test")
     def api_remote_test(payload: dict[str, Any]) -> JSONResponse:
+        try:
+            result = test_ssh_connection(RemoteConnection.from_payload(payload), timeout=float(payload.get("timeout") or 20.0))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _json_response({
+            "ok": result.returncode == 0,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        })
+
+    @app.post("/api/remote/runtime-test")
+    def api_remote_runtime_test(payload: dict[str, Any]) -> JSONResponse:
         try:
             result = test_remote_connection(RemoteConnection.from_payload(payload), timeout=float(payload.get("timeout") or 20.0))
         except Exception as exc:

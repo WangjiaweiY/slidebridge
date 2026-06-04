@@ -145,6 +145,16 @@ textarea {
   resize: vertical;
 }
 
+.input-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.input-action button {
+  white-space: nowrap;
+}
+
 button,
 .button-link {
   min-height: 34px;

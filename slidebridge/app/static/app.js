@@ -5,7 +5,8 @@
   const config = JSON.parse((configElement && configElement.textContent) || "{}");
   const state = {
     entries: [],
-    sessions: []
+    sessions: [],
+    fileTarget: null
   };
   const els = {};
   const LANGUAGE_STORAGE_KEY = "slidebridge-app-language";
@@ -26,17 +27,19 @@
       runtimePath: "默认环境",
       runtimeConda: "Conda 环境",
       runtimeCustom: "自定义命令",
-      condaCommand: "Conda 路径",
-      condaCommandPlaceholder: "conda 或 /path/to/conda",
+      condaCommand: "Conda 可执行文件",
+      condaCommandPlaceholder: "/path/to/miniconda3/bin/conda",
       condaEnv: "Conda 环境名",
       customRunner: "自定义命令",
       identityFile: "SSH key 文件",
       remoteWorkdir: "远端工作目录",
       sshOptions: "SSH 额外参数",
       optional: "可选",
-      testConnection: "测试连接",
+      testConnection: "测试 SSH",
+      testRuntime: "测试远端环境",
+      pickFromBrowser: "从列表选择",
       buildCommand: "生成命令",
-      sshHint: "支持 SSH key、ssh-agent 和 ssh config alias。如果服务器需要密码，密码提示会出现在启动本应用的终端里。",
+      sshHint: "先测试 SSH 并浏览目录；远端环境只在生成命令或启动 viewer 时使用。如果服务器需要密码，密码提示会出现在启动本应用的终端里。",
       viewerInputs: "Viewer 输入",
       remoteDirectory: "远端目录",
       browse: "浏览",
@@ -75,11 +78,17 @@
       remoteDirectoryFallback: "远端目录",
       profileLoaded: "已加载连接配置：{name}",
       testingSsh: "正在测试 SSH 连接...",
-      remoteResponded: "远端 SlideBridge 已响应。",
-      remoteFailed: "远端测试失败。",
+      testingRuntime: "正在测试远端环境...",
+      remoteResponded: "SSH 连接可用。",
+      remoteFailed: "SSH 连接失败。",
+      runtimeResponded: "远端环境可用。",
+      runtimeFailed: "远端环境测试失败。",
       loadingRemoteDir: "正在加载远端目录...",
       listingFailed: "远端目录列表获取失败。",
       entriesLoaded: "已加载 {count} 个条目。",
+      missingCondaCommand: "请先填写 Conda 可执行文件，或点击“从列表选择”后在文件浏览器里选择 conda。",
+      pickCondaHint: "请在远端文件浏览器里打开 conda 所在目录，然后点击 conda 文件。",
+      condaSelected: "已选择 Conda 可执行文件：{path}",
       commandReady: "命令已生成。",
       startingViewer: "正在启动 viewer 会话...",
       viewerStarted: "viewer 会话已启动。隧道就绪后打开 viewer。",
@@ -105,17 +114,19 @@
       runtimePath: "Default environment",
       runtimeConda: "Conda environment",
       runtimeCustom: "Custom command",
-      condaCommand: "Conda path",
-      condaCommandPlaceholder: "conda or /path/to/conda",
+      condaCommand: "Conda executable",
+      condaCommandPlaceholder: "/path/to/miniconda3/bin/conda",
       condaEnv: "Conda environment",
       customRunner: "Custom command",
       identityFile: "SSH key file",
       remoteWorkdir: "Remote workdir",
       sshOptions: "SSH options",
       optional: "optional",
-      testConnection: "Test connection",
+      testConnection: "Test SSH",
+      testRuntime: "Test remote environment",
+      pickFromBrowser: "Pick from list",
       buildCommand: "Build command",
-      sshHint: "SSH key, ssh-agent, and config aliases are supported. Password prompts appear in the terminal that started this app.",
+      sshHint: "Test SSH and browse directories first. The remote environment is only used when building commands or launching the viewer. Password prompts appear in the terminal that started this app.",
       viewerInputs: "Viewer inputs",
       remoteDirectory: "Remote directory",
       browse: "Browse",
@@ -154,11 +165,17 @@
       remoteDirectoryFallback: "remote directory",
       profileLoaded: "Profile {name} loaded.",
       testingSsh: "Testing SSH connection...",
-      remoteResponded: "Remote SlideBridge responded.",
-      remoteFailed: "Remote test failed.",
+      testingRuntime: "Testing remote environment...",
+      remoteResponded: "SSH connection is available.",
+      remoteFailed: "SSH connection failed.",
+      runtimeResponded: "Remote environment is available.",
+      runtimeFailed: "Remote environment test failed.",
       loadingRemoteDir: "Loading remote directory...",
       listingFailed: "Remote directory listing failed.",
       entriesLoaded: "{count} entries loaded.",
+      missingCondaCommand: "Fill the Conda executable first, or click Pick from list and choose the conda file in the remote file browser.",
+      pickCondaHint: "Open the directory that contains conda in the remote file browser, then click the conda file.",
+      condaSelected: "Selected Conda executable: {path}",
       commandReady: "Command ready.",
       startingViewer: "Starting viewer session...",
       viewerStarted: "Viewer session started. Open the viewer when the tunnel is ready.",
@@ -230,6 +247,8 @@
     els.remoteRuntime.addEventListener("change", onRuntimeChanged);
     els.profileSelect.addEventListener("change", applySelectedProfile);
     document.getElementById("test-connection").addEventListener("click", testConnection);
+    document.getElementById("test-runtime").addEventListener("click", testRuntime);
+    document.getElementById("pick-conda-command").addEventListener("click", pickCondaCommand);
     document.getElementById("browse-remote").addEventListener("click", browseRemote);
     document.getElementById("parent-dir").addEventListener("click", browseParent);
     document.getElementById("build-command").addEventListener("click", buildCommand);
@@ -304,22 +323,28 @@
     });
   }
 
-  function connectionPayload() {
-    return {
+  function connectionPayload(options) {
+    const payload = {
       host: els.host.value.trim(),
       user: els.user.value.trim(),
       ssh_port: els.sshPort.value.trim(),
-      remote_runner: buildRemoteRunner(),
       remote_workdir: els.remoteWorkdir.value.trim(),
       identity_file: els.identityFile.value.trim(),
       ssh_options: els.sshOptions.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
     };
+    if (options && options.includeRuntime) {
+      payload.remote_runner = buildRemoteRunner();
+    }
+    return payload;
   }
 
   function buildRemoteRunner() {
     const runtime = els.remoteRuntime.value || "path";
     if (runtime === "conda") {
-      const condaCommand = els.condaCommand.value.trim() || "conda";
+      const condaCommand = els.condaCommand.value.trim();
+      if (!condaCommand) {
+        throw new Error(t("missingCondaCommand"));
+      }
       const condaEnv = els.condaEnv.value.trim() || "slidebridge";
       return `${condaCommand} run -n ${condaEnv} slidebridge`;
     }
@@ -331,7 +356,7 @@
 
   function launchPayload() {
     return {
-      ...connectionPayload(),
+      ...connectionPayload({includeRuntime: true}),
       remote_path: els.remotePath.value.trim(),
       remote_dir: els.remoteDir.value.trim(),
       local_host: "127.0.0.1",
@@ -420,6 +445,21 @@
     } catch (error) {
       setStatus(error.message, "error");
     }
+  }
+
+  async function testRuntime() {
+    setBusy(t("testingRuntime"));
+    try {
+      const result = await postJson("/api/remote/runtime-test", connectionPayload({includeRuntime: true}));
+      setStatus(result.ok ? t("runtimeResponded") : (result.stderr || t("runtimeFailed")), result.ok ? "ok" : "error");
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  }
+
+  function pickCondaCommand() {
+    state.fileTarget = "conda";
+    setStatus(t("pickCondaHint"), "ok");
   }
 
   async function browseRemote() {
@@ -513,6 +553,13 @@
     if (entry.kind === "directory") {
       els.remoteDir.value = entry.path;
       browseRemote();
+      return;
+    }
+    if (state.fileTarget === "conda") {
+      els.condaCommand.value = entry.path;
+      state.fileTarget = null;
+      setStatus(t("condaSelected", {path: entry.path}), "ok");
+      onInputsChanged();
       return;
     }
     if (entry.is_slide && (!entry.is_heatmap || !els.remotePath.value.trim())) {

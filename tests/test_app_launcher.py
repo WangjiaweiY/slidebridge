@@ -37,6 +37,7 @@ def test_launcher_index_and_static_assets_are_available(monkeypatch, tmp_path):
     assert "changeLanguage" in js.text
     assert "buildRemoteRunner" in js.text
     assert 'remoteRuntime: "Remote environment"' in js.text
+    assert "pickCondaCommand" in js.text
 
 
 def test_launcher_assets_are_packaged():
@@ -132,12 +133,32 @@ def test_remote_test_api_reports_command_result(monkeypatch, tmp_path):
     monkeypatch.setattr("slidebridge.app.remote.require_ssh_available", lambda: None)
 
     def fake_run_ssh_command(command, timeout=None):
-        return RemoteCommandResult(command=command, returncode=0, stdout="SlideBridge Core version: 0.3.0\n", stderr="")
+        assert "slidebridge-ssh-ok" in command[-1]
+        return RemoteCommandResult(command=command, returncode=0, stdout="slidebridge-ssh-ok\n", stderr="")
 
     monkeypatch.setattr("slidebridge.app.remote.run_ssh_command", fake_run_ssh_command)
     client = TestClient(create_launcher_app())
 
     response = client.post("/api/remote/test", json={"host": "server.example.org", "remote_runner": "slidebridge"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert "slidebridge-ssh-ok" in payload["stdout"]
+
+
+def test_remote_runtime_test_api_reports_slidebridge_result(monkeypatch, tmp_path):
+    monkeypatch.setenv("SLIDEBRIDGE_REMOTE_PROFILES", str(tmp_path / "profiles.json"))
+    monkeypatch.setattr("slidebridge.app.remote.require_ssh_available", lambda: None)
+
+    def fake_run_ssh_command(command, timeout=None):
+        assert "slidebridge version" in command[-1]
+        return RemoteCommandResult(command=command, returncode=0, stdout="SlideBridge Core version: 0.3.0\n", stderr="")
+
+    monkeypatch.setattr("slidebridge.app.remote.run_ssh_command", fake_run_ssh_command)
+    client = TestClient(create_launcher_app())
+
+    response = client.post("/api/remote/runtime-test", json={"host": "server.example.org", "remote_runner": "slidebridge"})
 
     assert response.status_code == 200
     payload = response.json()

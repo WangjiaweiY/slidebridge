@@ -33,7 +33,12 @@
               <option value="custom" data-i18n="runtimeCustom">自定义命令</option>
             </select>
           </label>
-          <label data-runtime-field="conda"><span data-i18n="condaCommand">Conda 路径</span><input id="conda-command" value="conda" data-i18n-placeholder="condaCommandPlaceholder" placeholder="conda 或 /path/to/conda"></label>
+          <label data-runtime-field="conda"><span data-i18n="condaCommand">Conda 可执行文件</span>
+            <span class="input-action">
+              <input id="conda-command" data-i18n-placeholder="condaCommandPlaceholder" placeholder="/path/to/miniconda3/bin/conda">
+              <button id="pick-conda-command" type="button" data-i18n="pickFromBrowser">从列表选择</button>
+            </span>
+          </label>
           <label data-runtime-field="conda"><span data-i18n="condaEnv">Conda 环境名</span><input id="conda-env" value="slidebridge"></label>
           <label data-runtime-field="custom"><span data-i18n="customRunner">自定义命令</span><input id="remote-runner" value="slidebridge"></label>
           <label><span data-i18n="identityFile">SSH key 文件</span><input id="identity-file" data-i18n-placeholder="optional" placeholder="可选"></label>
@@ -41,7 +46,8 @@
           <label><span data-i18n="sshOptions">SSH 额外参数</span><textarea id="ssh-options" rows="2" placeholder="-J bastion"></textarea></label>
         </div>
         <div class="action-row">
-          <button id="test-connection" type="button" data-i18n="testConnection">测试连接</button>
+          <button id="test-connection" type="button" data-i18n="testConnection">测试 SSH</button>
+          <button id="test-runtime" type="button" data-i18n="testRuntime">测试远端环境</button>
           <button id="build-command" type="button" data-i18n="buildCommand">生成命令</button>
         </div>
         <p class="hint" data-i18n="sshHint">支持 SSH key、ssh-agent 和 ssh config alias。如果服务器需要密码，密码提示会出现在启动本应用的终端里。</p>

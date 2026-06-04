@@ -68,6 +68,13 @@ def test_remote_connection(connection: RemoteConnection, timeout: float = 20.0) 
     return run_ssh_command(command, timeout=timeout)
 
 
+def test_ssh_connection(connection: RemoteConnection, timeout: float = 20.0) -> RemoteCommandResult:
+    require_ssh_available()
+    command = connection.ssh_base_command()
+    command.append("printf 'slidebridge-ssh-ok\\n'")
+    return run_ssh_command(command, timeout=timeout)
+
+
 def list_remote_directory(
     connection: RemoteConnection,
     remote_dir: str,
