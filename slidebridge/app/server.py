@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from slidebridge import __version__
 from slidebridge.app.remote import RemoteConnection, list_remote_directory, test_remote_connection, test_ssh_connection
 from slidebridge.app.sessions import ViewerSessionManager
+from slidebridge.remote.tunnel import wait_for_http
 from slidebridge.remote.profiles import load_profiles
 
 
@@ -59,11 +60,14 @@ def create_launcher_app(session_manager: ViewerSessionManager | None = None) -> 
             result = test_ssh_connection(RemoteConnection.from_payload(payload), timeout=float(payload.get("timeout") or 20.0))
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        remote_home = lines[1] if len(lines) > 1 and lines[0] == "slidebridge-ssh-ok" else ""
         return _json_response({
             "ok": result.returncode == 0,
             "returncode": result.returncode,
             "stdout": result.stdout,
             "stderr": result.stderr,
+            "remote_home": remote_home,
         })
 
     @app.post("/api/remote/runtime-test")
@@ -113,7 +117,16 @@ def create_launcher_app(session_manager: ViewerSessionManager | None = None) -> 
             session = manager.launch_remote(payload)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return _json_response(session.to_dict())
+        timeout = max(1.0, float(payload.get("startup_timeout") or 60.0))
+        ready = wait_for_http(f"{session.viewer_url.rstrip('/')}/api/slides", timeout=timeout)
+        if not ready:
+            detail = f"Viewer did not become ready within {timeout:g} seconds."
+            if session.process is not None and session.process.poll() is not None:
+                detail = "Viewer process exited before becoming ready."
+            raise HTTPException(status_code=400, detail=detail)
+        data = session.to_dict()
+        data["ready"] = True
+        return _json_response(data)
 
     @app.get("/api/session/list")
     def api_session_list() -> JSONResponse:

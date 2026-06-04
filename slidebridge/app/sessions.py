@@ -34,13 +34,13 @@ class ViewerSession:
             "viewer_url": self.viewer_url,
             "command": self.display_command,
             "started_at": self.started_at,
-            "slide": self.payload.get("remote_path") or self.payload.get("slide_path"),
+            "slide": self.payload.get("remote_path") or self.payload.get("remote_home") or self.payload.get("slide_path"),
         }
 
 
 class ViewerSessionManager:
     def __init__(self) -> None:
-        self._sessions: dict[str, ViewerSession] = {}
+        self._session: ViewerSession | None = None
 
     def prepare_remote(self, payload: dict[str, Any]) -> ViewerSession:
         cli_args = build_remote_view_cli_args(payload)
@@ -56,22 +56,33 @@ class ViewerSessionManager:
         return session
 
     def launch_remote(self, payload: dict[str, Any]) -> ViewerSession:
+        self.stop_current()
         session = self.prepare_remote(payload)
         session.process = subprocess.Popen(session.process_command)
-        self._sessions[session.id] = session
+        self._session = session
         return session
 
     def list_sessions(self) -> list[dict[str, Any]]:
-        return [session.to_dict() for session in sorted(self._sessions.values(), key=lambda item: item.started_at, reverse=True)]
+        return [self._session.to_dict()] if self._session is not None else []
 
     def get(self, session_id: str) -> ViewerSession:
-        try:
-            return self._sessions[session_id]
-        except KeyError as exc:
-            raise KeyError(f"Unknown viewer session: {session_id}") from exc
+        if self._session is not None and self._session.id == session_id:
+            return self._session
+        raise KeyError(f"Unknown active viewer: {session_id}")
 
     def stop(self, session_id: str) -> ViewerSession:
         session = self.get(session_id)
+        self._stop_session(session)
+        return session
+
+    def stop_current(self) -> ViewerSession | None:
+        session = self._session
+        if session is None:
+            return None
+        self._stop_session(session)
+        return session
+
+    def _stop_session(self, session: ViewerSession) -> None:
         process = session.process
         if process is not None and process.poll() is None:
             process.terminate()
@@ -80,7 +91,6 @@ class ViewerSessionManager:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=10)
-        return session
 
 
 def _viewer_url(payload: dict[str, Any]) -> str:
@@ -93,4 +103,3 @@ def _viewer_url(payload: dict[str, Any]) -> str:
 
 def _session_id() -> str:
     return f"viewer-{secrets.token_hex(6)}"
-

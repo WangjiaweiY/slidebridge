@@ -3,79 +3,70 @@
 
   const configElement = document.getElementById("slidebridge-app-config");
   const config = JSON.parse((configElement && configElement.textContent) || "{}");
-  const state = {
-    entries: [],
-    sessions: [],
-    fileTarget: null
-  };
-  const els = {};
   const LANGUAGE_STORAGE_KEY = "slidebridge-app-language";
   const DEFAULT_LANGUAGE = "zh-CN";
+  const state = {
+    remoteHome: ""
+  };
+  const els = {};
   let currentLanguage = loadLanguagePreference();
+
   const translations = {
     "zh-CN": {
       documentTitle: "SlideBridge 启动器",
       appTitle: "Viewer 启动器",
-      appSubtitle: "通过 SSH 浏览远端 WSI，并加载 heatmap、patch、annotation 和论文图工作流。",
+      appSubtitle: "先连接远端 SSH 和 Python 环境，再进入 viewer 浏览目录、选择切片、加载热图和标注。",
       sshConnection: "SSH 连接",
       profile: "连接配置",
       manual: "手动填写",
       host: "主机",
       user: "用户",
       sshPort: "SSH 端口",
-      remoteRuntime: "远端环境",
-      runtimePath: "默认环境",
-      runtimeConda: "Conda 环境",
-      runtimeCustom: "自定义命令",
-      condaCommand: "Conda 可执行文件",
-      condaCommandPlaceholder: "/path/to/miniconda3/bin/conda",
-      condaEnv: "Conda 环境名",
-      customRunner: "自定义命令",
       identityFile: "SSH key 文件",
-      remoteWorkdir: "远端工作目录",
       sshOptions: "SSH 额外参数",
       optional: "可选",
       testConnection: "测试 SSH",
-      testRuntime: "测试远端环境",
-      pickFromBrowser: "从列表选择",
-      buildCommand: "生成命令",
-      sshHint: "先测试 SSH 并浏览目录；远端环境只在生成命令或启动 viewer 时使用。如果服务器需要密码，密码提示会出现在启动本应用的终端里。",
-      viewerInputs: "Viewer 输入",
-      remoteDirectory: "远端目录",
-      browse: "浏览",
-      parentDir: "上级目录",
-      slidePath: "切片路径",
+      sshHint: "支持 SSH key、ssh-agent、ssh config alias。若服务器需要密码，密码提示会出现在启动本应用的终端里。",
+      runtimeSection: "远端环境",
+      remoteRuntime: "运行方式",
+      runtimePath: "默认 slidebridge",
+      runtimeConda: "Conda 环境路径",
+      runtimeCustom: "自定义命令",
+      condaEnvPath: "Conda 环境路径",
+      condaEnvPathPlaceholder: "/home/user/miniconda3/envs/slidebridge",
+      browseRemoteDirectory: "浏览",
+      remoteDirectoryBrowser: "远端目录选择",
+      browserCurrentDirectory: "当前目录",
+      openDirectory: "打开",
+      parentDirectory: "上级目录",
+      refreshDirectory: "刷新",
+      chooseDirectory: "选择",
+      enterDirectory: "进入",
+      chooseCurrentDirectory: "选择当前目录",
+      loadingDirectory: "正在加载远端目录...",
+      directoryLoaded: "已加载 {count} 个文件夹。",
+      noDirectories: "该目录下没有可显示的文件夹。",
+      directorySelected: "已选择远端目录。",
+      remoteBrowserHint: "只显示远端文件夹。选择 Conda 环境目录，例如 /home/user/miniconda3/envs/slidebridge。",
+      customRunner: "自定义命令",
+      remoteWorkdir: "远端工作目录",
+      remoteWorkdirHint: "可选。仅在远端命令需要先 cd 到某个目录时填写；通常留空。",
       localPort: "本地端口",
       remotePort: "远端端口",
-      patches: "Patch 坐标",
-      annotations: "Annotation",
-      annotationFormat: "Annotation 格式",
-      heatmapLayers: "Heatmap 图层",
-      addHeatmapLayer: "添加 heatmap 图层",
+      testRuntime: "测试远端环境",
+      buildCommand: "生成命令",
+      runtimeHint: "Conda 环境路径会自动转换为该环境里的 python 命令，不依赖远端 PATH 中存在 conda。",
       language: "语言",
       launchViewer: "启动 viewer",
-      remoteFileBrowser: "远端文件浏览器",
-      noDirectoryLoaded: "尚未加载目录",
-      filterFiles: "筛选文件",
       launchSummary: "启动摘要",
-      slide: "切片",
+      sshTarget: "SSH",
+      remoteHome: "远端 home",
+      runtime: "环境",
       viewerUrl: "Viewer 地址",
       equivalentCommand: "等价命令",
       copyCommand: "复制命令",
-      openViewer: "打开 viewer",
-      viewerSessions: "Viewer 会话",
-      layerName: "图层名",
-      remove: "删除",
-      directory: "目录",
-      file: "文件",
-      slideTag: "切片",
-      directoryTag: "目录",
-      patchTag: "patch",
-      noFilesLoaded: "尚未加载文件。",
-      noSessions: "暂无 viewer 会话。",
-      notSelected: "未选择",
-      none: "无",
-      remoteDirectoryFallback: "远端目录",
+      notConfigured: "未填写",
+      notTested: "未测试",
       profileLoaded: "已加载连接配置：{name}",
       testingSsh: "正在测试 SSH 连接...",
       testingRuntime: "正在测试远端环境...",
@@ -83,109 +74,87 @@
       remoteFailed: "SSH 连接失败。",
       runtimeResponded: "远端环境可用。",
       runtimeFailed: "远端环境测试失败。",
-      loadingRemoteDir: "正在加载远端目录...",
-      listingFailed: "远端目录列表获取失败。",
-      entriesLoaded: "已加载 {count} 个条目。",
-      missingCondaCommand: "请先填写 Conda 可执行文件，或点击“从列表选择”后在文件浏览器里选择 conda。",
-      pickCondaHint: "请在远端文件浏览器里打开 conda 所在目录，然后点击 conda 文件。",
-      condaSelected: "已选择 Conda 可执行文件：{path}",
+      missingCondaEnvPath: "请填写 Conda 环境路径，例如 /home/user/miniconda3/envs/slidebridge。",
       commandReady: "命令已生成。",
-      startingViewer: "正在启动 viewer 会话...",
-      viewerStarted: "viewer 会话已启动。隧道就绪后打开 viewer。",
+      startingViewer: "正在启动 viewer，并等待服务就绪...",
+      viewerStarted: "viewer 已就绪，正在打开...",
       commandCopied: "命令已复制。",
       requestFailed: "请求失败。",
       prepared: "已准备",
       running: "运行中",
-      stopped: "已停止",
-      open: "打开",
-      stop: "停止"
+      stopped: "已停止"
     },
     en: {
-      documentTitle: "SlideBridge App",
+      documentTitle: "SlideBridge Launcher",
       appTitle: "Viewer Launcher",
-      appSubtitle: "Browse remote WSI over SSH and load heatmaps, patches, annotations, and figure workflows.",
+      appSubtitle: "Connect SSH and the remote Python runtime first, then browse directories, choose slides, and load heatmaps or annotations in the viewer.",
       sshConnection: "SSH connection",
       profile: "Profile",
       manual: "manual",
       host: "Host",
       user: "User",
       sshPort: "SSH port",
-      remoteRuntime: "Remote environment",
-      runtimePath: "Default environment",
-      runtimeConda: "Conda environment",
-      runtimeCustom: "Custom command",
-      condaCommand: "Conda executable",
-      condaCommandPlaceholder: "/path/to/miniconda3/bin/conda",
-      condaEnv: "Conda environment",
-      customRunner: "Custom command",
       identityFile: "SSH key file",
-      remoteWorkdir: "Remote workdir",
       sshOptions: "SSH options",
       optional: "optional",
       testConnection: "Test SSH",
-      testRuntime: "Test remote environment",
-      pickFromBrowser: "Pick from list",
-      buildCommand: "Build command",
-      sshHint: "Test SSH and browse directories first. The remote environment is only used when building commands or launching the viewer. Password prompts appear in the terminal that started this app.",
-      viewerInputs: "Viewer inputs",
-      remoteDirectory: "Remote directory",
-      browse: "Browse",
-      parentDir: "Parent",
-      slidePath: "Slide path",
+      sshHint: "Supports SSH keys, ssh-agent, and ssh config aliases. Password prompts appear in the terminal that started this app.",
+      runtimeSection: "Remote runtime",
+      remoteRuntime: "Run with",
+      runtimePath: "Default slidebridge",
+      runtimeConda: "Conda env path",
+      runtimeCustom: "Custom command",
+      condaEnvPath: "Conda env path",
+      condaEnvPathPlaceholder: "/home/user/miniconda3/envs/slidebridge",
+      browseRemoteDirectory: "Browse",
+      remoteDirectoryBrowser: "Remote directory picker",
+      browserCurrentDirectory: "Current directory",
+      openDirectory: "Open",
+      parentDirectory: "Parent",
+      refreshDirectory: "Refresh",
+      chooseDirectory: "Choose",
+      enterDirectory: "Enter",
+      chooseCurrentDirectory: "Choose current directory",
+      loadingDirectory: "Loading remote directory...",
+      directoryLoaded: "{count} folders loaded.",
+      noDirectories: "No visible folders in this directory.",
+      directorySelected: "Remote directory selected.",
+      remoteBrowserHint: "Only remote folders are shown. Choose the Conda env directory, for example /home/user/miniconda3/envs/slidebridge.",
+      customRunner: "Custom command",
+      remoteWorkdir: "Remote workdir",
+      remoteWorkdirHint: "Optional. Fill this only when the remote command must cd into a directory first; usually leave it empty.",
       localPort: "Local port",
       remotePort: "Remote port",
-      patches: "Patch coordinates",
-      annotations: "Annotations",
-      annotationFormat: "Annotation format",
-      heatmapLayers: "Heatmap layers",
-      addHeatmapLayer: "Add heatmap layer",
+      testRuntime: "Test runtime",
+      buildCommand: "Build command",
+      runtimeHint: "The Conda env path is converted to that environment's python command; it does not require conda on the remote PATH.",
       language: "Language",
       launchViewer: "Launch viewer",
-      remoteFileBrowser: "Remote file browser",
-      noDirectoryLoaded: "No directory loaded",
-      filterFiles: "Filter files",
       launchSummary: "Launch summary",
-      slide: "Slide",
+      sshTarget: "SSH",
+      remoteHome: "Remote home",
+      runtime: "Runtime",
       viewerUrl: "Viewer URL",
       equivalentCommand: "Equivalent command",
       copyCommand: "Copy command",
-      openViewer: "Open viewer",
-      viewerSessions: "Viewer sessions",
-      layerName: "name",
-      remove: "Remove",
-      directory: "directory",
-      file: "file",
-      slideTag: "slide",
-      directoryTag: "dir",
-      patchTag: "patches",
-      noFilesLoaded: "No files loaded.",
-      noSessions: "No viewer sessions yet.",
-      notSelected: "not selected",
-      none: "none",
-      remoteDirectoryFallback: "remote directory",
+      notConfigured: "not configured",
+      notTested: "not tested",
       profileLoaded: "Profile {name} loaded.",
       testingSsh: "Testing SSH connection...",
-      testingRuntime: "Testing remote environment...",
+      testingRuntime: "Testing remote runtime...",
       remoteResponded: "SSH connection is available.",
       remoteFailed: "SSH connection failed.",
-      runtimeResponded: "Remote environment is available.",
-      runtimeFailed: "Remote environment test failed.",
-      loadingRemoteDir: "Loading remote directory...",
-      listingFailed: "Remote directory listing failed.",
-      entriesLoaded: "{count} entries loaded.",
-      missingCondaCommand: "Fill the Conda executable first, or click Pick from list and choose the conda file in the remote file browser.",
-      pickCondaHint: "Open the directory that contains conda in the remote file browser, then click the conda file.",
-      condaSelected: "Selected Conda executable: {path}",
+      runtimeResponded: "Remote runtime is available.",
+      runtimeFailed: "Remote runtime test failed.",
+      missingCondaEnvPath: "Fill the Conda env path, for example /home/user/miniconda3/envs/slidebridge.",
       commandReady: "Command ready.",
-      startingViewer: "Starting viewer session...",
-      viewerStarted: "Viewer session started. Open the viewer when the tunnel is ready.",
+      startingViewer: "Starting viewer and waiting until it is ready...",
+      viewerStarted: "Viewer is ready. Opening...",
       commandCopied: "Command copied.",
       requestFailed: "Request failed.",
       prepared: "prepared",
       running: "running",
-      stopped: "stopped",
-      open: "Open",
-      stop: "Stop"
+      stopped: "stopped"
     }
   };
 
@@ -196,12 +165,10 @@
     els.languageSelect.value = currentLanguage;
     els.version.textContent = config.version || "";
     renderProfiles();
-    addHeatmapLayer("low", "");
     bindEvents();
     updateRuntimeFields();
     applyLanguage();
     renderSummary();
-    refreshSessions();
   }
 
   function collectElements() {
@@ -213,32 +180,24 @@
       host: document.getElementById("remote-host"),
       user: document.getElementById("remote-user"),
       sshPort: document.getElementById("ssh-port"),
-      remoteRuntime: document.getElementById("remote-runtime"),
-      condaCommand: document.getElementById("conda-command"),
-      condaEnv: document.getElementById("conda-env"),
-      remoteRunner: document.getElementById("remote-runner"),
-      remoteWorkdir: document.getElementById("remote-workdir"),
       identityFile: document.getElementById("identity-file"),
       sshOptions: document.getElementById("ssh-options"),
-      remoteDir: document.getElementById("remote-dir"),
-      remotePath: document.getElementById("remote-path"),
+      remoteRuntime: document.getElementById("remote-runtime"),
+      condaEnvPath: document.getElementById("conda-env-path"),
+      remoteRunner: document.getElementById("remote-runner"),
+      remoteWorkdir: document.getElementById("remote-workdir"),
       localPort: document.getElementById("local-port"),
       remotePort: document.getElementById("remote-port"),
-      patches: document.getElementById("patches-path"),
-      annotations: document.getElementById("annotations-path"),
-      annotationFormat: document.getElementById("annotation-format"),
-      heatmapLayers: document.getElementById("heatmap-layers"),
-      fileTable: document.getElementById("file-table"),
-      browserPath: document.getElementById("browser-path"),
-      fileFilter: document.getElementById("file-filter"),
+      launchViewer: document.getElementById("launch-viewer"),
       commandOutput: document.getElementById("command-output"),
-      openViewer: document.getElementById("open-viewer"),
-      sessionList: document.getElementById("session-list"),
-      summarySlide: document.getElementById("summary-slide"),
-      summaryHeatmaps: document.getElementById("summary-heatmaps"),
-      summaryPatches: document.getElementById("summary-patches"),
-      summaryAnnotations: document.getElementById("summary-annotations"),
-      summaryUrl: document.getElementById("summary-url")
+      summaryTarget: document.getElementById("summary-target"),
+      summaryHome: document.getElementById("summary-home"),
+      summaryRuntime: document.getElementById("summary-runtime"),
+      summaryUrl: document.getElementById("summary-url"),
+      remoteBrowserModal: document.getElementById("remote-browser-modal"),
+      remoteBrowserPath: document.getElementById("remote-browser-path"),
+      remoteBrowserList: document.getElementById("remote-browser-list"),
+      remoteBrowserStatus: document.getElementById("remote-browser-status")
     });
   }
 
@@ -248,35 +207,45 @@
     els.profileSelect.addEventListener("change", applySelectedProfile);
     document.getElementById("test-connection").addEventListener("click", testConnection);
     document.getElementById("test-runtime").addEventListener("click", testRuntime);
-    document.getElementById("pick-conda-command").addEventListener("click", pickCondaCommand);
-    document.getElementById("browse-remote").addEventListener("click", browseRemote);
-    document.getElementById("parent-dir").addEventListener("click", browseParent);
     document.getElementById("build-command").addEventListener("click", buildCommand);
-    document.getElementById("launch-viewer").addEventListener("click", launchViewer);
-    document.getElementById("add-heatmap-layer").addEventListener("click", function () {
-      addHeatmapLayer("", "");
-      renderSummary();
-    });
+    els.launchViewer.addEventListener("click", launchViewer);
     document.getElementById("copy-command").addEventListener("click", copyCommand);
-    els.fileFilter.addEventListener("input", renderFiles);
+    document.getElementById("browse-conda-env-path").addEventListener("click", openRemoteDirectoryBrowser);
+    document.getElementById("remote-browser-close").addEventListener("click", closeRemoteDirectoryBrowser);
+    document.getElementById("remote-browser-open-path").addEventListener("click", function () {
+      loadRemoteBrowserDirectory(els.remoteBrowserPath.value.trim());
+    });
+    document.getElementById("remote-browser-parent").addEventListener("click", function () {
+      loadRemoteBrowserDirectory(parentDirectory(els.remoteBrowserPath.value.trim()));
+    });
+    document.getElementById("remote-browser-refresh").addEventListener("click", function () {
+      loadRemoteBrowserDirectory(els.remoteBrowserPath.value.trim());
+    });
+    document.getElementById("remote-browser-select-current").addEventListener("click", function () {
+      chooseRemoteDirectory(els.remoteBrowserPath.value.trim());
+    });
+    els.remoteBrowserModal.addEventListener("click", function (event) {
+      if (event.target === els.remoteBrowserModal) {
+        closeRemoteDirectoryBrowser();
+      }
+    });
+    window.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && !els.remoteBrowserModal.hidden) {
+        closeRemoteDirectoryBrowser();
+      }
+    });
     [
       els.host,
       els.user,
       els.sshPort,
-      els.remoteRuntime,
-      els.condaCommand,
-      els.condaEnv,
-      els.remoteRunner,
-      els.remoteWorkdir,
       els.identityFile,
       els.sshOptions,
-      els.remoteDir,
-      els.remotePath,
+      els.remoteRuntime,
+      els.condaEnvPath,
+      els.remoteRunner,
+      els.remoteWorkdir,
       els.localPort,
-      els.remotePort,
-      els.patches,
-      els.annotations,
-      els.annotationFormat
+      els.remotePort
     ].forEach((element) => element.addEventListener("input", debounce(onInputsChanged, 150)));
   }
 
@@ -295,19 +264,6 @@
     document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
       element.placeholder = t(element.dataset.i18nPlaceholder);
     });
-    if (!els.browserPath.dataset.loaded) {
-      els.browserPath.textContent = t("noDirectoryLoaded");
-    }
-    updateGeneratedLanguage();
-  }
-
-  function updateGeneratedLanguage() {
-    els.heatmapLayers.querySelectorAll(".layer-row").forEach((row) => {
-      row.querySelector("[data-layer-name]").placeholder = t("layerName");
-      row.querySelector("[data-remove-layer]").textContent = t("remove");
-    });
-    renderFiles();
-    renderSessions();
     renderSummary();
   }
 
@@ -328,55 +284,41 @@
       host: els.host.value.trim(),
       user: els.user.value.trim(),
       ssh_port: els.sshPort.value.trim(),
-      remote_workdir: els.remoteWorkdir.value.trim(),
       identity_file: els.identityFile.value.trim(),
-      ssh_options: els.sshOptions.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+      ssh_options: els.sshOptions.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+      remote_workdir: els.remoteWorkdir.value.trim()
     };
     if (options && options.includeRuntime) {
-      payload.remote_runner = buildRemoteRunner();
+      Object.assign(payload, runtimePayload());
     }
     return payload;
   }
 
-  function buildRemoteRunner() {
+  function runtimePayload() {
     const runtime = els.remoteRuntime.value || "path";
     if (runtime === "conda") {
-      const condaCommand = els.condaCommand.value.trim();
-      if (!condaCommand) {
-        throw new Error(t("missingCondaCommand"));
+      const envPath = els.condaEnvPath.value.trim();
+      if (!envPath) {
+        throw new Error(t("missingCondaEnvPath"));
       }
-      const condaEnv = els.condaEnv.value.trim() || "slidebridge";
-      return `${condaCommand} run -n ${condaEnv} slidebridge`;
+      return {conda_env_path: envPath};
     }
     if (runtime === "custom") {
-      return els.remoteRunner.value.trim() || "slidebridge";
+      return {remote_runner: els.remoteRunner.value.trim() || "slidebridge"};
     }
-    return "slidebridge";
+    return {};
   }
 
   function launchPayload() {
     return {
       ...connectionPayload({includeRuntime: true}),
-      remote_path: els.remotePath.value.trim(),
-      remote_dir: els.remoteDir.value.trim(),
+      remote_home: state.remoteHome || "",
       local_host: "127.0.0.1",
       local_port: els.localPort.value.trim() || "7860",
       remote_host: "127.0.0.1",
       remote_port: els.remotePort.value.trim() || "7860",
-      patches: els.patches.value.trim(),
-      annotations: els.annotations.value.trim(),
-      annotation_format: els.annotationFormat.value,
-      raster_heatmap_layers: heatmapLayerPayload()
+      max_slides: 500
     };
-  }
-
-  function heatmapLayerPayload() {
-    return Array.from(els.heatmapLayers.querySelectorAll(".layer-row"))
-      .map((row) => ({
-        name: row.querySelector("[data-layer-name]").value.trim(),
-        path: row.querySelector("[data-layer-path]").value.trim()
-      }))
-      .filter((layer) => layer.path);
   }
 
   function renderProfiles() {
@@ -398,13 +340,12 @@
     els.host.value = profile.host || "";
     els.user.value = profile.user || "";
     els.sshPort.value = profile.ssh_port || "";
-    applyRemoteRunner(profile.remote_runner || "slidebridge");
-    els.remoteWorkdir.value = profile.remote_workdir || "";
     els.identityFile.value = profile.identity_file || "";
     els.sshOptions.value = (profile.ssh_options || []).join("\n");
-    els.remoteDir.value = profile.root || "";
+    els.remoteWorkdir.value = profile.remote_workdir || "";
     els.localPort.value = profile.local_port || "7860";
     els.remotePort.value = profile.remote_port || "7860";
+    applyRemoteRunner(profile.remote_runner || "slidebridge");
     updateRuntimeFields();
     onInputsChanged();
     setStatus(t("profileLoaded", {name: profileName}), "ok");
@@ -413,8 +354,7 @@
   function applyRemoteRunner(remoteRunner) {
     const parsed = parseRemoteRunner(remoteRunner);
     els.remoteRuntime.value = parsed.runtime;
-    els.condaCommand.value = parsed.condaCommand || "conda";
-    els.condaEnv.value = parsed.condaEnv || "slidebridge";
+    els.condaEnvPath.value = parsed.condaEnvPath || "";
     els.remoteRunner.value = parsed.customRunner || "slidebridge";
   }
 
@@ -423,25 +363,140 @@
     if (!runner || runner === "slidebridge") {
       return {runtime: "path"};
     }
-    const condaMatch = runner.match(/^(.*?)\s+run\s+-n\s+(\S+)\s+slidebridge$/);
-    if (condaMatch) {
-      return {
-        runtime: "conda",
-        condaCommand: condaMatch[1],
-        condaEnv: condaMatch[2]
-      };
+    const pythonMatch = runner.match(/^(.+?)\/bin\/python\s+-m\s+slidebridge\.cli$/);
+    if (pythonMatch) {
+      return {runtime: "conda", condaEnvPath: pythonMatch[1]};
     }
-    return {
-      runtime: "custom",
-      customRunner: runner
-    };
+    return {runtime: "custom", customRunner: runner};
+  }
+
+  function openRemoteDirectoryBrowser() {
+    els.remoteBrowserModal.hidden = false;
+    const initialPath = initialRemoteBrowserPath();
+    els.remoteBrowserPath.value = initialPath;
+    loadRemoteBrowserDirectory(initialPath);
+  }
+
+  function closeRemoteDirectoryBrowser() {
+    els.remoteBrowserModal.hidden = true;
+  }
+
+  function initialRemoteBrowserPath() {
+    const currentValue = els.condaEnvPath.value.trim();
+    if (currentValue.startsWith("/") || currentValue.startsWith("~")) {
+      return currentValue;
+    }
+    return state.remoteHome || "~";
+  }
+
+  async function loadRemoteBrowserDirectory(path) {
+    const directory = String(path || "").trim() || "~";
+    els.remoteBrowserPath.value = directory;
+    setRemoteBrowserStatus(t("loadingDirectory"), "");
+    try {
+      const payload = await postJson("/api/remote/list", {
+        ...connectionPayload(),
+        remote_dir: directory,
+        limit: 1000
+      });
+      if (!payload.ok) {
+        renderRemoteDirectoryEntries([]);
+        setRemoteBrowserStatus(payload.stderr || t("remoteFailed"), "error");
+        return;
+      }
+      const entries = (payload.entries || [])
+        .filter((entry) => entry.kind === "directory")
+        .filter((entry) => !String(entry.name || "").startsWith("."));
+      renderRemoteDirectoryEntries(entries);
+      setRemoteBrowserStatus(t("directoryLoaded", {count: entries.length}), "ok");
+    } catch (error) {
+      renderRemoteDirectoryEntries([]);
+      setRemoteBrowserStatus(error.message, "error");
+    }
+  }
+
+  function renderRemoteDirectoryEntries(entries) {
+    els.remoteBrowserList.innerHTML = "";
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "directory-row empty";
+      empty.textContent = t("noDirectories");
+      els.remoteBrowserList.appendChild(empty);
+      return;
+    }
+    entries.forEach((entry) => {
+      const row = document.createElement("div");
+      row.className = "directory-row";
+
+      const name = document.createElement("div");
+      name.className = "directory-name";
+      const strong = document.createElement("strong");
+      strong.textContent = entry.name || entry.path || "";
+      const span = document.createElement("span");
+      span.textContent = entry.path || "";
+      name.appendChild(strong);
+      name.appendChild(span);
+
+      const enterButton = document.createElement("button");
+      enterButton.type = "button";
+      enterButton.textContent = t("enterDirectory");
+      enterButton.addEventListener("click", function () {
+        loadRemoteBrowserDirectory(entry.path || "");
+      });
+
+      const chooseButton = document.createElement("button");
+      chooseButton.type = "button";
+      chooseButton.textContent = t("chooseDirectory");
+      chooseButton.addEventListener("click", function () {
+        chooseRemoteDirectory(entry.path || "");
+      });
+
+      row.appendChild(name);
+      row.appendChild(enterButton);
+      row.appendChild(chooseButton);
+      els.remoteBrowserList.appendChild(row);
+    });
+  }
+
+  function chooseRemoteDirectory(path) {
+    const directory = String(path || "").trim();
+    if (!directory) {
+      return;
+    }
+    els.condaEnvPath.value = directory;
+    closeRemoteDirectoryBrowser();
+    onInputsChanged();
+    setStatus(t("directorySelected"), "ok");
+  }
+
+  function setRemoteBrowserStatus(message, stateName) {
+    els.remoteBrowserStatus.textContent = message || "";
+    els.remoteBrowserStatus.dataset.state = stateName || "";
+  }
+
+  function parentDirectory(path) {
+    const value = String(path || "").trim().replace(/\/+$/, "");
+    if (!value || value === "/" || value === "~") {
+      return value || "~";
+    }
+    if (value.startsWith("~/")) {
+      const rest = value.slice(2);
+      const index = rest.lastIndexOf("/");
+      return index < 0 ? "~" : `~/${rest.slice(0, index)}`;
+    }
+    const index = value.lastIndexOf("/");
+    return index <= 0 ? "/" : value.slice(0, index);
   }
 
   async function testConnection() {
     setBusy(t("testingSsh"));
     try {
       const result = await postJson("/api/remote/test", connectionPayload());
+      if (result.ok) {
+        state.remoteHome = result.remote_home || state.remoteHome || "";
+      }
       setStatus(result.ok ? t("remoteResponded") : (result.stderr || t("remoteFailed")), result.ok ? "ok" : "error");
+      renderSummary();
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -457,151 +512,6 @@
     }
   }
 
-  function pickCondaCommand() {
-    state.fileTarget = "conda";
-    setStatus(t("pickCondaHint"), "ok");
-  }
-
-  async function browseRemote() {
-    const payload = {...connectionPayload(), remote_dir: els.remoteDir.value.trim()};
-    setBusy(t("loadingRemoteDir"));
-    try {
-      const result = await postJson("/api/remote/list", payload);
-      if (!result.ok) {
-        setStatus(result.stderr || t("listingFailed"), "error");
-        return;
-      }
-      state.entries = result.entries || [];
-      els.browserPath.dataset.loaded = "true";
-      els.browserPath.textContent = payload.remote_dir || t("remoteDirectoryFallback");
-      renderFiles();
-      setStatus(t("entriesLoaded", {count: state.entries.length}), "ok");
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  }
-
-  function browseParent() {
-    const current = els.remoteDir.value.trim().replace(/\/+$/, "");
-    if (!current || current === "/") {
-      els.remoteDir.value = "/";
-    } else {
-      const index = current.lastIndexOf("/");
-      els.remoteDir.value = index <= 0 ? "/" : current.slice(0, index);
-    }
-    browseRemote();
-  }
-
-  function renderFiles() {
-    const filter = els.fileFilter.value.trim().toLowerCase();
-    const entries = state.entries.filter((entry) => !filter || entry.path.toLowerCase().includes(filter));
-    els.fileTable.innerHTML = "";
-    if (!entries.length) {
-      const empty = document.createElement("div");
-      empty.className = "file-row";
-      empty.textContent = t("noFilesLoaded");
-      els.fileTable.appendChild(empty);
-      return;
-    }
-    entries.forEach((entry) => {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "file-row";
-      row.dataset.kind = entry.kind;
-      row.title = entry.path;
-      row.innerHTML = [
-        `<span>${escapeHtml(formatKind(entry.kind))}</span>`,
-        `<span class="file-name">${escapeHtml(entry.name)}</span>`,
-        `<span class="file-size">${entry.size === null || entry.size === undefined ? "" : escapeHtml(String(entry.size))}</span>`,
-        `<span class="file-modified">${escapeHtml(entry.modified || "")}</span>`
-      ].join("");
-      const tags = document.createElement("span");
-      tags.className = "file-tags";
-      fileTags(entry).forEach((tag) => {
-        const chip = document.createElement("span");
-        chip.className = "tag";
-        chip.textContent = tag;
-        tags.appendChild(chip);
-      });
-      row.querySelector(".file-name").appendChild(tags);
-      row.addEventListener("click", function () {
-        selectEntry(entry);
-      });
-      els.fileTable.appendChild(row);
-    });
-  }
-
-  function fileTags(entry) {
-    if (entry.kind === "directory") {
-      return [t("directoryTag")];
-    }
-    const tags = [];
-    if (entry.is_slide) tags.push(t("slideTag"));
-    if (entry.is_heatmap) tags.push("heatmap");
-    if (entry.is_patches) tags.push(t("patchTag"));
-    if (entry.is_annotation) tags.push("annotation");
-    return tags;
-  }
-
-  function formatKind(kind) {
-    if (kind === "directory") return t("directory");
-    if (kind === "file") return t("file");
-    return kind || "";
-  }
-
-  function selectEntry(entry) {
-    if (entry.kind === "directory") {
-      els.remoteDir.value = entry.path;
-      browseRemote();
-      return;
-    }
-    if (state.fileTarget === "conda") {
-      els.condaCommand.value = entry.path;
-      state.fileTarget = null;
-      setStatus(t("condaSelected", {path: entry.path}), "ok");
-      onInputsChanged();
-      return;
-    }
-    if (entry.is_slide && (!entry.is_heatmap || !els.remotePath.value.trim())) {
-      els.remotePath.value = entry.path;
-    } else if (entry.is_heatmap) {
-      fillFirstEmptyHeatmap(entry.path);
-    } else if (entry.is_annotation) {
-      els.annotations.value = entry.path;
-    } else if (entry.is_patches) {
-      els.patches.value = entry.path;
-    } else {
-      els.remotePath.value = entry.path;
-    }
-    onInputsChanged();
-  }
-
-  function fillFirstEmptyHeatmap(path) {
-    const rows = Array.from(els.heatmapLayers.querySelectorAll(".layer-row"));
-    const row = rows.find((item) => !item.querySelector("[data-layer-path]").value.trim()) || addHeatmapLayer("", "");
-    row.querySelector("[data-layer-path]").value = path;
-    if (!row.querySelector("[data-layer-name]").value.trim()) {
-      row.querySelector("[data-layer-name]").value = `layer${rows.length + 1}`;
-    }
-  }
-
-  function addHeatmapLayer(name, path) {
-    const row = document.createElement("div");
-    row.className = "layer-row";
-    row.innerHTML = [
-      `<input data-layer-name placeholder="${escapeAttribute(t("layerName"))}" value="${escapeAttribute(name || "")}">`,
-      `<input data-layer-path placeholder="/data/heatmaps/case.png" value="${escapeAttribute(path || "")}">`,
-      `<button type="button" data-remove-layer>${escapeHtml(t("remove"))}</button>`
-    ].join("");
-    row.querySelector("[data-remove-layer]").addEventListener("click", function () {
-      row.remove();
-      onInputsChanged();
-    });
-    row.querySelectorAll("input").forEach((input) => input.addEventListener("input", debounce(onInputsChanged, 150)));
-    els.heatmapLayers.appendChild(row);
-    return row;
-  }
-
   async function buildCommand() {
     try {
       const result = await postJson("/api/session/command", launchPayload());
@@ -614,56 +524,54 @@
 
   async function launchViewer() {
     setBusy(t("startingViewer"));
+    if (els.launchViewer) {
+      els.launchViewer.disabled = true;
+    }
     try {
       const result = await postJson("/api/session/launch", launchPayload());
       updateCommand(result);
-      await refreshSessions();
       setStatus(t("viewerStarted"), "ok");
+      window.location.assign(result.viewer_url || viewerUrl());
     } catch (error) {
       setStatus(error.message, "error");
+    } finally {
+      if (els.launchViewer) {
+        els.launchViewer.disabled = false;
+      }
     }
-  }
-
-  async function refreshSessions() {
-    const result = await fetchJson("/api/session/list");
-    state.sessions = result.sessions || [];
-    renderSessions();
-  }
-
-  function renderSessions() {
-    els.sessionList.innerHTML = "";
-    if (!state.sessions.length) {
-      els.sessionList.textContent = t("noSessions");
-      return;
-    }
-    state.sessions.forEach((session) => {
-      const row = document.createElement("div");
-      row.className = "session-row";
-      row.innerHTML = [
-        `<div><strong>${escapeHtml(session.id)}</strong><br><span>${escapeHtml(formatStatus(session.status))} - ${escapeHtml(session.slide || "")}</span></div>`,
-        `<div class="action-row"><a href="${escapeAttribute(session.viewer_url)}" target="_blank" rel="noreferrer">${escapeHtml(t("open"))}</a><button type="button" data-stop="${escapeAttribute(session.id)}">${escapeHtml(t("stop"))}</button></div>`
-      ].join("");
-      row.querySelector("[data-stop]").addEventListener("click", async function () {
-        await postJson(`/api/session/${encodeURIComponent(session.id)}/stop`, {});
-        await refreshSessions();
-      });
-      els.sessionList.appendChild(row);
-    });
   }
 
   function updateCommand(session) {
     els.commandOutput.value = session.command || "";
-    els.openViewer.href = session.viewer_url || "http://127.0.0.1:7860";
-    els.summaryUrl.textContent = session.viewer_url || "http://127.0.0.1:7860";
+    els.summaryUrl.textContent = session.viewer_url || viewerUrl();
     renderSummary();
   }
 
   function renderSummary() {
-    const layers = heatmapLayerPayload();
-    els.summarySlide.textContent = els.remotePath.value.trim() || t("notSelected");
-    els.summaryHeatmaps.textContent = layers.length ? layers.map((layer) => layer.name || layer.path).join(", ") : t("none");
-    els.summaryPatches.textContent = els.patches.value.trim() || t("none");
-    els.summaryAnnotations.textContent = els.annotations.value.trim() || t("none");
+    if (!els.summaryTarget) {
+      return;
+    }
+    const user = els.user.value.trim();
+    const host = els.host.value.trim();
+    els.summaryTarget.textContent = host ? `${user ? `${user}@` : ""}${host}` : t("notConfigured");
+    els.summaryHome.textContent = state.remoteHome || t("notTested");
+    els.summaryRuntime.textContent = runtimeSummary();
+    els.summaryUrl.textContent = viewerUrl();
+  }
+
+  function runtimeSummary() {
+    const runtime = els.remoteRuntime.value || "path";
+    if (runtime === "conda") {
+      return els.condaEnvPath.value.trim() || t("runtimeConda");
+    }
+    if (runtime === "custom") {
+      return els.remoteRunner.value.trim() || "slidebridge";
+    }
+    return "slidebridge";
+  }
+
+  function viewerUrl() {
+    return `http://127.0.0.1:${els.localPort.value.trim() || "7860"}`;
   }
 
   function onInputsChanged() {
@@ -700,13 +608,6 @@
       throw new Error(payload.detail || response.statusText || t("requestFailed"));
     }
     return payload;
-  }
-
-  function formatStatus(status) {
-    if (status === "prepared") return t("prepared");
-    if (status === "running") return t("running");
-    if (status === "stopped") return t("stopped");
-    return status || "";
   }
 
   function t(key, values) {

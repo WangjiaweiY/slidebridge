@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,13 +12,13 @@
       <div class="brand">
         <div class="brand-row">
           <div class="brand-name">SlideBridge</div>
-          <div class="mode-badge" data-i18n="{{ 'modeLibrary' if library_mode else 'modeSingle' }}">{{ "Library" if library_mode else "Single slide" }}</div>
-          <button id="language-toggle" class="lang-toggle" type="button">中文</button>
+          <div class="mode-badge" data-i18n="modeWorkspace">Workspace</div>
+          <button id="language-toggle" class="lang-toggle" type="button">EN</button>
         </div>
         <h1 id="slide-title">{{ filename }}</h1>
         <div class="connection-card">
           {% if viewer_context == "remote" %}
-          <strong>remote SSH · {{ viewer_remote_user or "unknown" }}@{{ viewer_remote_host or "unknown" }}:{{ viewer_remote_ssh_port or "22" }}</strong>
+          <strong>remote SSH {{ viewer_remote_user or "unknown" }}@{{ viewer_remote_host or "unknown" }}:{{ viewer_remote_ssh_port or "22" }}</strong>
           <span title="{{ viewer_source }}">root: {{ viewer_source }}</span>
           {% else %}
           <strong>local viewer</strong>
@@ -31,17 +31,28 @@
         </div>
       </div>
       <nav class="sidebar-tabs" role="tablist" aria-label="Viewer panels">
-        <button class="tab-button {{ 'active' if library_mode else 'hidden' }}" type="button" data-tab-target="library-tab" data-i18n="tabLibrary">Library</button>
-        <button class="tab-button {{ '' if library_mode else 'active' }}" type="button" data-tab-target="info-tab" data-i18n="tabInfo">Info</button>
+        <button class="tab-button active" type="button" data-tab-target="library-tab" data-i18n="tabFiles">Files</button>
+        <button class="tab-button" type="button" data-tab-target="info-tab" data-i18n="tabInfo">Info</button>
         <button class="tab-button" type="button" data-tab-target="overlays-tab" data-i18n="tabOverlays">Overlays</button>
         <button class="tab-button" type="button" data-tab-target="figure-tab" data-i18n="tabFigure">Figure</button>
       </nav>
       <div class="scroll">
-        <div id="library-tab" class="tab-panel {{ 'active' if library_mode else 'hidden' }}">
+        <div id="library-tab" class="tab-panel active">
         <section id="library-panel">
           <div class="section-title">
-            <span data-i18n="slideLibrary">Slide Library</span>
+            <span data-i18n="workspaceFiles">Files / Data</span>
             <span id="slide-count">{{ slide_count }}</span>
+          </div>
+          <div class="workspace-toolbar">
+            <div class="workspace-current-path">
+              <span data-i18n="currentDirectory">Current directory</span>
+              <strong id="workspace-path-summary" title="{{ viewer_source }}">{{ viewer_source }}</strong>
+            </div>
+            <button id="workspace-settings-open" class="small-button" type="button" data-i18n="workspaceBrowser">Browse files</button>
+          </div>
+          <div class="section-title slide-list-title">
+            <span data-i18n="slideLibrary">Slide Library</span>
+            <span id="workspace-slide-count">{{ slide_count }}</span>
           </div>
           <input id="slide-search" class="search" type="search" placeholder="Filter slides" data-i18n-placeholder="filterSlides">
           <div id="slide-list" class="slide-list"></div>
@@ -50,7 +61,7 @@
           {% endif %}
         </section>
         </div>
-        <div id="info-tab" class="tab-panel {{ '' if library_mode else 'active' }}">
+        <div id="info-tab" class="tab-panel">
           <section>
             <div class="section-title"><span data-i18n="session">Session</span></div>
             <div class="meta-grid">
@@ -131,6 +142,44 @@
             {% endif %}
             <div id="dynamic-warnings"></div>
             <div class="controls">
+              <div class="workspace-loader">
+                <div class="section-title"><span data-i18n="loadDataLayers">Load data layers</span></div>
+                <label class="control-label" for="workspace-heatmap-path">
+                  <span data-i18n="heatmapPath">heatmap PNG/JPG path</span>
+                  <input id="workspace-heatmap-path" class="inline-input" type="text" placeholder="/path/to/heatmap.png">
+                </label>
+                <div class="control-actions">
+                  <input id="workspace-heatmap-name" class="inline-input layer-name-input" type="text" placeholder="layer name">
+                  <button id="workspace-load-heatmap" class="small-button" type="button" data-i18n="loadHeatmap">Load heatmap</button>
+                  <button id="workspace-clear-heatmap" class="small-button" type="button" data-i18n="clearHeatmap">Clear</button>
+                </div>
+                <label class="control-label" for="workspace-patches-path">
+                  <span data-i18n="patchPath">patch coords path</span>
+                  <input id="workspace-patches-path" class="inline-input" type="text" placeholder="/path/to/coords.h5">
+                </label>
+                <label class="control-label" for="workspace-patch-score-path">
+                  <span data-i18n="patchScorePath">patch score path</span>
+                  <input id="workspace-patch-score-path" class="inline-input" type="text" placeholder="optional">
+                </label>
+                <div class="control-actions">
+                  <button id="workspace-load-patches" class="small-button" type="button" data-i18n="loadPatches">Load patches</button>
+                  <button id="workspace-clear-patches" class="small-button" type="button" data-i18n="clearPatches">Clear</button>
+                </div>
+                <label class="control-label" for="workspace-annotations-path">
+                  <span data-i18n="annotationPath">annotation path</span>
+                  <input id="workspace-annotations-path" class="inline-input" type="text" placeholder="/path/to/annotations.geojson">
+                </label>
+                <div class="control-actions">
+                  <select id="workspace-annotation-format" class="inline-input">
+                    <option value="">auto</option>
+                    <option value="qupath-geojson">qupath-geojson</option>
+                    <option value="asap-xml">asap-xml</option>
+                    <option value="slidebridge-json">slidebridge-json</option>
+                  </select>
+                  <button id="workspace-load-annotations" class="small-button" type="button" data-i18n="loadAnnotations">Load annotations</button>
+                  <button id="workspace-clear-annotations" class="small-button" type="button" data-i18n="clearAnnotations">Clear</button>
+                </div>
+              </div>
               <div class="control-row">
                 <label class="control-label">
                   <span data-i18n="modelOverlay">model/debug overlay</span>
@@ -263,6 +312,44 @@
         <div id="zoom-bar" class="zoom-bar"></div>
       </div>
     </main>
+  </div>
+  <div id="workspace-settings-modal" class="modal-backdrop" hidden>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-settings-title">
+      <div class="modal-header">
+        <h2 id="workspace-settings-title" data-i18n="workspaceBrowserTitle">Directory / file browser</h2>
+        <button id="workspace-settings-close" class="icon-button" type="button" aria-label="Close">x</button>
+      </div>
+      <div class="modal-body">
+        <label class="control-label" for="workspace-path">
+          <span data-i18n="workspacePath">Directory path</span>
+          <input id="workspace-path" class="inline-input" type="text" value="{{ viewer_source }}">
+        </label>
+        <div class="control-actions">
+          <button id="workspace-open-dir" class="small-button" type="button" data-i18n="openDirectory">Open directory</button>
+          <button id="workspace-parent-dir" class="small-button" type="button" data-i18n="parentDirectory">Parent</button>
+          <button id="workspace-refresh" class="small-button" type="button" data-i18n="refreshDirectory">Refresh</button>
+        </div>
+        <div class="control-row compact-control-row">
+          <label class="label-chip" for="workspace-show-hidden">
+            <input id="workspace-show-hidden" type="checkbox">
+            <span data-i18n="showHiddenFiles">show hidden</span>
+          </label>
+          <label class="label-chip" for="workspace-recursive">
+            <input id="workspace-recursive" type="checkbox" {% if library_recursive %}checked{% endif %}>
+            <span data-i18n="recursiveScan">recursive</span>
+          </label>
+          <label class="control-label inline-label" for="workspace-max-slides">
+            <span data-i18n="maxSlides">max slides</span>
+            <input id="workspace-max-slides" class="inline-input tiny-input" type="number" min="1" step="1" value="500">
+          </label>
+        </div>
+        <div class="workspace-controls workspace-browser-controls">
+          <input id="workspace-file-filter" class="search" type="search" placeholder="Filter files" data-i18n-placeholder="filterFiles">
+          <div id="workspace-status" class="snapshot-status"></div>
+        </div>
+        <div id="workspace-file-list" class="workspace-file-list"></div>
+      </div>
+    </div>
   </div>
   <script id="slidebridge-viewer-config" type="application/json">{{ viewer_config_json | safe }}</script>
   <script src="/static/viewer.js?v={{ static_cache_key }}"></script>

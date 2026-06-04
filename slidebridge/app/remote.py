@@ -38,7 +38,7 @@ class RemoteConnection:
             ssh_port=ssh_port,
             identity_file=_optional_str(payload.get("identity_file")),
             ssh_options=_split_ssh_options(payload.get("ssh_options")),
-            remote_runner=_optional_str(payload.get("remote_runner")) or "slidebridge",
+            remote_runner=_remote_runner_from_payload(payload),
             remote_workdir=_optional_str(payload.get("remote_workdir")),
         )
 
@@ -71,7 +71,7 @@ def test_remote_connection(connection: RemoteConnection, timeout: float = 20.0) 
 def test_ssh_connection(connection: RemoteConnection, timeout: float = 20.0) -> RemoteCommandResult:
     require_ssh_available()
     command = connection.ssh_base_command()
-    command.append("printf 'slidebridge-ssh-ok\\n'")
+    command.append("printf 'slidebridge-ssh-ok\\n%s\\n' \"$HOME\"")
     return run_ssh_command(command, timeout=timeout)
 
 
@@ -93,7 +93,7 @@ def list_remote_directory(
 
 def build_remote_view_cli_args(payload: dict[str, Any]) -> list[str]:
     connection = RemoteConnection.from_payload(payload)
-    remote_path = _required_remote_path(payload.get("remote_path"))
+    remote_path = _required_remote_path(payload.get("remote_path") or payload.get("remote_home") or "~")
     remote_spec = f"{connection.target}:{remote_path}"
     args = ["remote-view", remote_spec]
     if connection.ssh_port is not None:
@@ -132,6 +132,17 @@ def process_command(args: list[str]) -> list[str]:
     import sys
 
     return [sys.executable, "-m", "slidebridge.cli", *[str(item) for item in args]]
+
+
+def _remote_runner_from_payload(payload: dict[str, Any]) -> str:
+    custom_runner = _optional_str(payload.get("remote_runner"))
+    if custom_runner:
+        return custom_runner
+    conda_env_path = _optional_str(payload.get("conda_env_path"))
+    if conda_env_path:
+        python_path = f"{conda_env_path.rstrip('/')}/bin/python"
+        return f"{quote_remote_arg(python_path)} -m slidebridge.cli"
+    return "slidebridge"
 
 
 def classify_remote_file(path: str, kind: str) -> bool:
