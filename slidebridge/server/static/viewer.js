@@ -1,22 +1,67 @@
     const viewerConfigElement = document.getElementById("slidebridge-viewer-config");
     const viewerConfig = JSON.parse((viewerConfigElement && viewerConfigElement.textContent) || "{}");
-    const slideEntries = Array.isArray(viewerConfig.slideEntries) ? viewerConfig.slideEntries : [];
+    let slideEntries = Array.isArray(viewerConfig.slideEntries) ? viewerConfig.slideEntries : [];
     const tileCacheKey = String(viewerConfig.tileCacheKey || "");
     const initialTileCacheStats = viewerConfig.initialTileCacheStats || {};
     const initialTilePerformanceStats = viewerConfig.initialTilePerformanceStats || {};
-    const snapshotOptions = viewerConfig.snapshotOptions || {};
+    let snapshotOptions = viewerConfig.snapshotOptions || {};
     const defaultHeatmapOpacity = Number.isFinite(Number(viewerConfig.heatmapOpacity)) ? Number(viewerConfig.heatmapOpacity) : 0.45;
     const initialViewerState = parseViewerStateFromUrl();
-    let selectedSlideId = initialViewerState.slideId !== null ? initialViewerState.slideId : (slideEntries.length ? slideEntries[0].id : 0);
+    let selectedSlideId = initialViewerState.slideId !== null ? initialViewerState.slideId : (slideEntries.length ? slideEntries[0].id : null);
     const i18n = {
       en: {
         modeLibrary: "Library",
         modeSingle: "Single slide",
+        modeWorkspace: "Workspace",
         selectedSlide: "selected slide",
+        tabFiles: "Files",
         tabLibrary: "Library",
         tabInfo: "Info",
         tabOverlays: "Overlays",
         tabFigure: "Figure",
+        workspaceFiles: "Files / Data",
+        currentDirectory: "Current directory",
+        workspaceBrowser: "Browse files",
+        workspaceBrowserTitle: "Directory / file browser",
+        directorySettings: "Directory settings",
+        workspacePath: "Directory path",
+        openDirectory: "Open directory",
+        parentDirectory: "Parent",
+        refreshDirectory: "Refresh",
+        showHiddenFiles: "show hidden",
+        recursiveScan: "recursive",
+        maxSlides: "max slides",
+        filterFiles: "Filter files",
+        directoryOpened: "Directory opened. {count} slides found.",
+        directoryEmpty: "Directory opened. No slides found.",
+        loadingDirectory: "Opening directory...",
+        loadingFiles: "Loading files...",
+        filesLoaded: "{count} entries loaded.",
+        noFiles: "No files.",
+        noSlides: "No slides in this directory.",
+        enterDirectory: "Enter",
+        openAction: "Open",
+        selectSlideAction: "Select",
+        addHeatmapAction: "Add heatmap",
+        loadPatchesAction: "Load patches",
+        loadAnnotationAction: "Load annotation",
+        dataLayerLoaded: "Data layer loaded.",
+        dataLayerRemoved: "Heatmap layer removed.",
+        dataLayerCleared: "Data layer cleared.",
+        pathRequired: "Path is required.",
+        slideNotReady: "Select a slide first.",
+        loadDataLayers: "Load data layers",
+        heatmapPath: "heatmap PNG/JPG path",
+        loadHeatmap: "Load heatmap",
+        clearHeatmap: "Clear",
+        removeHeatmapLayer: "Remove heatmap layer",
+        patchPath: "patch coords path",
+        patchScorePath: "patch score path",
+        loadPatches: "Load patches",
+        clearPatches: "Clear",
+        annotationPath: "annotation path",
+        loadAnnotations: "Load annotations",
+        clearAnnotations: "Clear",
         slideLibrary: "Slide Library",
         figureDesigner: "Figure Designer",
         setMainView: "Set main from current view",
@@ -124,11 +169,56 @@
       zh: {
         modeLibrary: "切片库",
         modeSingle: "单张切片",
+        modeWorkspace: "工作区",
         selectedSlide: "当前切片",
+        tabFiles: "文件",
         tabLibrary: "切片库",
         tabInfo: "信息",
         tabOverlays: "叠加层",
         tabFigure: "排图",
+        workspaceFiles: "文件 / 数据",
+        currentDirectory: "当前目录",
+        workspaceBrowser: "浏览目录/文件",
+        workspaceBrowserTitle: "目录 / 文件浏览",
+        directorySettings: "目录设置",
+        workspacePath: "目录路径",
+        openDirectory: "打开目录",
+        parentDirectory: "上级目录",
+        refreshDirectory: "刷新",
+        showHiddenFiles: "显示隐藏文件",
+        recursiveScan: "递归扫描",
+        maxSlides: "最多切片",
+        filterFiles: "筛选文件",
+        directoryOpened: "目录已打开，找到 {count} 张切片。",
+        directoryEmpty: "目录已打开，未找到切片。",
+        loadingDirectory: "正在打开目录...",
+        loadingFiles: "正在加载文件...",
+        filesLoaded: "已加载 {count} 个条目。",
+        noFiles: "没有文件。",
+        noSlides: "该目录没有切片。",
+        enterDirectory: "进入",
+        openAction: "打开",
+        selectSlideAction: "选择",
+        addHeatmapAction: "添加热图",
+        loadPatchesAction: "加载 patch",
+        loadAnnotationAction: "加载标注",
+        dataLayerLoaded: "数据层已加载。",
+        dataLayerRemoved: "热图层已移除。",
+        dataLayerCleared: "数据层已清空。",
+        pathRequired: "请填写路径。",
+        slideNotReady: "请先选择切片。",
+        loadDataLayers: "加载数据层",
+        heatmapPath: "热图 PNG/JPG 路径",
+        loadHeatmap: "加载热图",
+        clearHeatmap: "清空",
+        removeHeatmapLayer: "移除热图层",
+        patchPath: "patch 坐标路径",
+        patchScorePath: "patch 分数路径",
+        loadPatches: "加载 patch",
+        clearPatches: "清空",
+        annotationPath: "标注路径",
+        loadAnnotations: "加载标注",
+        clearAnnotations: "清空",
         slideLibrary: "切片库",
         figureDesigner: "论文图设计",
         setMainView: "从当前视野设置主图",
@@ -211,6 +301,16 @@
         rasterHeatmap: "整图热图",
         rasterHeatmaps: "整图热图",
         annotationOverlay: "标注叠加层（研究/调试）",
+        scoreThreshold: "分数阈值",
+        topK: "top-k patch",
+        clearFilters: "清空筛选",
+        annotationLabels: "标注标签",
+        allLabels: "全部",
+        noLabels: "无",
+        overlayDetails: "叠加层详情",
+        selectOverlayItem: "点击 viewer 中的 patch 或标注。",
+        filtered: "已筛选",
+        selected: "已选择",
         low: "低",
         high: "高",
         patches: "patch",
@@ -220,8 +320,7 @@
         footer: "坐标均为 level-0 像素。本 viewer 仅用于研究和调试。"
       }
     };
-    let currentLanguage = localStorage.getItem("slidebridge.viewer.language")
-      || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en");
+    let currentLanguage = localStorage.getItem("slidebridge.viewer.language") || "zh";
 
     function t(key) {
       return (i18n[currentLanguage] && i18n[currentLanguage][key]) || i18n.en[key] || key;
@@ -499,6 +598,8 @@
         }
         renderZoomControl();
         updateZoomReadout();
+        renderSlideList();
+        renderWorkspaceFiles();
         emitViewerStateChange();
       });
 
@@ -540,6 +641,7 @@
       });
       setupCanvasTooltip();
       setupSnapshotControls();
+      setupWorkspaceControls();
 
       renderSlideList();
       const search = document.getElementById("slide-search");
@@ -547,11 +649,20 @@
         search.addEventListener("input", renderSlideList);
       }
       exposeSlideBridgeViewerApi();
-      await selectSlide(selectedSlideId, {initial: true});
+      if (selectedSlideId !== null) {
+        await selectSlide(selectedSlideId, {initial: true});
+      } else {
+        handleNoSlideSelected();
+      }
+      await loadWorkspaceFiles(false);
       emitViewerStateChange();
       window.dispatchEvent(new CustomEvent("slidebridge-viewer-ready"));
 
       async function selectSlide(slideId, options = {}) {
+        if (slideId === null || slideId === undefined || !slideEntries.some((entry) => Number(entry.id) === Number(slideId))) {
+          handleNoSlideSelected();
+          return;
+        }
         selectedSlideId = Number(slideId);
         if (!options.initial) {
           pendingInitialViewport = false;
@@ -571,6 +682,38 @@
         renderAnnotations();
         updateSnapshotReadout();
         scheduleViewerStateUrlUpdate();
+        emitViewerStateChange();
+      }
+
+      function handleNoSlideSelected() {
+        selectedSlideId = null;
+        isOpen = false;
+        currentSlideInfo = null;
+        patchPayload = emptyPatchPayload();
+        annotationPayload = emptyAnnotationPayload();
+        rasterHeatmapPayload = {available: false, count: 0, layers: [], warnings: []};
+        try {
+          viewer.close();
+        } catch (error) {
+          // OpenSeadragon can throw if close is called before the first tile source.
+        }
+        clearOverlays();
+        clearOverlayDetail();
+        setActiveSlideButton();
+        document.getElementById("slide-title").textContent = t("noSlides");
+        document.getElementById("selected-path-short").textContent = t("noSlides");
+        document.getElementById("meta-path").textContent = "";
+        document.getElementById("meta-reader").textContent = "none";
+        document.getElementById("meta-dimensions").textContent = "0 x 0";
+        document.getElementById("meta-mpp").textContent = "unknown x unknown";
+        document.getElementById("meta-objective").textContent = "unknown";
+        document.getElementById("meta-vendor").textContent = "unknown";
+        document.getElementById("meta-warnings").textContent = t("none");
+        updatePatchHeader(patchPayload);
+        updateRasterHeatmapHeader(rasterHeatmapPayload);
+        updateAnnotationHeader(annotationPayload);
+        updateZoomReadout();
+        updateSnapshotReadout();
         emitViewerStateChange();
       }
 
@@ -665,7 +808,9 @@
         const snapshot = currentViewportSnapshot();
         const url = new URL(window.location.href);
         const params = new URLSearchParams();
-        params.set("slide_id", String(selectedSlideId));
+        if (selectedSlideId !== null) {
+          params.set("slide_id", String(selectedSlideId));
+        }
         if (snapshot) {
           params.set("center_x", String(snapshot.centerX));
           params.set("center_y", String(snapshot.centerY));
@@ -701,9 +846,17 @@
         }
         const query = (document.getElementById("slide-search")?.value || "").toLowerCase();
         list.innerHTML = "";
-        slideEntries
-          .filter((entry) => !query || entry.relative_path.toLowerCase().includes(query) || entry.filename.toLowerCase().includes(query))
-          .forEach((entry) => {
+        const filteredEntries = slideEntries
+          .filter((entry) => !query || entry.relative_path.toLowerCase().includes(query) || entry.filename.toLowerCase().includes(query));
+        if (!filteredEntries.length) {
+          const empty = document.createElement("div");
+          empty.className = "slide-item empty-slide-item";
+          empty.textContent = t("noSlides");
+          list.appendChild(empty);
+          updateSlideCounts(slideEntries.length);
+          return;
+        }
+        filteredEntries.forEach((entry) => {
             const button = document.createElement("button");
             button.type = "button";
             button.className = "slide-item";
@@ -713,6 +866,7 @@
             button.addEventListener("click", () => selectSlide(entry.id));
             list.appendChild(button);
           });
+        updateSlideCounts(slideEntries.length);
         setActiveSlideButton();
       }
 
@@ -1001,6 +1155,482 @@
           });
         }
         updateSnapshotReadout();
+      }
+
+      function setupWorkspaceControls() {
+        const pathInput = document.getElementById("workspace-path");
+        const maxSlidesInput = document.getElementById("workspace-max-slides");
+        if (pathInput && viewerConfig.workspaceRoot) {
+          pathInput.value = viewerConfig.workspaceRoot;
+          updateWorkspacePathSummary(viewerConfig.workspaceRoot);
+        }
+        if (maxSlidesInput && viewerConfig.workspaceMaxSlides) {
+          maxSlidesInput.value = String(viewerConfig.workspaceMaxSlides);
+        }
+        bindClick("workspace-settings-open", openWorkspaceSettings);
+        bindClick("workspace-settings-close", closeWorkspaceSettings);
+        const modal = document.getElementById("workspace-settings-modal");
+        if (modal) {
+          modal.addEventListener("click", function (event) {
+            if (event.target === modal) {
+              closeWorkspaceSettings();
+            }
+          });
+        }
+        window.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") {
+            closeWorkspaceSettings();
+          }
+        });
+        bindClick("workspace-open-dir", function () {
+          openWorkspaceDirectory(workspacePathValue());
+        });
+        bindClick("workspace-parent-dir", function () {
+          const parent = parentDirectory(workspacePathValue());
+          if (pathInput) {
+            pathInput.value = parent;
+          }
+          loadWorkspaceFiles(true);
+        });
+        bindClick("workspace-refresh", function () {
+          loadWorkspaceFiles(true);
+        });
+        const showHidden = document.getElementById("workspace-show-hidden");
+        if (showHidden) {
+          showHidden.addEventListener("change", function () {
+            loadWorkspaceFiles(true);
+          });
+        }
+        const filter = document.getElementById("workspace-file-filter");
+        if (filter) {
+          filter.addEventListener("input", renderWorkspaceFiles);
+        }
+        bindClick("workspace-load-heatmap", function () {
+          addWorkspaceHeatmap(pathValue("workspace-heatmap-path"), document.getElementById("workspace-heatmap-name")?.value || "");
+        });
+        bindClick("workspace-clear-heatmap", function () {
+          clearWorkspaceHeatmaps();
+        });
+        bindClick("workspace-load-patches", function () {
+          loadWorkspacePatches(pathValue("workspace-patches-path"), pathValue("workspace-patch-score-path"));
+        });
+        bindClick("workspace-clear-patches", function () {
+          loadWorkspacePatches("", "");
+        });
+        bindClick("workspace-load-annotations", function () {
+          loadWorkspaceAnnotations(pathValue("workspace-annotations-path"), document.getElementById("workspace-annotation-format")?.value || "");
+        });
+        bindClick("workspace-clear-annotations", function () {
+          loadWorkspaceAnnotations("", "");
+        });
+      }
+
+      function bindClick(id, handler) {
+        const element = document.getElementById(id);
+        if (element) {
+          element.addEventListener("click", handler);
+        }
+      }
+
+      function openWorkspaceSettings() {
+        const modal = document.getElementById("workspace-settings-modal");
+        if (!modal) {
+          return;
+        }
+        modal.hidden = false;
+        loadWorkspaceFiles(false);
+        const pathInput = document.getElementById("workspace-path");
+        if (pathInput) {
+          pathInput.focus();
+          pathInput.select();
+        }
+      }
+
+      function closeWorkspaceSettings() {
+        const modal = document.getElementById("workspace-settings-modal");
+        if (modal) {
+          modal.hidden = true;
+        }
+      }
+
+      function workspacePathValue() {
+        return pathValue("workspace-path") || viewerConfig.workspaceRoot || ".";
+      }
+
+      function pathValue(id) {
+        const element = document.getElementById(id);
+        return element ? String(element.value || "").trim() : "";
+      }
+
+      function workspaceRecursive() {
+        return Boolean(document.getElementById("workspace-recursive")?.checked);
+      }
+
+      function workspaceMaxSlides() {
+        const value = Number(document.getElementById("workspace-max-slides")?.value || viewerConfig.workspaceMaxSlides || 500);
+        return Number.isFinite(value) && value > 0 ? Math.floor(value) : 500;
+      }
+
+      async function openWorkspaceDirectory(path) {
+        if (!path) {
+          setWorkspaceStatus(t("pathRequired"), "error");
+          return;
+        }
+        setWorkspaceStatus(t("loadingDirectory"), "");
+        try {
+          const payload = await postJson("/api/workspace/directory", {
+            path,
+            recursive: workspaceRecursive(),
+            max_slides: workspaceMaxSlides()
+          });
+          applySlidesPayload(payload);
+          const pathInput = document.getElementById("workspace-path");
+          if (pathInput) {
+            pathInput.value = payload.root || path;
+          }
+          updateWorkspacePathSummary(payload.root || path);
+          await loadWorkspaceFiles(false);
+          if (slideEntries.length) {
+            await selectSlide(slideEntries[0].id);
+            setWorkspaceStatus(t("directoryOpened", {count: slideEntries.length}), "ok");
+          } else {
+            handleNoSlideSelected();
+            setWorkspaceStatus(t("directoryEmpty"), "ok");
+          }
+          closeWorkspaceSettings();
+        } catch (error) {
+          setWorkspaceStatus(error.message, "error");
+        }
+      }
+
+      function applySlidesPayload(payload) {
+        slideEntries = Array.isArray(payload.slides) ? payload.slides : [];
+        snapshotOptions = payload.snapshot_options || snapshotOptions || {};
+        rasterHeatmapLayerState.clear();
+        rasterHeatmapPayload = {available: false, count: 0, layers: [], warnings: []};
+        patchPayload = emptyPatchPayload();
+        annotationPayload = emptyAnnotationPayload();
+        [
+          "workspace-heatmap-path",
+          "workspace-heatmap-name",
+          "workspace-patches-path",
+          "workspace-patch-score-path",
+          "workspace-annotations-path"
+        ].forEach(function (id) {
+          const element = document.getElementById(id);
+          if (element) {
+            element.value = "";
+          }
+        });
+        const annotationFormat = document.getElementById("workspace-annotation-format");
+        if (annotationFormat) {
+          annotationFormat.value = "";
+        }
+        clearOverlays();
+        renderSlideList();
+        updateSlideCounts(payload.count ?? slideEntries.length);
+        emitViewerStateChange();
+      }
+
+      async function loadWorkspaceFiles(updateStatus) {
+        const path = workspacePathValue();
+        if (!path) {
+          return;
+        }
+        if (updateStatus) {
+          setWorkspaceStatus(t("loadingFiles"), "");
+        }
+        const params = new URLSearchParams();
+        params.set("dir", path);
+        params.set("show_hidden", document.getElementById("workspace-show-hidden")?.checked ? "true" : "false");
+        try {
+          const payload = await fetchJson(`/api/files?${params.toString()}`);
+          renderWorkspaceFiles(payload.entries || []);
+          if (updateStatus) {
+            setWorkspaceStatus(t("filesLoaded", {count: (payload.entries || []).length}), "ok");
+          }
+        } catch (error) {
+          setWorkspaceStatus(error.message, "error");
+        }
+      }
+
+      function renderWorkspaceFiles(entries) {
+        const list = document.getElementById("workspace-file-list");
+        if (!list) {
+          return;
+        }
+        const rawEntries = Array.isArray(entries) ? entries : (list._entries || []);
+        list._entries = rawEntries;
+        const query = (document.getElementById("workspace-file-filter")?.value || "").toLowerCase();
+        const filtered = rawEntries.filter((entry) => !query || String(entry.name || entry.path || "").toLowerCase().includes(query));
+        list.innerHTML = "";
+        if (!filtered.length) {
+          const empty = document.createElement("div");
+          empty.className = "workspace-file-row";
+          empty.textContent = t("noFiles");
+          list.appendChild(empty);
+          return;
+        }
+        filtered.forEach((entry) => {
+          const row = document.createElement("div");
+          row.className = "workspace-file-row";
+          row.dataset.kind = entry.kind || "";
+          const name = document.createElement("div");
+          name.className = "workspace-file-name";
+          name.title = entry.path || "";
+          name.innerHTML = `<strong>${escapeHtml(entry.name || entry.path || "")}</strong><span>${escapeHtml(fileMeta(entry))}</span>`;
+          const actions = document.createElement("div");
+          actions.className = "workspace-file-actions";
+          workspaceFileActions(entry).forEach((action) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "small-button";
+            button.textContent = action.label;
+            button.addEventListener("click", action.handler);
+            actions.appendChild(button);
+          });
+          row.appendChild(name);
+          row.appendChild(actions);
+          list.appendChild(row);
+        });
+      }
+
+      function workspaceFileActions(entry) {
+        const actions = [];
+        if (entry.kind === "directory") {
+          actions.push({label: t("enterDirectory"), handler: function () {
+            const pathInput = document.getElementById("workspace-path");
+            if (pathInput) {
+              pathInput.value = entry.path || "";
+            }
+            loadWorkspaceFiles(true);
+          }});
+          actions.push({label: t("openAction"), handler: function () {
+            openWorkspaceDirectory(entry.path || "");
+          }});
+          return actions;
+        }
+        if (entry.is_slide) {
+          actions.push({label: t("selectSlideAction"), handler: function () {
+            const match = slideEntries.find((slide) => slide.path === entry.path);
+            if (match) {
+              selectSlide(match.id);
+            } else {
+              setWorkspaceStatus(t("openDirectory"), "error");
+            }
+          }});
+        }
+        if (entry.is_heatmap) {
+          actions.push({label: t("addHeatmapAction"), handler: function () {
+            const name = fileStem(entry.name || entry.path || "heatmap");
+            document.getElementById("workspace-heatmap-path").value = entry.path || "";
+            document.getElementById("workspace-heatmap-name").value = name;
+            addWorkspaceHeatmap(entry.path || "", name);
+          }});
+        }
+        if (entry.is_patches) {
+          actions.push({label: t("loadPatchesAction"), handler: function () {
+            document.getElementById("workspace-patches-path").value = entry.path || "";
+            loadWorkspacePatches(entry.path || "", pathValue("workspace-patch-score-path"));
+          }});
+        }
+        if (entry.is_annotation) {
+          actions.push({label: t("loadAnnotationAction"), handler: function () {
+            document.getElementById("workspace-annotations-path").value = entry.path || "";
+            loadWorkspaceAnnotations(entry.path || "", document.getElementById("workspace-annotation-format")?.value || "");
+          }});
+        }
+        return actions;
+      }
+
+      function workspaceHeatmapLayerSpecs() {
+        const layers = [];
+        const seen = new Set();
+        function pushLayer(name, path) {
+          const pathText = String(path || "").trim();
+          if (!pathText || seen.has(pathText)) {
+            return;
+          }
+          seen.add(pathText);
+          layers.push({name: String(name || "").trim() || fileStem(pathText), path: pathText});
+        }
+        rasterHeatmapLayers(rasterHeatmapPayload).forEach(function (layer) {
+          pushLayer(layer.name || fileStem(layer.path || layer.source || ""), layer.path || layer.source);
+        });
+        if (!layers.length && Array.isArray(snapshotOptions.raster_heatmap_layers)) {
+          snapshotOptions.raster_heatmap_layers.forEach(function (layer) {
+            pushLayer(layer.name || fileStem(layer.path || ""), layer.path);
+          });
+        }
+        return layers;
+      }
+
+      async function submitWorkspaceHeatmaps(layers, options) {
+        const heatmapLayers = Array.isArray(layers) ? layers : [];
+        setWorkspaceStatus(heatmapLayers.length ? t("loadingFiles") : "", "");
+        try {
+          const payload = await postJson("/api/workspace/raster-heatmap-layers", {
+            slide_id: selectedSlideId ?? 0,
+            layers: heatmapLayers
+          });
+          snapshotOptions = payload.snapshot_options || snapshotOptions;
+          rasterHeatmapPayload = payload;
+          rasterHeatmapLayerState.clear();
+          clearRasterHeatmapOverlays();
+          updateRasterHeatmapHeader(payload);
+          renderRasterHeatmap();
+          emitViewerStateChange();
+          if (options && options.clearInputs) {
+            document.getElementById("workspace-heatmap-path").value = "";
+            document.getElementById("workspace-heatmap-name").value = "";
+          }
+          setWorkspaceStatus((options && options.status) || (heatmapLayers.length ? t("dataLayerLoaded") : t("dataLayerCleared")), "ok");
+        } catch (error) {
+          setWorkspaceStatus(error.message, "error");
+        }
+      }
+
+      async function addWorkspaceHeatmap(path, name) {
+        const pathText = String(path || "").trim();
+        if (!pathText) {
+          setWorkspaceStatus(t("pathRequired"), "error");
+          return;
+        }
+        const layers = workspaceHeatmapLayerSpecs();
+        const label = String(name || "").trim() || fileStem(pathText);
+        const existing = layers.find((layer) => layer.path === pathText);
+        if (existing) {
+          existing.name = label;
+        } else {
+          layers.push({name: label, path: pathText});
+        }
+        await submitWorkspaceHeatmaps(layers, {status: t("dataLayerLoaded")});
+      }
+
+      async function clearWorkspaceHeatmaps() {
+        await submitWorkspaceHeatmaps([], {clearInputs: true, status: t("dataLayerCleared")});
+      }
+
+      async function removeWorkspaceHeatmap(layerId) {
+        const layers = rasterHeatmapLayers(rasterHeatmapPayload)
+          .filter((layer, index) => String(layer.id || index) !== String(layerId))
+          .map((layer) => ({
+            name: layer.name || fileStem(layer.path || layer.source || ""),
+            path: layer.path || layer.source || ""
+          }))
+          .filter((layer) => layer.path);
+        await submitWorkspaceHeatmaps(layers, {
+          clearInputs: !layers.length,
+          status: layers.length ? t("dataLayerRemoved") : t("dataLayerCleared")
+        });
+      }
+
+      async function loadWorkspacePatches(path, heatmapPath) {
+        try {
+          const payload = await postJson("/api/workspace/patches", {
+            slide_id: selectedSlideId ?? 0,
+            path,
+            heatmap: heatmapPath || ""
+          });
+          snapshotOptions = payload.snapshot_options || snapshotOptions;
+          patchPayload = payload;
+          updatePatchHeader(payload);
+          renderPatches();
+          emitViewerStateChange();
+          if (!path) {
+            document.getElementById("workspace-patches-path").value = "";
+            document.getElementById("workspace-patch-score-path").value = "";
+          }
+          setWorkspaceStatus(path ? t("dataLayerLoaded") : t("dataLayerCleared"), "ok");
+        } catch (error) {
+          setWorkspaceStatus(error.message, "error");
+        }
+      }
+
+      async function loadWorkspaceAnnotations(path, format) {
+        try {
+          const payload = await postJson("/api/workspace/annotations", {
+            slide_id: selectedSlideId ?? 0,
+            path,
+            format: format || ""
+          });
+          snapshotOptions = payload.snapshot_options || snapshotOptions;
+          annotationPayload = payload;
+          updateAnnotationHeader(payload);
+          renderAnnotations();
+          emitViewerStateChange();
+          if (!path) {
+            document.getElementById("workspace-annotations-path").value = "";
+            document.getElementById("workspace-annotation-format").value = "";
+          }
+          setWorkspaceStatus(path ? t("dataLayerLoaded") : t("dataLayerCleared"), "ok");
+        } catch (error) {
+          setWorkspaceStatus(error.message, "error");
+        }
+      }
+
+      function clearRasterHeatmapOverlays() {
+        rasterHeatmapElements.forEach((element) => viewer.removeOverlay(element));
+        rasterHeatmapElements.clear();
+      }
+
+      function setWorkspaceStatus(message, stateName) {
+        const status = document.getElementById("workspace-status");
+        if (!status) {
+          return;
+        }
+        status.textContent = message || "";
+        status.dataset.state = stateName || "";
+      }
+
+      function updateSlideCounts(count) {
+        const value = String(count || 0);
+        const slideCount = document.getElementById("slide-count");
+        const workspaceSlideCount = document.getElementById("workspace-slide-count");
+        if (slideCount) {
+          slideCount.textContent = value;
+        }
+        if (workspaceSlideCount) {
+          workspaceSlideCount.textContent = value;
+        }
+      }
+
+      function fileMeta(entry) {
+        const tags = [];
+        if (entry.kind === "directory") tags.push(t("directoryLibrary"));
+        if (entry.is_slide) tags.push(t("slideLibrary"));
+        if (entry.is_heatmap) tags.push(t("rasterHeatmap"));
+        if (entry.is_patches) tags.push(t("patches"));
+        if (entry.is_annotation) tags.push(t("annotations"));
+        const size = formatBytes(entry.size_bytes);
+        if (size) tags.push(size);
+        if (entry.modified) tags.push(entry.modified);
+        return tags.join(" · ");
+      }
+
+      function parentDirectory(path) {
+        const value = String(path || "").replace(/\/+$/, "");
+        if (!value || value === "/") {
+          return "/";
+        }
+        const index = value.lastIndexOf("/");
+        return index <= 0 ? "/" : value.slice(0, index);
+      }
+
+      function updateWorkspacePathSummary(path) {
+        const summary = document.getElementById("workspace-path-summary");
+        if (!summary) {
+          return;
+        }
+        const value = String(path || "");
+        summary.textContent = value || ".";
+        summary.title = value || ".";
+      }
+
+      function fileStem(path) {
+        const name = String(path || "").split(/[\\/]/).pop() || "layer";
+        const index = name.lastIndexOf(".");
+        return index > 0 ? name.slice(0, index) : name;
       }
 
       function exposeSlideBridgeViewerApi() {
@@ -1382,6 +2012,28 @@
         textArea.remove();
       }
 
+      async function fetchJson(url) {
+        const response = await fetch(url, {cache: "no-store"});
+        return parseJsonResponse(response);
+      }
+
+      async function postJson(url, payload) {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
+        return parseJsonResponse(response);
+      }
+
+      async function parseJsonResponse(response) {
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || response.statusText || "Request failed.");
+        }
+        return payload;
+      }
+
       function setSnapshotStatus(message, state) {
         const status = document.getElementById("snapshot-status");
         if (!status) {
@@ -1526,8 +2178,18 @@
             rasterHeatmapLayerState.set(id, {...current, opacity: Number(slider.value)});
             updatePatchOverlayStyle();
           });
+          const removeButton = document.createElement("button");
+          removeButton.type = "button";
+          removeButton.className = "icon-button heatmap-layer-remove";
+          removeButton.textContent = "x";
+          removeButton.title = t("removeHeatmapLayer");
+          removeButton.setAttribute("aria-label", t("removeHeatmapLayer"));
+          removeButton.addEventListener("click", function () {
+            removeWorkspaceHeatmap(id);
+          });
           row.appendChild(label);
           row.appendChild(slider);
+          row.appendChild(removeButton);
           container.appendChild(row);
         });
       }
@@ -1569,6 +2231,10 @@
           : `${payload.count} ${t("patches")}`;
       }
 
+      function emptyPatchPayload() {
+        return {count: 0, returned: 0, has_scores: false, score_min: null, score_max: null, warnings: [], patches: []};
+      }
+
       function annotationCountLabel(payload) {
         const labels = payload.labels && payload.labels.length ? ` (${payload.labels.join(", ")})` : "";
         const filteredCount = filteredAnnotations((payload && payload.annotations) || []).length;
@@ -1578,6 +2244,10 @@
         return payload.count > payload.returned
           ? `${payload.count} ${t("annotations")} (${payload.returned} ${t("shown")})${labels}`
           : `${payload.count} ${t("annotations")}${labels}`;
+      }
+
+      function emptyAnnotationPayload() {
+        return {count: 0, returned: 0, coordinate_space: "level0", labels: [], type_counts: {}, warnings: [], annotations: []};
       }
 
       function updateScoreFilterControls() {

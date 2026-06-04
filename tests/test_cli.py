@@ -15,15 +15,38 @@ def test_root_version_option():
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert "SlideBridge Core 0.2.21" in result.stdout
+    assert "SlideBridge Core 0.3.0" in result.stdout
 
 
 def test_version_command():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "SlideBridge Core version: 0.2.21" in result.stdout
+    assert "SlideBridge Core version: 0.3.0" in result.stdout
     assert "Python version:" in result.stdout
+
+
+def test_app_command_starts_launcher_without_browser(monkeypatch):
+    captured = {}
+
+    def fake_run(web_app, host, port, log_level):
+        captured["title"] = web_app.title
+        captured["host"] = host
+        captured["port"] = port
+        captured["log_level"] = log_level
+
+    monkeypatch.setattr("slidebridge.cli.uvicorn.run", fake_run)
+    monkeypatch.setattr("slidebridge.cli.webbrowser.open", lambda url: captured.setdefault("opened", url))
+
+    result = runner.invoke(app, ["app", "--port", "7855", "--no-open-browser"])
+
+    assert result.exit_code == 0
+    assert "Starting SlideBridge App: http://127.0.0.1:7855" in result.stdout
+    assert captured["title"] == "SlideBridge App"
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 7855
+    assert captured["log_level"] == "info"
+    assert "opened" not in captured
 
 
 def test_env_command_does_not_crash():

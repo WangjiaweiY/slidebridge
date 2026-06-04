@@ -4,12 +4,17 @@ import csv
 import json
 import platform
 import random
+import re
+import secrets
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
 from pathlib import Path
 from typing import Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import numpy as np
 import typer
@@ -81,6 +86,23 @@ def version_command() -> None:
     console.print(f"Python version: {sys.version.replace(chr(10), ' ')}")
     console.print(f"Platform: {platform.platform()}")
     console.print(f"Executable: {sys.executable}")
+
+
+@app.command("app")
+def app_command(
+    host: str = typer.Option("127.0.0.1", "--host", help="Launcher bind host."),
+    port: int = typer.Option(7850, "--port", min=1, max=65535, help="Launcher bind port."),
+    open_browser: bool = typer.Option(True, "--open-browser/--no-open-browser", help="Open the launcher in a browser."),
+) -> None:
+    """Start the local SlideBridge Web App launcher."""
+
+    from slidebridge.app.server import create_launcher_app
+
+    url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{int(port)}"
+    console.print(f"Starting SlideBridge App: {url}")
+    if open_browser:
+        webbrowser.open(url)
+    uvicorn.run(create_launcher_app(), host=host, port=int(port), log_level="info")
 
 
 @app.command("env")
@@ -496,7 +518,9 @@ def view(
     viewer_remote_user: Optional[str] = typer.Option(None, "--viewer-remote-user", help="Remote SSH user shown in the viewer."),
     viewer_remote_host: Optional[str] = typer.Option(None, "--viewer-remote-host", help="Remote SSH host shown in the viewer."),
     viewer_remote_ssh_port: Optional[int] = typer.Option(None, "--viewer-remote-ssh-port", help="Remote SSH port shown in the viewer."),
-    viewer_source: Optional[str] = typer.Option(None, "--viewer-source", help="Source path shown in the viewer session panel."),
+    viewer_source: Optional[str] = typer.Option(None, "--viewer-source", help="Source path shown in the viewer info panel."),
+    viewer_session_token: Optional[str] = typer.Option(None, "--viewer-session-token", help="Remote viewer session token.", hidden=True),
+    viewer_session_timeout: float = typer.Option(0.0, "--viewer-session-timeout", help="Remote viewer idle timeout in seconds.", hidden=True),
 ) -> None:
     try:
         patch_score_heatmap, full_slide_heatmap = _resolve_heatmap_paths(heatmap, raster_heatmap)
@@ -533,6 +557,8 @@ def view(
             viewer_remote_host=viewer_remote_host,
             viewer_remote_ssh_port=viewer_remote_ssh_port,
             viewer_source=viewer_source,
+            viewer_session_token=viewer_session_token,
+            viewer_session_timeout=viewer_session_timeout,
         )
         url = f"http://{host}:{port}"
         console.print(f"Starting SlideBridge viewer: {url}")
@@ -900,6 +926,7 @@ def remote_view(
     tile_workers: int = typer.Option(4, "--tile-workers", min=1, max=64, help="Maximum concurrent tile generation workers on the remote viewer."),
     open_browser: bool = typer.Option(True, "--open-browser/--no-open-browser", help="Open local browser after tunnel is ready."),
     wait_timeout: float = typer.Option(30.0, "--wait-timeout", help="Seconds to wait for the forwarded viewer."),
+    remote_idle_timeout: float = typer.Option(90.0, "--remote-idle-timeout", min=10.0, help="Seconds before the remote viewer exits without local heartbeat."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print commands without connecting over SSH."),
     verbose: bool = typer.Option(False, "--verbose", help="Print extra command details."),
     patches: Optional[str] = typer.Option(None, "--patches", help="Remote patch coordinate path."),
@@ -933,6 +960,7 @@ def remote_view(
         effective_local_port = int(local_port if local_port is not None else ((active_profile.local_port if active_profile else None) or 7860))
         effective_remote_host = remote_host or (active_profile.remote_host if active_profile else None) or "127.0.0.1"
         effective_remote_port = int(remote_port if remote_port is not None else ((active_profile.remote_port if active_profile else None) or 7860))
+        session_token = secrets.token_urlsafe(32)
         patch_score_heatmap, full_slide_heatmap = _resolve_heatmap_paths(heatmap, raster_heatmap)
         remote_command = build_remote_slidebridge_command(
             effective_runner,
@@ -965,6 +993,8 @@ def remote_view(
                 tile_cache_size=tile_cache_size,
                 tile_cache_mb=tile_cache_mb,
                 tile_workers=tile_workers,
+                viewer_session_token=session_token,
+                viewer_session_timeout=remote_idle_timeout,
             ),
             remote_workdir=effective_workdir,
         )
@@ -993,23 +1023,35 @@ def remote_view(
             _print_remote_dry_run(local_url, [("view", remote_command)], [("tunnel", ssh_command)])
         console.print(f"Starting remote SlideBridge viewer through SSH: {local_url}")
         process = subprocess.Popen(ssh_command)
+        heartbeat_stop: threading.Event | None = None
         try:
-            if wait_for_http(f"{local_url}/api/info", timeout=wait_timeout):
+            if wait_for_http(f"{local_url}/api/slides", timeout=wait_timeout):
                 console.print(f"Remote viewer ready: {local_url}")
+                heartbeat_stop = _start_remote_session_heartbeat(local_url, session_token, remote_idle_timeout)
                 if open_browser:
                     webbrowser.open(local_url)
             else:
                 raise RuntimeError(f"Viewer did not become reachable at {local_url} within {wait_timeout} seconds.")
             returncode = process.wait()
+            if heartbeat_stop is not None:
+                heartbeat_stop.set()
             if returncode != 0:
                 _cleanup_remote_viewer(remote_path, effective_remote_port, effective_ssh_port, effective_identity, effective_ssh_options)
         except KeyboardInterrupt:
+            if heartbeat_stop is not None:
+                heartbeat_stop.set()
+            shutdown_sent = _post_remote_session(local_url, "shutdown", session_token)
             console.print("Stopping SSH tunnel...")
             _stop_process(process)
-            _cleanup_remote_viewer(remote_path, effective_remote_port, effective_ssh_port, effective_identity, effective_ssh_options)
+            if not shutdown_sent:
+                _cleanup_remote_viewer_if_needed(remote_path, effective_remote_port, effective_ssh_port, effective_identity, effective_ssh_options)
         except Exception:
+            if heartbeat_stop is not None:
+                heartbeat_stop.set()
+            shutdown_sent = _post_remote_session(local_url, "shutdown", session_token)
             _stop_process(process)
-            _cleanup_remote_viewer(remote_path, effective_remote_port, effective_ssh_port, effective_identity, effective_ssh_options)
+            if not shutdown_sent:
+                _cleanup_remote_viewer_if_needed(remote_path, effective_remote_port, effective_ssh_port, effective_identity, effective_ssh_options)
             raise
     except Exception as exc:
         _fail(exc)
@@ -1402,6 +1444,7 @@ def _remote_port_is_listening(
     ssh_port: Optional[int],
     identity_file: Optional[Path],
     ssh_options: list[str],
+    timeout: float = 5.0,
 ) -> bool | None:
     command = _ssh_command_for_remote(
         remote,
@@ -1410,12 +1453,45 @@ def _remote_port_is_listening(
         identity_file,
         ssh_options,
     )
-    result = run_ssh_command(command, timeout=15)
+    try:
+        result = run_ssh_command(command, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
     if result.returncode == 0:
         return True
     if result.returncode == 1:
         return False
     return None
+
+
+def _post_remote_session(local_url: str, endpoint: str, token: str, timeout: float = 2.0) -> bool:
+    url = f"{local_url.rstrip('/')}/api/session/{endpoint.lstrip('/')}"
+    payload = json.dumps({"token": token}).encode("utf-8")
+    request = Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return 200 <= int(response.status) < 300
+    except (HTTPError, URLError, OSError, TimeoutError):
+        return False
+
+
+def _start_remote_session_heartbeat(local_url: str, token: str, idle_timeout: float) -> threading.Event:
+    stop_event = threading.Event()
+    interval = max(2.0, min(10.0, float(idle_timeout) / 3.0))
+    _post_remote_session(local_url, "heartbeat", token)
+
+    def _loop() -> None:
+        while not stop_event.wait(interval):
+            _post_remote_session(local_url, "heartbeat", token)
+
+    thread = threading.Thread(target=_loop, name="slidebridge-remote-heartbeat", daemon=True)
+    thread.start()
+    return stop_event
 
 
 def _remote_view_cleanup_command(port: int) -> str:
@@ -1429,9 +1505,10 @@ def _remote_view_cleanup_command(port: int) -> str:
         "sed -n 's/.*pid=\\([0-9][0-9]*\\).*/\\1/p' | sort -u); "
         "fi; "
         "extra=$(ps -u \"$user_name\" -o pid=,args= 2>/dev/null | "
-        f"awk -v port='--port {checked_port}' -v self=\"$self\" "
-        "'$1 != self && index($0, port) && "
-        "(index($0, \"slidebridge view\") || index($0, \"conda run\")) {print $1}'); "
+        f"awk -v opt='--port' -v value='{checked_port}' -v self=\"$self\" "
+        "'BEGIN {port=opt \" \" value; app=\"slidebridge\"; action=\"view\"; conda=\"conda\"; run=\"run\"} "
+        "$1 != self && index($0, port) && "
+        "(index($0, app \" \" action) || index($0, conda \" \" run)) {print $1}'); "
         "pids=$(printf '%s\\n%s\\n' \"$pids\" \"$extra\" | awk 'NF && $1 != 1 {print $1}' | sort -u); "
         "if [ -n \"$pids\" ]; then "
         "kill $pids 2>/dev/null || true; "
@@ -1456,9 +1533,17 @@ def _cleanup_remote_viewer(
         identity_file,
         ssh_options,
     )
-    result = run_ssh_command(command, timeout=20)
-    for _ in range(5):
-        listening = _remote_port_is_listening(remote, remote_port, ssh_port, identity_file, ssh_options)
+    try:
+        result = run_ssh_command(command, timeout=5)
+    except subprocess.TimeoutExpired:
+        console.print(
+            "[yellow]Remote cleanup command timed out; local shutdown will continue. "
+            f"If remote port {int(remote_port)} stays occupied, run "
+            f"`pkill -f 'slidebridge view .*--port {int(remote_port)}'` on the remote server.[/yellow]"
+        )
+        return
+    for _ in range(3):
+        listening = _remote_port_is_listening(remote, remote_port, ssh_port, identity_file, ssh_options, timeout=3)
         if listening is False:
             console.print("Remote viewer stopped.")
             return
@@ -1471,6 +1556,27 @@ def _cleanup_remote_viewer(
         "[yellow]Remote cleanup could not confirm that the viewer stopped. If the remote port is still occupied, run "
         f"`pkill -f 'slidebridge view .*--port {int(remote_port)}'` on the remote server.[/yellow]"
     )
+
+
+def _cleanup_remote_viewer_if_needed(
+    remote: RemotePath,
+    remote_port: int,
+    ssh_port: Optional[int],
+    identity_file: Optional[Path],
+    ssh_options: list[str],
+) -> None:
+    listening = _remote_port_is_listening(remote, remote_port, ssh_port, identity_file, ssh_options, timeout=3)
+    if listening is False:
+        console.print("Remote viewer already stopped.")
+        return
+    if listening is None:
+        console.print(
+            "[yellow]Could not confirm whether the remote viewer is still running; "
+            "skipping blocking SSH cleanup. If the remote port stays occupied, run "
+            f"`pkill -f 'slidebridge view .*--port {int(remote_port)}'` on the remote server.[/yellow]"
+        )
+        return
+    _cleanup_remote_viewer(remote, remote_port, ssh_port, identity_file, ssh_options)
 
 
 def _stop_process(process: subprocess.Popen) -> None:
@@ -1513,6 +1619,8 @@ def _remote_view_args(
     tile_cache_size: int = 512,
     tile_cache_mb: int = 256,
     tile_workers: int = 4,
+    viewer_session_token: Optional[str] = None,
+    viewer_session_timeout: float = 0.0,
 ) -> list[str]:
     args = [
         "view",
@@ -1553,6 +1661,9 @@ def _remote_view_args(
         args.extend(["--viewer-remote-ssh-port", str(int(viewer_remote_ssh_port))])
     if viewer_source:
         args.extend(["--viewer-source", viewer_source])
+    if viewer_session_token and float(viewer_session_timeout or 0.0) > 0.0:
+        args.extend(["--viewer-session-token", viewer_session_token])
+        args.extend(["--viewer-session-timeout", str(float(viewer_session_timeout))])
     if recursive:
         args.append("--recursive")
     if raster_heatmap_threshold is not None:
@@ -1576,6 +1687,10 @@ def _remote_view_args(
     return args
 
 
+def _redact_session_token_text(text: str) -> str:
+    return re.sub(r"(--viewer-session-token(?:\s+|=))('[^']*'|\"[^\"]*\"|\S+)", r"\1<redacted>", text)
+
+
 def _print_remote_dry_run(
     local_url: Optional[str],
     remote_commands: list[tuple[str, str]],
@@ -1586,10 +1701,10 @@ def _print_remote_dry_run(
         console.print(local_url)
     console.print("[bold]Remote command:[/bold]")
     for name, command in remote_commands:
-        console.print(f"{name}: {command}")
+        console.print(f"{name}: {_redact_session_token_text(command)}")
     console.print("[bold]SSH command:[/bold]")
     for name, command in ssh_commands:
-        console.print(f"{name}: {_format_command(command)}")
+        console.print(f"{name}: {_redact_session_token_text(_format_command(command))}")
 
 
 def _print_remote_result(result: RemoteCommandResult) -> None:

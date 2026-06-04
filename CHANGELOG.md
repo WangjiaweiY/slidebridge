@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.0
+
+Added:
+
+- local `slidebridge app` Web App launcher for starting the current remote WSI viewer from the browser
+- browser-based SSH connection form with Conda env-path runtime support
+- remote directory picker for choosing the Conda environment path in the launcher
+- viewer-side workspace file browser for opening remote directories, selecting slides, and loading raster heatmap, patch, and annotation files
+- viewer-side dynamic raster heatmap appending, with per-layer removal after adding multiple heatmaps from the Files/Data workspace
+- launcher APIs for remote connection checks, runtime checks, command preview, and single active viewer launch
+- viewer workspace APIs for directory scanning, file listing, and dynamic data-layer loading
+- reusable remote profile loading in the launcher UI
+- remote-view heartbeat lease so remote viewer processes self-exit after the local launcher/tunnel disappears
+
+Changed:
+
+- `slidebridge app` now only bootstraps SSH/runtime; data browsing and layer loading happen inside the viewer
+- launcher remote workdir is presented as an advanced optional `cd` directory, separate from the Conda environment path
+- launcher waits until the viewer HTTP API is ready, then the single launch button opens the viewer automatically
+- `remote-view` now asks the remote viewer to shut down over the forwarded HTTP API before using SSH cleanup fallback
+- viewer file/directory browsing now opens in a modal instead of occupying the Files tab sidebar
+- package data now includes the launcher templates and static assets
+
+Fixed:
+
+- `remote-view` Ctrl+C shutdown no longer surfaces SSH cleanup timeout commands or blocks local terminal shutdown
+- `remote-view` now skips blocking SSH cleanup when the remote viewer has already stopped after Ctrl+C
+
 ## 0.2.21
 
 Added:

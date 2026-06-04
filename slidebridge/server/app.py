@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import secrets
+import signal
 import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from threading import RLock, Semaphore
+from threading import Event, RLock, Semaphore, Thread
 from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException, Query
@@ -34,6 +36,9 @@ from slidebridge.utils.paths import SUPPORTED_IMAGE_EXTENSIONS, SUPPORTED_WSI_EX
 
 
 VIEWABLE_EXTENSIONS = SUPPORTED_WSI_EXTENSIONS | SUPPORTED_IMAGE_EXTENSIONS
+RASTER_HEATMAP_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+PATCH_DATA_EXTENSIONS = {".csv", ".h5", ".hdf5", ".json", ".npy", ".pt", ".pth"}
+ANNOTATION_DATA_EXTENSIONS = {".geojson", ".json", ".xml"}
 NO_STORE_HEADERS = {"Cache-Control": "no-store"}
 CACHEABLE_TILE_HEADERS = {"Cache-Control": "public, max-age=3600"}
 
@@ -92,6 +97,22 @@ class RasterHeatmapLayerSpec:
     id: str
     name: str
     path: Path
+
+
+@dataclass
+class WorkspaceState:
+    source: Path
+    entries: list[SlideEntry]
+    library_mode: bool
+    recursive: bool
+    max_slides: int
+    library_warning: str
+    viewer_source: str
+    patches_path: Path | None
+    heatmap_path: Path | None
+    annotations_path: Path | None
+    annotation_format: str | None
+    raster_heatmap_specs: list[RasterHeatmapLayerSpec]
 
 
 class TileCache:
@@ -201,6 +222,14 @@ class TileMetrics:
             }
 
 
+def _request_process_shutdown(reason: str) -> None:
+    del reason
+    try:
+        os.kill(os.getpid(), signal.SIGTERM)
+    except Exception:
+        os._exit(0)
+
+
 def create_app(
     slide_path: str | Path,
     patches_path: str | Path | None = None,
@@ -230,6 +259,8 @@ def create_app(
     viewer_remote_host: str | None = None,
     viewer_remote_ssh_port: int | None = None,
     viewer_source: str | None = None,
+    viewer_session_token: str | None = None,
+    viewer_session_timeout: float = 0.0,
     tile_cache_size: int = 512,
     tile_cache_mb: int = 256,
     tile_workers: int = 4,
@@ -260,18 +291,12 @@ def create_app(
     max_annotations = max(0, int(max_annotations))
     max_slides = max(1, int(max_slides))
 
-    source = Path(slide_path)
-    entries = _collect_slide_entries(source, recursive=recursive, max_slides=max_slides)
-    if not entries:
-        raise FileNotFoundError(f"No viewable slide files found: {source}")
-    library_mode = source.is_dir()
     viewer_context = str(viewer_context or "local").lower()
     if viewer_context not in {"local", "remote"}:
         raise ValueError("viewer_context must be local or remote")
-    viewer_source = viewer_source or str(source)
-    library_warning = ""
-    if library_mode and len(entries) >= max_slides:
-        library_warning = f"Showing first {max_slides} viewable files. Increase --max-slides if needed."
+    viewer_session_token = str(viewer_session_token or "").strip() or None
+    viewer_session_timeout = max(0.0, float(viewer_session_timeout or 0.0))
+    viewer_session_enabled = bool(viewer_session_token and viewer_session_timeout > 0.0)
 
     if heatmap_path is not None and is_raster_heatmap_path(heatmap_path):
         if raster_heatmap_path is not None:
@@ -283,26 +308,25 @@ def create_app(
         raise ValueError("--heatmap requires --patches so scores can be aligned to coordinates")
 
     raster_heatmap_specs = _normalize_raster_heatmap_specs(raster_heatmap_path, raster_heatmap_layers)
-    first_raster_heatmap_path = raster_heatmap_specs[0].path if raster_heatmap_specs else None
-
-    snapshot_options = {
-        "patches": str(patches_path) if patches_path is not None else None,
-        "heatmap": str(heatmap_path) if heatmap_path is not None else None,
-        "raster_heatmap": str(first_raster_heatmap_path) if first_raster_heatmap_path is not None else None,
-        "raster_heatmap_layers": [
-            {"name": spec.name, "path": str(spec.path), "id": spec.id}
-            for spec in raster_heatmap_specs
-        ],
-        "annotations": str(annotations_path) if annotations_path is not None else None,
-        "annotation_format": annotation_format,
-        "default_patch_size": default_patch_size,
-        "score_normalization": score_normalization,
-        "max_raster_heatmap_size": max_raster_heatmap_size,
-        "raster_heatmap_threshold": raster_heatmap_threshold,
-        "raster_heatmap_invert": bool(raster_heatmap_invert),
-        "raster_heatmap_colormap": raster_heatmap_colormap,
-        "viewer_context": viewer_context,
-    }
+    source = Path(slide_path)
+    entries = _collect_slide_entries(source, recursive=recursive, max_slides=max_slides)
+    if not entries and not source.is_dir():
+        raise FileNotFoundError(f"No viewable slide files found: {source}")
+    library_mode = source.is_dir()
+    state = WorkspaceState(
+        source=source,
+        entries=entries,
+        library_mode=library_mode,
+        recursive=bool(recursive),
+        max_slides=max_slides,
+        library_warning=_library_warning(entries, library_mode, max_slides),
+        viewer_source=viewer_source or str(source),
+        patches_path=Path(patches_path) if patches_path is not None else None,
+        heatmap_path=Path(heatmap_path) if heatmap_path is not None else None,
+        annotations_path=Path(annotations_path) if annotations_path is not None else None,
+        annotation_format=annotation_format,
+        raster_heatmap_specs=raster_heatmap_specs,
+    )
 
     tile_cache_key = secrets.token_hex(8)
     lock = RLock()
@@ -313,11 +337,49 @@ def create_app(
     tile_cache = TileCache(tile_cache_size, max_bytes=tile_cache_mb * 1024 * 1024)
     tile_metrics = TileMetrics()
     tile_semaphore = Semaphore(tile_workers)
+    session_lock = RLock()
+    session_stop_event = Event()
+    session_state = {
+        "last_heartbeat": time.monotonic(),
+        "shutdown_requested": False,
+    }
+
+    def snapshot_options_payload() -> dict[str, Any]:
+        first_raster_heatmap_path = state.raster_heatmap_specs[0].path if state.raster_heatmap_specs else None
+        return {
+            "patches": str(state.patches_path) if state.patches_path is not None else None,
+            "heatmap": str(state.heatmap_path) if state.heatmap_path is not None else None,
+            "raster_heatmap": str(first_raster_heatmap_path) if first_raster_heatmap_path is not None else None,
+            "raster_heatmap_layers": [
+                {"name": spec.name, "path": str(spec.path), "id": spec.id}
+                for spec in state.raster_heatmap_specs
+            ],
+            "annotations": str(state.annotations_path) if state.annotations_path is not None else None,
+            "annotation_format": state.annotation_format,
+            "default_patch_size": default_patch_size,
+            "score_normalization": score_normalization,
+            "max_raster_heatmap_size": max_raster_heatmap_size,
+            "raster_heatmap_threshold": raster_heatmap_threshold,
+            "raster_heatmap_invert": bool(raster_heatmap_invert),
+            "raster_heatmap_colormap": raster_heatmap_colormap,
+            "viewer_context": viewer_context,
+        }
+
+    def close_slide_sessions() -> None:
+        for session in sessions.values():
+            session.slide.close()
+        sessions.clear()
+
+    def clear_overlay_caches() -> None:
+        patch_cache.clear()
+        annotation_cache.clear()
+        raster_heatmap_cache.clear()
+        tile_cache.clear()
 
     def get_entry(slide_id: int) -> SlideEntry:
-        if slide_id < 0 or slide_id >= len(entries):
+        if slide_id < 0 or slide_id >= len(state.entries):
             raise HTTPException(status_code=404, detail="Slide id is outside the loaded directory")
-        return entries[slide_id]
+        return state.entries[slide_id]
 
     def get_session(slide_id: int = 0) -> SlideSession:
         with lock:
@@ -328,7 +390,7 @@ def create_app(
             info = summary(slide)
             info["slide_id"] = entry.id
             info["relative_path"] = entry.relative_path
-            info["library_root"] = str(source) if library_mode else str(entry.path.parent)
+            info["library_root"] = str(state.source) if state.library_mode else str(entry.path.parent)
             width = int(info["width"])
             height = int(info["height"])
             max_dzi_level = int(math.ceil(math.log2(max(width, height)))) if max(width, height) > 1 else 0
@@ -341,10 +403,10 @@ def create_app(
             return patch_cache[slide_id]
         session = get_session(slide_id)
         patch_table = PatchTable(records=[])
-        if patches_path:
-            patch_table = load_patch_table(patches_path, default_patch_size=default_patch_size)
-            if heatmap_path is not None:
-                patch_table = attach_scores(patch_table, load_scores(heatmap_path))
+        if state.patches_path:
+            patch_table = load_patch_table(state.patches_path, default_patch_size=default_patch_size)
+            if state.heatmap_path is not None:
+                patch_table = attach_scores(patch_table, load_scores(state.heatmap_path))
             if score_normalization != "none":
                 patch_table = patch_table.normalize_scores(score_normalization)  # type: ignore[arg-type]
             patch_table = patch_table.validate(session.width, session.height, mode="clip")
@@ -361,8 +423,8 @@ def create_app(
             return annotation_cache[slide_id]
         session = get_session(slide_id)
         annotation_table = AnnotationTable(records=[])
-        if annotations_path is not None:
-            annotation_table = load_annotation_table(annotations_path, format=annotation_format).compute_bboxes().normalize_colors()
+        if state.annotations_path is not None:
+            annotation_table = load_annotation_table(state.annotations_path, format=state.annotation_format).compute_bboxes().normalize_colors()
             if annotation_labels:
                 annotation_table = annotation_table.filter_labels(annotation_labels)
             annotation_table = annotation_table.validate(session.width, session.height, mode="warn")
@@ -378,7 +440,7 @@ def create_app(
 
     def get_raster_heatmap_context(slide_id: int = 0, layer_id: str | None = None) -> RasterHeatmapContext:
         session = get_session(slide_id)
-        spec = _find_raster_heatmap_spec(raster_heatmap_specs, layer_id)
+        spec = _find_raster_heatmap_spec(state.raster_heatmap_specs, layer_id)
         if spec is None:
             context = RasterHeatmapContext(None, {"available": False, "warnings": []}, "")
             return context
@@ -396,21 +458,20 @@ def create_app(
         summary_payload["id"] = spec.id
         summary_payload["name"] = spec.name
         warnings = list(summary_payload.get("warnings", []))
-        if library_mode:
-            warnings.append("The same raster heatmap is applied to the selected slide in directory viewer mode.")
         summary_payload["warnings"] = warnings
         context = RasterHeatmapContext(heatmap, summary_payload, "; ".join(warnings))
         raster_heatmap_cache[cache_key] = context
         return context
 
     def get_raster_heatmap_payload(slide_id: int = 0) -> dict[str, Any]:
-        if not raster_heatmap_specs:
+        if not state.raster_heatmap_specs:
             return {"available": False, "count": 0, "layers": [], "warnings": []}
         layers = []
         warnings: list[str] = []
-        for spec in raster_heatmap_specs:
+        for spec in state.raster_heatmap_specs:
             context = get_raster_heatmap_context(slide_id, spec.id)
             payload = dict(context.summary)
+            payload["path"] = str(spec.path)
             if context.heatmap is not None:
                 payload["url"] = f"/slides/{int(slide_id)}/{tile_cache_key}/raster_heatmaps/{spec.id}.png"
                 layers.append(payload)
@@ -422,51 +483,208 @@ def create_app(
             "warnings": warnings,
         }
 
+    def validate_session_payload(payload: dict[str, Any]) -> None:
+        if not viewer_session_enabled:
+            raise HTTPException(status_code=404, detail="Remote viewer session control is not enabled.")
+        token = str(payload.get("token") or "")
+        if token != viewer_session_token:
+            raise HTTPException(status_code=403, detail="Invalid remote viewer session token.")
+
+    def request_session_shutdown(reason: str) -> None:
+        with session_lock:
+            session_state["shutdown_requested"] = True
+
+        def _delayed_shutdown() -> None:
+            time.sleep(0.2)
+            _request_process_shutdown(reason)
+
+        Thread(target=_delayed_shutdown, name="slidebridge-session-shutdown", daemon=True).start()
+
+    def session_monitor() -> None:
+        interval = max(1.0, min(10.0, viewer_session_timeout / 4.0))
+        while not session_stop_event.wait(interval):
+            with session_lock:
+                last_heartbeat = float(session_state["last_heartbeat"])
+                shutdown_requested = bool(session_state["shutdown_requested"])
+            if shutdown_requested:
+                return
+            if time.monotonic() - last_heartbeat > viewer_session_timeout:
+                request_session_shutdown("remote viewer heartbeat timeout")
+                return
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         del app
+        monitor_thread: Thread | None = None
+        if viewer_session_enabled:
+            monitor_thread = Thread(target=session_monitor, name="slidebridge-session-monitor", daemon=True)
+            monitor_thread.start()
         try:
             yield
         finally:
+            session_stop_event.set()
+            if monitor_thread is not None:
+                monitor_thread.join(timeout=1.0)
             with lock:
-                for session in sessions.values():
-                    session.slide.close()
-                sessions.clear()
-                tile_cache.clear()
+                close_slide_sessions()
+                clear_overlay_caches()
 
     app = FastAPI(title="SlideBridge Viewer", lifespan=lifespan)
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+    @app.post("/api/session/heartbeat")
+    def api_session_heartbeat(payload: dict[str, Any] = Body(...)) -> JSONResponse:
+        validate_session_payload(payload)
+        with session_lock:
+            session_state["last_heartbeat"] = time.monotonic()
+        return _json_response({"ok": True, "timeout": viewer_session_timeout})
+
+    @app.post("/api/session/shutdown")
+    def api_session_shutdown(payload: dict[str, Any] = Body(...)) -> JSONResponse:
+        validate_session_payload(payload)
+        request_session_shutdown("remote viewer session shutdown")
+        return _json_response({"ok": True})
+
+    @app.post("/api/session/status")
+    def api_session_status(payload: dict[str, Any] = Body(...)) -> JSONResponse:
+        validate_session_payload(payload)
+        with session_lock:
+            age = time.monotonic() - float(session_state["last_heartbeat"])
+            shutdown_requested = bool(session_state["shutdown_requested"])
+        return _json_response({
+            "enabled": viewer_session_enabled,
+            "timeout": viewer_session_timeout,
+            "heartbeat_age": age,
+            "shutdown_requested": shutdown_requested,
+        })
+
+    def slides_payload() -> dict[str, Any]:
+        return {
+            "count": len(state.entries),
+            "root": str(state.source),
+            "library_mode": state.library_mode,
+            "recursive": state.recursive,
+            "warnings": [state.library_warning] if state.library_warning else [],
+            "slides": [entry.to_dict() for entry in state.entries],
+            "snapshot_options": snapshot_options_payload(),
+        }
+
+    def patch_payload(slide_id: int) -> dict[str, Any]:
+        context = get_patch_context(slide_id)
+        patch_table = context.table
+        returned_records = patch_table.records[:max_overlay_patches]
+        scores = [record.score for record in patch_table.records if record.score is not None]
+        warnings = list(context.summary.get("warnings", []))
+        if state.library_mode and state.patches_path:
+            warnings.append("The same patch file is applied to the selected slide in directory viewer mode.")
+        if len(patch_table) > max_overlay_patches:
+            warnings.append(
+                f"Returning first {max_overlay_patches} of {len(patch_table)} patches for viewer responsiveness."
+            )
+        return {
+            "count": len(patch_table),
+            "returned": len(returned_records),
+            "has_scores": bool(scores),
+            "score_min": min(scores) if scores else None,
+            "score_max": max(scores) if scores else None,
+            "warnings": warnings,
+            "patches": [record.to_dict() for record in returned_records],
+        }
+
+    def annotation_payload(slide_id: int) -> dict[str, Any]:
+        context = get_annotation_context(slide_id)
+        annotation_table = context.table
+        returned_records = annotation_table.records[:max_annotations]
+        warnings = list(context.summary.get("warnings", []))
+        if state.library_mode and state.annotations_path:
+            warnings.append("The same annotation file is applied to the selected slide in directory viewer mode.")
+        if len(annotation_table) > max_annotations:
+            warnings.append(
+                f"Returning first {max_annotations} of {len(annotation_table)} annotations for viewer responsiveness."
+            )
+        return {
+            "count": len(annotation_table),
+            "returned": len(returned_records),
+            "coordinate_space": annotation_table.coordinate_space,
+            "labels": annotation_table.labels(),
+            "type_counts": context.summary.get("type_counts", {}),
+            "warnings": warnings,
+            "annotations": [record.to_dict() for record in returned_records],
+        }
+
+    def empty_overlay_payload(kind: str) -> dict[str, Any]:
+        if kind == "patches":
+            return {"count": 0, "returned": 0, "has_scores": False, "score_min": None, "score_max": None, "warnings": [], "patches": []}
+        if kind == "annotations":
+            return {"count": 0, "returned": 0, "coordinate_space": "level0", "labels": [], "type_counts": {}, "warnings": [], "annotations": []}
+        return {"available": False, "count": 0, "layers": [], "warnings": []}
+
+    def reset_workspace_directory(path: Path, recursive_value: bool, max_slides_value: int) -> dict[str, Any]:
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"Directory does not exist: {path}")
+        if not path.is_dir():
+            raise HTTPException(status_code=400, detail=f"Path is not a directory: {path}")
+        entries_for_dir = _collect_slide_entries(path, recursive=recursive_value, max_slides=max_slides_value)
+        with lock:
+            close_slide_sessions()
+            clear_overlay_caches()
+            state.source = path
+            state.entries = entries_for_dir
+            state.library_mode = True
+            state.recursive = recursive_value
+            state.max_slides = max_slides_value
+            state.library_warning = _library_warning(entries_for_dir, True, max_slides_value)
+            state.viewer_source = str(path)
+            state.patches_path = None
+            state.heatmap_path = None
+            state.annotations_path = None
+            state.annotation_format = None
+            state.raster_heatmap_specs = []
+        return slides_payload()
+
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
-        session = get_session(0)
-        patch_context = get_patch_context(0)
-        annotation_context = get_annotation_context(0)
-        raster_heatmap_payload = get_raster_heatmap_payload(0)
+        session = get_session(0) if state.entries else None
+        patch_context = get_patch_context(0) if session is not None else OverlayContext(PatchTable(records=[]), {}, "")
+        annotation_context = get_annotation_context(0) if session is not None else AnnotationContext(AnnotationTable(records=[]), {}, "")
+        raster_heatmap_payload = get_raster_heatmap_payload(0) if session is not None else {"available": False, "warnings": []}
         template_path = Path(__file__).parent / "templates" / "viewer.html"
         template = Template(template_path.read_text(encoding="utf-8"))
         viewer_config = {
-            "slideEntries": [entry.to_dict() for entry in entries],
+            "slideEntries": [entry.to_dict() for entry in state.entries],
             "tileCacheKey": tile_cache_key,
             "initialTileCacheStats": tile_cache.stats(tile_workers),
             "initialTilePerformanceStats": tile_metrics.stats(),
-            "snapshotOptions": snapshot_options,
+            "snapshotOptions": snapshot_options_payload(),
             "heatmapOpacity": max(0.0, min(float(heatmap_opacity), 1.0)),
+            "workspaceRoot": str(state.source),
+            "workspaceRecursive": state.recursive,
+            "workspaceMaxSlides": state.max_slides,
+            "remoteSession": {"enabled": viewer_session_enabled, "timeout": viewer_session_timeout},
         }
         viewer_config_json = json.dumps(viewer_config, ensure_ascii=False).replace("</", "<\\/")
+        info = session.info if session is not None else {
+            "filename": "未选择切片",
+            "reader": "none",
+            "mpp_x": None,
+            "mpp_y": None,
+            "objective_power": None,
+            "vendor": None,
+            "warnings": [],
+        }
         return HTMLResponse(
             template.render(
-                filename=session.info["filename"],
-                width=session.width,
-                height=session.height,
-                reader=session.info["reader"],
-                mpp_x=session.info["mpp_x"],
-                mpp_y=session.info["mpp_y"],
-                objective_power=session.info["objective_power"],
-                vendor=session.info["vendor"],
-                warnings=session.info["warnings"],
+                filename=info["filename"],
+                width=session.width if session is not None else 0,
+                height=session.height if session is not None else 0,
+                reader=info["reader"],
+                mpp_x=info["mpp_x"],
+                mpp_y=info["mpp_y"],
+                objective_power=info["objective_power"],
+                vendor=info["vendor"],
+                warnings=info["warnings"],
                 patch_count=len(patch_context.table),
                 patch_warning=patch_context.warning,
                 raster_heatmap_available=bool(raster_heatmap_payload.get("available")),
@@ -475,31 +693,127 @@ def create_app(
                 annotation_count=len(annotation_context.table),
                 annotation_warning=annotation_context.warning,
                 annotation_opacity=max(0.0, min(float(annotation_opacity), 1.0)),
-                library_mode=library_mode,
-                library_recursive=recursive,
-                library_warning=library_warning,
-                slide_count=len(entries),
+                library_mode=state.library_mode,
+                library_recursive=state.recursive,
+                library_warning=state.library_warning,
+                slide_count=len(state.entries),
                 viewer_context=viewer_context,
                 viewer_remote_user=viewer_remote_user,
                 viewer_remote_host=viewer_remote_host,
                 viewer_remote_ssh_port=viewer_remote_ssh_port,
-                viewer_source=viewer_source,
+                viewer_source=state.viewer_source,
                 viewer_config_json=viewer_config_json,
                 static_cache_key=tile_cache_key,
             ),
             headers=NO_STORE_HEADERS,
         )
 
+    @app.get("/api/files")
+    def api_files(
+        dir: str = Query(..., min_length=1),
+        show_hidden: bool = Query(False),
+        limit: int = Query(1000, ge=1, le=5000),
+    ) -> JSONResponse:
+        try:
+            entries_for_dir = _list_workspace_files(Path(dir), show_hidden=show_hidden, limit=limit)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except NotADirectoryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _json_response({"root": str(Path(dir)), "entries": entries_for_dir})
+
+    @app.post("/api/workspace/directory")
+    def api_workspace_directory(payload: dict[str, Any] = Body(...)) -> JSONResponse:
+        path_text = str(payload.get("path") or "").strip()
+        if not path_text:
+            raise HTTPException(status_code=400, detail="path is required.")
+        recursive_value = _truthy(payload.get("recursive"))
+        max_slides_value = max(1, int(payload.get("max_slides") or state.max_slides or max_slides))
+        return _json_response(reset_workspace_directory(Path(path_text), recursive_value, max_slides_value))
+
+    @app.post("/api/workspace/raster-heatmap-layers")
+    def api_workspace_raster_heatmap_layers(payload: dict[str, Any] = Body(...)) -> JSONResponse:
+        raw_layers = payload.get("layers")
+        if raw_layers is None and payload.get("path"):
+            raw_layers = [{"name": payload.get("name"), "path": payload.get("path")}]
+        if raw_layers in (None, "", []):
+            specs: list[RasterHeatmapLayerSpec] = []
+        else:
+            try:
+                specs = _normalize_raster_heatmap_specs(None, raw_layers)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            for spec in specs:
+                if not spec.path.exists():
+                    raise HTTPException(status_code=404, detail=f"Raster heatmap does not exist: {spec.path}")
+                if not spec.path.is_file():
+                    raise HTTPException(status_code=400, detail=f"Raster heatmap path is not a file: {spec.path}")
+        with lock:
+            state.raster_heatmap_specs = specs
+            raster_heatmap_cache.clear()
+            tile_cache.clear()
+        slide_id = int(payload.get("slide_id") or 0)
+        raster_payload = get_raster_heatmap_payload(slide_id) if state.entries else empty_overlay_payload("raster")
+        raster_payload["snapshot_options"] = snapshot_options_payload()
+        return _json_response(raster_payload)
+
+    @app.post("/api/workspace/patches")
+    def api_workspace_patches(payload: dict[str, Any] = Body(...)) -> JSONResponse:
+        path_text = str(payload.get("path") or payload.get("patches") or "").strip()
+        heatmap_text = str(payload.get("heatmap") or "").strip()
+        path = Path(path_text) if path_text else None
+        heatmap = Path(heatmap_text) if heatmap_text else None
+        if path is not None:
+            _validate_existing_file(path, "Patch coordinate file")
+        if heatmap is not None:
+            _validate_existing_file(heatmap, "Patch heatmap/score file")
+        if heatmap is not None and path is None:
+            raise HTTPException(status_code=400, detail="Patch heatmap requires a patch coordinate file.")
+        with lock:
+            state.patches_path = path
+            state.heatmap_path = heatmap
+            patch_cache.clear()
+            tile_cache.clear()
+        slide_id = int(payload.get("slide_id") or 0)
+        try:
+            payload_out = patch_payload(slide_id) if state.entries else empty_overlay_payload("patches")
+        except Exception as exc:
+            with lock:
+                state.patches_path = None
+                state.heatmap_path = None
+                patch_cache.clear()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        payload_out["snapshot_options"] = snapshot_options_payload()
+        return _json_response(payload_out)
+
+    @app.post("/api/workspace/annotations")
+    def api_workspace_annotations(payload: dict[str, Any] = Body(...)) -> JSONResponse:
+        path_text = str(payload.get("path") or payload.get("annotations") or "").strip()
+        path = Path(path_text) if path_text else None
+        if path is not None:
+            _validate_existing_file(path, "Annotation file")
+        with lock:
+            state.annotations_path = path
+            state.annotation_format = str(payload.get("format") or payload.get("annotation_format") or "").strip() or None
+            annotation_cache.clear()
+            tile_cache.clear()
+        slide_id = int(payload.get("slide_id") or 0)
+        try:
+            payload_out = annotation_payload(slide_id) if state.entries else empty_overlay_payload("annotations")
+        except Exception as exc:
+            with lock:
+                state.annotations_path = None
+                state.annotation_format = None
+                annotation_cache.clear()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        payload_out["snapshot_options"] = snapshot_options_payload()
+        return _json_response(payload_out)
+
     @app.get("/api/slides")
     def api_slides() -> JSONResponse:
-        return _json_response({
-            "count": len(entries),
-            "root": str(source),
-            "library_mode": library_mode,
-            "recursive": recursive,
-            "warnings": [library_warning] if library_warning else [],
-            "slides": [entry.to_dict() for entry in entries],
-        })
+        return _json_response(slides_payload())
 
     @app.get("/api/info")
     def api_info(slide_id: int = Query(0, ge=0)) -> JSONResponse:
@@ -507,48 +821,11 @@ def create_app(
 
     @app.get("/api/patches")
     def api_patches(slide_id: int = Query(0, ge=0)) -> JSONResponse:
-        context = get_patch_context(slide_id)
-        patch_table = context.table
-        returned_records = patch_table.records[:max_overlay_patches]
-        scores = [record.score for record in patch_table.records if record.score is not None]
-        warnings = list(context.summary.get("warnings", []))
-        if library_mode and patches_path:
-            warnings.append("The same patch file is applied to the selected slide in directory viewer mode.")
-        if len(patch_table) > max_overlay_patches:
-            warnings.append(
-                f"Returning first {max_overlay_patches} of {len(patch_table)} patches for viewer responsiveness."
-            )
-        return _json_response({
-            "count": len(patch_table),
-            "returned": len(returned_records),
-            "has_scores": bool(scores),
-            "score_min": min(scores) if scores else None,
-            "score_max": max(scores) if scores else None,
-            "warnings": warnings,
-            "patches": [record.to_dict() for record in returned_records],
-        })
+        return _json_response(patch_payload(slide_id))
 
     @app.get("/api/annotations")
     def api_annotations(slide_id: int = Query(0, ge=0)) -> JSONResponse:
-        context = get_annotation_context(slide_id)
-        annotation_table = context.table
-        returned_records = annotation_table.records[:max_annotations]
-        warnings = list(context.summary.get("warnings", []))
-        if library_mode and annotations_path:
-            warnings.append("The same annotation file is applied to the selected slide in directory viewer mode.")
-        if len(annotation_table) > max_annotations:
-            warnings.append(
-                f"Returning first {max_annotations} of {len(annotation_table)} annotations for viewer responsiveness."
-            )
-        return _json_response({
-            "count": len(annotation_table),
-            "returned": len(returned_records),
-            "coordinate_space": annotation_table.coordinate_space,
-            "labels": annotation_table.labels(),
-            "type_counts": context.summary.get("type_counts", {}),
-            "warnings": warnings,
-            "annotations": [record.to_dict() for record in returned_records],
-        })
+        return _json_response(annotation_payload(slide_id))
 
     @app.get("/api/raster-heatmap")
     def api_raster_heatmap(slide_id: int = Query(0, ge=0)) -> JSONResponse:
@@ -605,7 +882,7 @@ def create_app(
             labels = _split_query_labels(annotation_labels)
             if labels:
                 annotation_table = annotation_table.filter_labels(labels)
-        raster_path = first_raster_heatmap_path if include_raster_heatmap else None
+        raster_path = state.raster_heatmap_specs[0].path if include_raster_heatmap and state.raster_heatmap_specs else None
         image, _ = render_view_to_image(
             session.slide,
             patch_table=patch_table,
@@ -846,6 +1123,57 @@ def _is_layer_raster_heatmap_warning(warning: str) -> bool:
     )
 
 
+def _library_warning(entries: list[SlideEntry], library_mode: bool, max_slides: int) -> str:
+    if library_mode and len(entries) >= max_slides:
+        return f"Showing first {max_slides} viewable files. Increase --max-slides if needed."
+    return ""
+
+
+def _list_workspace_files(directory: Path, show_hidden: bool, limit: int) -> list[dict[str, Any]]:
+    if not directory.exists():
+        raise FileNotFoundError(f"Directory does not exist: {directory}")
+    if not directory.is_dir():
+        raise NotADirectoryError(f"Path is not a directory: {directory}")
+    entries: list[dict[str, Any]] = []
+    for item in sorted(directory.iterdir(), key=lambda path: (not path.is_dir(), path.name.lower())):
+        if not show_hidden and item.name.startswith("."):
+            continue
+        entries.append(_workspace_file_entry(item))
+        if len(entries) >= limit:
+            break
+    return entries
+
+
+def _workspace_file_entry(path: Path) -> dict[str, Any]:
+    kind = "directory" if path.is_dir() else "file"
+    try:
+        stat = path.stat()
+        size_bytes = stat.st_size if path.is_file() else None
+        modified = time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))
+    except OSError:
+        size_bytes = None
+        modified = ""
+    suffix = path.suffix.lower()
+    return {
+        "kind": kind,
+        "path": str(path),
+        "name": path.name or str(path),
+        "size_bytes": size_bytes,
+        "modified": modified,
+        "is_slide": kind == "file" and suffix in VIEWABLE_EXTENSIONS,
+        "is_heatmap": kind == "file" and suffix in RASTER_HEATMAP_EXTENSIONS,
+        "is_patches": kind == "file" and suffix in PATCH_DATA_EXTENSIONS,
+        "is_annotation": kind == "file" and suffix in ANNOTATION_DATA_EXTENSIONS,
+    }
+
+
+def _validate_existing_file(path: Path, label: str) -> None:
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"{label} does not exist: {path}")
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail=f"{label} is not a file: {path}")
+
+
 def _collect_slide_entries(source: Path, recursive: bool, max_slides: int) -> list[SlideEntry]:
     if source.is_file():
         return [_slide_entry(0, source, source.parent)]
@@ -855,6 +1183,8 @@ def _collect_slide_entries(source: Path, recursive: bool, max_slides: int) -> li
     pattern = "**/*" if recursive else "*"
     paths: list[Path] = []
     for item in source.glob(pattern):
+        if any(part.startswith(".") for part in item.relative_to(source).parts):
+            continue
         if item.is_file() and item.suffix.lower() in VIEWABLE_EXTENSIONS:
             paths.append(item)
             if len(paths) >= max_slides:
@@ -891,6 +1221,12 @@ def _split_query_labels(value: str | None) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _filter_patch_table_for_snapshot(table: PatchTable, score_threshold: float, top_k: int) -> PatchTable:

@@ -1,0 +1,2 @@
+"""SlideBridge browser launcher application."""
+

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+import threading
+
 from typer.testing import CliRunner
 
 from slidebridge.cli import _remote_view_cleanup_command, app
@@ -33,6 +36,8 @@ def test_remote_view_dry_run_prints_tunnel_and_remote_command():
     assert "--tile-cache-size 512" in result.stdout
     assert "--tile-cache-mb 256" in result.stdout
     assert "--tile-workers 4" in result.stdout
+    assert "--viewer-session-token <redacted>" in result.stdout
+    assert "--viewer-session-timeout 90.0" in result.stdout
 
 
 def test_remote_view_dry_run_with_tile_performance_options():
@@ -255,6 +260,8 @@ def test_remote_view_remote_port_preflight_failure_stops_before_start(monkeypatc
 
 def test_remote_view_keyboard_interrupt_cleans_remote_viewer(monkeypatch):
     calls = []
+    session_posts = []
+    heartbeat_started = []
 
     def fake_require_ssh_available() -> None:
         return None
@@ -263,9 +270,15 @@ def test_remote_view_keyboard_interrupt_cleans_remote_viewer(monkeypatch):
         calls.append(command[-1])
         if "ss -ltn" in command[-1]:
             return RemoteCommandResult(command=command, returncode=1, stdout="", stderr="")
-        if "slidebridge view" in command[-1] and "kill" in command[-1]:
-            return RemoteCommandResult(command=command, returncode=0, stdout="", stderr="")
         raise AssertionError(f"unexpected remote command: {command[-1]}")
+
+    def fake_start_heartbeat(local_url, token, idle_timeout):
+        heartbeat_started.append((local_url, token, idle_timeout))
+        return threading.Event()
+
+    def fake_post_remote_session(local_url, endpoint, token, timeout=2.0):
+        session_posts.append((local_url, endpoint, token))
+        return True
 
     class FakeProcess:
         def __init__(self, command):
@@ -291,29 +304,38 @@ def test_remote_view_keyboard_interrupt_cleans_remote_viewer(monkeypatch):
     monkeypatch.setattr("slidebridge.cli.wait_for_http", lambda url, timeout=30.0: True)
     monkeypatch.setattr("slidebridge.cli.webbrowser.open", lambda url: None)
     monkeypatch.setattr("slidebridge.cli.run_ssh_command", fake_run_ssh_command)
+    monkeypatch.setattr("slidebridge.cli._start_remote_session_heartbeat", fake_start_heartbeat)
+    monkeypatch.setattr("slidebridge.cli._post_remote_session", fake_post_remote_session)
     monkeypatch.setattr("slidebridge.cli.subprocess.Popen", FakeProcess)
 
     result = runner.invoke(app, ["remote-view", "user@example.org:/data/slides/demo.svs"])
 
     assert result.exit_code == 0
     assert "Stopping SSH tunnel" in result.stdout
-    assert "Stopping remote SlideBridge viewer on port 7860" in result.stdout
-    assert "Remote viewer stopped" in result.stdout
-    assert any("kill $pids" in command for command in calls)
+    assert "Stopping remote SlideBridge viewer on port 7860" not in result.stdout
+    assert heartbeat_started
+    assert any(endpoint == "shutdown" for _, endpoint, _ in session_posts)
+    assert not any("kill $pids" in command for command in calls)
 
 
 def test_remote_view_cleanup_success_uses_port_state_not_kill_returncode(monkeypatch):
     calls = []
+    port_checks = {"count": 0}
 
     def fake_require_ssh_available() -> None:
         return None
 
     def fake_run_ssh_command(command, timeout=None):
         calls.append(command[-1])
-        if "ss -ltn" in command[-1]:
-            return RemoteCommandResult(command=command, returncode=1, stdout="", stderr="")
-        if "slidebridge view" in command[-1] and "kill" in command[-1]:
+        if "kill $pids" in command[-1]:
             return RemoteCommandResult(command=command, returncode=255, stdout="", stderr="terminated")
+        if "ss -ltn" in command[-1]:
+            port_checks["count"] += 1
+            if port_checks["count"] == 1:
+                return RemoteCommandResult(command=command, returncode=1, stdout="", stderr="")
+            if port_checks["count"] == 2:
+                return RemoteCommandResult(command=command, returncode=0, stdout="", stderr="")
+            return RemoteCommandResult(command=command, returncode=1, stdout="", stderr="")
         raise AssertionError(f"unexpected remote command: {command[-1]}")
 
     class FakeProcess:
@@ -339,6 +361,8 @@ def test_remote_view_cleanup_success_uses_port_state_not_kill_returncode(monkeyp
     monkeypatch.setattr("slidebridge.cli.wait_for_http", lambda url, timeout=30.0: True)
     monkeypatch.setattr("slidebridge.cli.webbrowser.open", lambda url: None)
     monkeypatch.setattr("slidebridge.cli.run_ssh_command", fake_run_ssh_command)
+    monkeypatch.setattr("slidebridge.cli._start_remote_session_heartbeat", lambda local_url, token, idle_timeout: threading.Event())
+    monkeypatch.setattr("slidebridge.cli._post_remote_session", lambda local_url, endpoint, token, timeout=2.0: False)
     monkeypatch.setattr("slidebridge.cli.subprocess.Popen", FakeProcess)
 
     result = runner.invoke(app, ["remote-view", "user@example.org:/data/slides/demo.svs"])
@@ -348,6 +372,105 @@ def test_remote_view_cleanup_success_uses_port_state_not_kill_returncode(monkeyp
     assert "Remote cleanup could not confirm" not in result.stdout
 
 
+def test_remote_view_skips_cleanup_when_remote_viewer_already_stopped(monkeypatch):
+    calls = []
+
+    def fake_require_ssh_available() -> None:
+        return None
+
+    def fake_run_ssh_command(command, timeout=None):
+        calls.append(command[-1])
+        if "ss -ltn" in command[-1]:
+            return RemoteCommandResult(command=command, returncode=1, stdout="", stderr="")
+        raise AssertionError(f"unexpected remote command: {command[-1]}")
+
+    class FakeProcess:
+        def __init__(self, command):
+            self.command = command
+
+        def wait(self, timeout=None):
+            if timeout is None:
+                raise KeyboardInterrupt()
+            return 0
+
+        def terminate(self):
+            return None
+
+        def kill(self):
+            return None
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr("slidebridge.cli.require_ssh_available", fake_require_ssh_available)
+    monkeypatch.setattr("slidebridge.cli.is_local_port_available", lambda host, port: True)
+    monkeypatch.setattr("slidebridge.cli.wait_for_http", lambda url, timeout=30.0: True)
+    monkeypatch.setattr("slidebridge.cli.webbrowser.open", lambda url: None)
+    monkeypatch.setattr("slidebridge.cli.run_ssh_command", fake_run_ssh_command)
+    monkeypatch.setattr("slidebridge.cli._start_remote_session_heartbeat", lambda local_url, token, idle_timeout: threading.Event())
+    monkeypatch.setattr("slidebridge.cli._post_remote_session", lambda local_url, endpoint, token, timeout=2.0: False)
+    monkeypatch.setattr("slidebridge.cli.subprocess.Popen", FakeProcess)
+
+    result = runner.invoke(app, ["remote-view", "user@example.org:/data/slides/demo.svs"])
+
+    assert result.exit_code == 0
+    assert "Remote viewer already stopped" in result.stdout
+    assert "Remote cleanup command timed out" not in result.stdout
+    assert not any("kill $pids" in command for command in calls)
+
+
+def test_remote_view_cleanup_timeout_does_not_fail_shutdown(monkeypatch):
+    port_checks = {"count": 0}
+
+    def fake_require_ssh_available() -> None:
+        return None
+
+    def fake_run_ssh_command(command, timeout=None):
+        if "kill $pids" in command[-1]:
+            raise subprocess.TimeoutExpired(command, timeout or 5)
+        if "ss -ltn" in command[-1]:
+            port_checks["count"] += 1
+            if port_checks["count"] == 1:
+                return RemoteCommandResult(command=command, returncode=1, stdout="", stderr="")
+            if port_checks["count"] == 2:
+                return RemoteCommandResult(command=command, returncode=0, stdout="", stderr="")
+            return RemoteCommandResult(command=command, returncode=1, stdout="", stderr="")
+        raise AssertionError(f"unexpected remote command: {command[-1]}")
+
+    class FakeProcess:
+        def __init__(self, command):
+            self.command = command
+
+        def wait(self, timeout=None):
+            if timeout is None:
+                raise KeyboardInterrupt()
+            return 0
+
+        def terminate(self):
+            return None
+
+        def kill(self):
+            return None
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr("slidebridge.cli.require_ssh_available", fake_require_ssh_available)
+    monkeypatch.setattr("slidebridge.cli.is_local_port_available", lambda host, port: True)
+    monkeypatch.setattr("slidebridge.cli.wait_for_http", lambda url, timeout=30.0: True)
+    monkeypatch.setattr("slidebridge.cli.webbrowser.open", lambda url: None)
+    monkeypatch.setattr("slidebridge.cli.run_ssh_command", fake_run_ssh_command)
+    monkeypatch.setattr("slidebridge.cli._start_remote_session_heartbeat", lambda local_url, token, idle_timeout: threading.Event())
+    monkeypatch.setattr("slidebridge.cli._post_remote_session", lambda local_url, endpoint, token, timeout=2.0: False)
+    monkeypatch.setattr("slidebridge.cli.subprocess.Popen", FakeProcess)
+
+    result = runner.invoke(app, ["remote-view", "user@example.org:/data/slides/demo.svs"])
+
+    assert result.exit_code == 0
+    assert "Remote cleanup command timed out" in result.stdout
+    assert "Command '[" not in result.stdout
+
+
 def test_remote_view_cleanup_command_prefers_port_pid_and_excludes_self():
     command = _remote_view_cleanup_command(7860)
 
@@ -355,5 +478,8 @@ def test_remote_view_cleanup_command_prefers_port_pid_and_excludes_self():
     assert "pid=" in command
     assert "self=$$" in command
     assert "$1 != self" in command
-    assert "conda run" in command
+    assert "app \" \" action" in command
+    assert "conda \" \" run" in command
+    assert "slidebridge view" not in command
+    assert "conda run" not in command
     assert "kill $pids" in command

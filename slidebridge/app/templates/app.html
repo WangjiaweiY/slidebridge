@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SlideBridge 启动器</title>
+  <link rel="stylesheet" href="/static/app.css?v=$static_cache_key">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <header class="brand">
+        <div class="brand-name">SLIDEBRIDGE</div>
+        <h1 data-i18n="appTitle">Viewer 启动器</h1>
+        <p data-i18n="appSubtitle">先连接远端 SSH 和 Python 环境，再进入 viewer 浏览目录、选择切片、加载热图和标注。</p>
+      </header>
+
+      <section class="panel">
+        <div class="section-title" data-i18n="sshConnection">SSH 连接</div>
+        <label><span data-i18n="profile">连接配置</span>
+          <select id="profile-select">
+            <option value="" data-i18n="manual">手动填写</option>
+          </select>
+        </label>
+        <div class="field-grid">
+          <label><span data-i18n="host">主机</span><input id="remote-host" autocomplete="off" placeholder="server.example.org"></label>
+          <label><span data-i18n="user">用户</span><input id="remote-user" autocomplete="off" placeholder="user"></label>
+          <label><span data-i18n="sshPort">SSH 端口</span><input id="ssh-port" type="number" min="1" max="65535" placeholder="22"></label>
+          <label><span data-i18n="identityFile">SSH key 文件</span><input id="identity-file" data-i18n-placeholder="optional" placeholder="可选"></label>
+        </div>
+        <label><span data-i18n="sshOptions">SSH 额外参数</span><textarea id="ssh-options" rows="2" placeholder="-J bastion"></textarea></label>
+        <div class="action-row">
+          <button id="test-connection" type="button" data-i18n="testConnection">测试 SSH</button>
+        </div>
+        <p class="hint" data-i18n="sshHint">支持 SSH key、ssh-agent、ssh config alias。若服务器需要密码，密码提示会出现在启动本应用的终端里。</p>
+      </section>
+
+      <section class="panel">
+        <div class="section-title" data-i18n="runtimeSection">远端环境</div>
+        <label><span data-i18n="remoteRuntime">运行方式</span>
+          <select id="remote-runtime">
+            <option value="path" data-i18n="runtimePath">默认 slidebridge</option>
+            <option value="conda" data-i18n="runtimeConda">Conda 环境路径</option>
+            <option value="custom" data-i18n="runtimeCustom">自定义命令</option>
+          </select>
+        </label>
+        <label data-runtime-field="conda"><span data-i18n="condaEnvPath">Conda 环境路径</span>
+          <span class="input-action">
+            <input id="conda-env-path" data-i18n-placeholder="condaEnvPathPlaceholder" placeholder="/home/user/miniconda3/envs/slidebridge">
+            <button id="browse-conda-env-path" type="button" data-i18n="browseRemoteDirectory">浏览</button>
+          </span>
+        </label>
+        <label data-runtime-field="custom"><span data-i18n="customRunner">自定义命令</span><input id="remote-runner" value="slidebridge"></label>
+        <label><span data-i18n="remoteWorkdir">远端工作目录</span><input id="remote-workdir" data-i18n-placeholder="optional" placeholder="可选"></label>
+        <p class="hint" data-i18n="remoteWorkdirHint">可选。仅在远端命令需要先 cd 到某个目录时填写；通常留空。</p>
+        <div class="field-grid">
+          <label><span data-i18n="localPort">本地端口</span><input id="local-port" type="number" min="1" max="65535" value="7860"></label>
+          <label><span data-i18n="remotePort">远端端口</span><input id="remote-port" type="number" min="1" max="65535" value="7860"></label>
+        </div>
+        <div class="action-row">
+          <button id="test-runtime" type="button" data-i18n="testRuntime">测试远端环境</button>
+          <button id="build-command" type="button" data-i18n="buildCommand">生成命令</button>
+        </div>
+        <p class="hint" data-i18n="runtimeHint">Conda 环境路径会自动转换为该环境里的 python 命令，不依赖远端 PATH 中存在 conda。</p>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <nav class="topbar">
+        <div>
+          <strong>SlideBridge Core <span id="app-version"></span></strong>
+          <span id="status" class="status"></span>
+        </div>
+        <div class="topbar-actions">
+          <label class="language-control"><span data-i18n="language">语言</span>
+            <select id="language-select">
+              <option value="zh-CN">中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <button id="launch-viewer" type="button" class="primary" data-i18n="launchViewer">启动 viewer</button>
+        </div>
+      </nav>
+
+      <section class="details-grid">
+        <div class="panel">
+          <div class="section-title" data-i18n="launchSummary">启动摘要</div>
+          <dl class="summary">
+            <dt data-i18n="sshTarget">SSH</dt><dd id="summary-target">未填写</dd>
+            <dt data-i18n="remoteHome">远端 home</dt><dd id="summary-home">未测试</dd>
+            <dt data-i18n="runtime">环境</dt><dd id="summary-runtime">slidebridge</dd>
+            <dt data-i18n="viewerUrl">Viewer 地址</dt><dd id="summary-url">http://127.0.0.1:7860</dd>
+          </dl>
+        </div>
+        <div class="panel">
+          <div class="section-title" data-i18n="equivalentCommand">等价命令</div>
+          <textarea id="command-output" readonly rows="8"></textarea>
+          <div class="action-row">
+            <button id="copy-command" type="button" data-i18n="copyCommand">复制命令</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="remote-browser-modal" class="modal-backdrop" hidden>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="remote-browser-title">
+      <div class="modal-header">
+        <h2 id="remote-browser-title" data-i18n="remoteDirectoryBrowser">远端目录选择</h2>
+        <button id="remote-browser-close" class="icon-button" type="button" aria-label="Close">x</button>
+      </div>
+      <div class="modal-body">
+        <label><span data-i18n="browserCurrentDirectory">当前目录</span>
+          <span class="input-action">
+            <input id="remote-browser-path" type="text" value="~">
+            <button id="remote-browser-open-path" type="button" data-i18n="openDirectory">打开</button>
+          </span>
+        </label>
+        <div class="action-row">
+          <button id="remote-browser-parent" type="button" data-i18n="parentDirectory">上级目录</button>
+          <button id="remote-browser-refresh" type="button" data-i18n="refreshDirectory">刷新</button>
+          <button id="remote-browser-select-current" type="button" class="primary" data-i18n="chooseCurrentDirectory">选择当前目录</button>
+        </div>
+        <p class="hint" data-i18n="remoteBrowserHint">只显示远端文件夹。选择 Conda 环境目录，例如 /home/user/miniconda3/envs/slidebridge。</p>
+        <div id="remote-browser-status" class="status browser-status"></div>
+        <div id="remote-browser-list" class="directory-list"></div>
+      </div>
+    </div>
+  </div>
+  <script id="slidebridge-app-config" type="application/json">$app_config_json</script>
+  <script src="/static/app.js?v=$static_cache_key"></script>
+</body>
+</html>

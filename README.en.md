@@ -6,103 +6,35 @@
 
 [中文 README](README.md)
 
-SlideBridge Core is a WSI inspection, model-output debugging, and publication-figure toolkit for computational pathology and pathology AI.
+SlideBridge Core is a WSI inspection, model-output debugging, and publication-figure design toolkit for computational pathology and pathology AI. Its main entry point is a browser workflow for remote slide viewing, heatmap/annotation/patch debugging, and reproducible figure export.
 
-Debug whole-slide images like a developer.
+Current version: `0.3.0`
 
-![SlideBridge remote WSI heatmap viewer](docs/assets/readme_remote_heatmap_viewer.png)
+![SlideBridge remote WSI heatmap viewer](docs/assets/readme_figure_heatmap.png)
 
-> View remote WSI data in a local browser with model heatmaps, patches, and annotations overlaid.
+> Coordinates are level-0 pixel coordinates. SlideBridge is for research and algorithm debugging only; it is not for clinical diagnosis.
 
-## What is SlideBridge Core?
+## Highlights
 
-SlideBridge Core helps computational pathology researchers and AI engineers inspect WSI metadata, browse remote slides, debug heatmaps/patches/annotations, and export reproducible paper or presentation figures. It is built for research and algorithm debugging, not clinical diagnosis.
+- **Remote slides, local browser.** Open WSI files stored on a server through SSH, without downloading huge slides to your workstation.
+- **Browse a cohort by folder.** Open a remote directory in the viewer and choose slides from the folder, which fits daily pathology AI dataset and model-output review.
+- **Inspect heatmaps on top of the slide.** Overlay model heatmaps with the original WSI to check attention, risk regions, segmentation outputs, or other model responses.
+- **See annotations and patches in context.** Overlay patches, scores, and manual or algorithmic annotations to catch coordinate shifts, scale mistakes, and sampling problems.
+- **Design paper figures in the browser.** Arrange a main slide view and patch panels, then export a high-resolution PNG rendered from level-0 coordinates instead of a browser screenshot.
 
-Current version: `0.2.21`
+## Install
 
-## Core Highlights
+SlideBridge needs a **local installation** to start the Web App and create the SSH tunnel. To view WSI files stored on a server, the remote server also needs a Python environment that can run SlideBridge and read the slides.
 
-### 1. View Remote WSI Locally
+### Local Install
 
-`remote-view` runs the tile server on the remote machine and opens a local browser through an SSH tunnel. The slide stays on the server, which is useful for large cohorts and workstation/server workflows. It uses your local `ssh` client: SSH keys are recommended, but password authentication also works if the server allows it; enter the password in the terminal when SSH prompts for it.
-
-![SlideBridge remote viewer info panel](docs/assets/readme_remote_info_panel.png)
-
-```cmd
-slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
-```
-
-A remote directory can also be opened as a browser-selectable slide library:
-
-```cmd
-slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
-```
-
-### 2. Debug Heatmaps and Attention
-
-SlideBridge supports patch-level score/attention overlays and full-slide PNG/JPG raster heatmaps. The viewer can compare multiple heatmap layers, adjust opacity, threshold overlays, and keep everything aligned to level-0 WSI coordinates.
-
-```cmd
-slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --open-browser
-```
-
-```cmd
-slidebridge view outputs\demo_slide.png --raster-heatmap-layer low=outputs\heatmap_low.png --raster-heatmap-layer high=outputs\heatmap_high.png --open-browser
-```
-
-### 3. Debug Patches and Annotations
-
-The viewer overlays patch coordinates, score thresholding, top-k patches, and annotation labels. Public annotation inputs include QuPath GeoJSON, ASAP XML, and SlideBridge JSON.
-
-```cmd
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --open-browser
-```
-
-### 4. Design Publication Figures
-
-The Figure Designer lets users arrange a main panel and patch panels in the browser. Exported PNGs are rendered again by the backend from level-0 coordinates; they are not browser screenshots.
-
-![SlideBridge figure designer](docs/assets/readme_figure_designer.png)
-
-## Important Notice
-
-- Research and algorithm development only.
-- Not for clinical diagnosis.
-- This project does not include proprietary vendor SDKs.
-- This project does not include proprietary vendor format implementations.
-- Vendor-specific readers should be integrated only through separately licensed
-  private plugins.
-- This project is not affiliated with, endorsed by, or certified by any scanner
-  vendor.
-
-## Installation and Command Invocation
-
-### From GitHub
+Install from GitHub into the current Python/Conda environment:
 
 ```powershell
 pip install git+https://github.com/WangjiaweiY/slidebridge.git
 ```
 
-Check that the console command is available:
-
-```cmd
-slidebridge version
-```
-
-If your terminal cannot find `slidebridge`, use the Python module form instead. Every `slidebridge ...` command in this README can be rewritten this way:
-
-```cmd
-python -m slidebridge.cli version
-python -m slidebridge.cli view outputs\demo_slide.png --open-browser
-```
-
-On Windows / Anaconda, you can also call the environment Python directly:
-
-```cmd
-D:\Anaconda3\envs\slidebridge\python.exe -m slidebridge.cli version
-```
-
-### Development Install
+Development install:
 
 ```powershell
 git clone https://github.com/WangjiaweiY/slidebridge.git
@@ -110,458 +42,126 @@ cd slidebridge
 pip install -e .[dev]
 ```
 
-## Windows Notes
+Check the installed version. If the terminal can find `slidebridge`:
 
-Create and activate an environment:
+```cmd
+slidebridge version
+```
+
+If your terminal cannot find `slidebridge`, use the Python module form:
+
+```cmd
+python -m slidebridge.cli version
+```
+
+Windows / Anaconda users can also call the environment executable directly. Replace the path below with your own Conda environment path:
 
 ```powershell
+C:\path\to\conda\envs\slidebridge\Scripts\slidebridge.exe version
+```
+
+### Remote Environment
+
+For remote WSI viewing, install SlideBridge on the server too. A common setup is a Conda environment:
+
+```bash
 conda create -n slidebridge python=3.11 -y
 conda activate slidebridge
+pip install git+https://github.com/WangjiaweiY/slidebridge.git
 ```
 
-If you are setting up a fresh Windows environment, install dependencies first:
+If the remote shell cannot find `conda`, that is fine. In the Web App launcher, enter the remote environment path, for example:
 
-```powershell
-pip install tiffslide openslide-python openslide-bin pillow numpy pandas fastapi uvicorn typer rich jinja2 pytest h5py
-pip install -e .
+```text
+/home/user/miniconda3/envs/slidebridge
 ```
 
-Windows note: `openslide-bin` can provide the OpenSlide DLLs needed by
-`openslide-python`. If OpenSlide is unavailable, SlideBridge can still run
-supported workflows through TiffSlide or the image reader where applicable.
+SlideBridge will use:
 
-### Windows Shell Notes
-
-PowerShell uses the backtick `` ` `` for multi-line commands:
-
-```powershell
-slidebridge view outputs\demo_slide.png `
-  --raster-heatmap outputs\demo_heatmap.png `
-  --open-browser
+```text
+/home/user/miniconda3/envs/slidebridge/bin/python -m slidebridge.cli
 ```
 
-Anaconda Prompt / cmd cannot use the PowerShell backtick continuation. Prefer a single-line command there:
+## Start The Web App
+
+The recommended v0.3.0 entry point is the Web App:
 
 ```cmd
-slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --open-browser
+slidebridge app
 ```
 
-If the `slidebridge` command is unavailable, replace the prefix with `python -m slidebridge.cli`:
+If the `slidebridge` command is unavailable:
 
 ```cmd
-python -m slidebridge.cli view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --open-browser
+python -m slidebridge.cli app
 ```
 
-## Quick Start
-
-Local synthetic demo:
+Windows / Anaconda users can call the environment executable directly:
 
 ```powershell
-slidebridge create-demo --out outputs\demo_slide.png
-slidebridge create-demo-heatmap --out outputs\demo_heatmap.png --slide outputs\demo_slide.png
-slidebridge create-demo-annotations --out outputs\demo_annotations.geojson
-slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --annotations outputs\demo_annotations.geojson --open-browser
+C:\path\to\conda\envs\slidebridge\Scripts\slidebridge.exe app
 ```
 
-Remote WSI viewer:
+The launcher configures SSH and the remote Python/Conda runtime. It only handles the remote connection and viewer startup; slide directories, heatmaps, patches, and annotations are selected inside the viewer.
 
-```cmd
-slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
-```
+## Browser Workflow
 
-## Remote WSI Viewing over SSH
+1. Fill in SSH host, user, and port in the launcher, then test the connection.
+2. Select the remote runtime. For Conda, enter the environment path, for example `/home/user/miniconda3/envs/slidebridge`; SlideBridge must already be installed in that remote environment.
+3. Click the launch button. The launcher waits for the remote viewer API and then opens the viewer.
+4. In the viewer Files/Data tab, open a remote directory or type a target directory path.
+5. Select a slide, then add heatmaps, patch coordinates, or annotation files for that slide.
+6. Use the Figure tab to arrange a paper/presentation figure and export PNG.
 
-This is the primary SlideBridge workflow: slides remain on the remote server,
-SlideBridge reads WSI data remotely, and your local browser connects through an
-SSH tunnel. `remote-view` uses your local `ssh` client, so SSH keys, password
-login, non-22 ports, and `~/.ssh/config` aliases all follow your own SSH setup.
+SSH keys, `ssh-agent`, `~/.ssh/config` aliases, and password login are handled by your local `ssh` client. If the server requires a password, the prompt appears in the terminal that started `slidebridge app`.
 
-SSH-key and password login use the same command; if the server requires a
-password, SSH will prompt for it in the terminal:
+![SlideBridge launcher](docs/assets/readme_figure_begin.png)
 
-```cmd
-slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
-```
+After the viewer starts, open a remote directory from the browser. The directory browser supports direct path input, parent-folder navigation, refresh, file filtering, and optional hidden-file display.
 
-Non-22 port:
+![SlideBridge remote directory browser](docs/assets/readme_figure_selectslide.png)
 
-```cmd
-slidebridge remote-view user@server:/data/slides/case.svs --ssh-port 20022 --remote-runner "conda run -n slidebridge slidebridge"
-```
+Once a slide is selected, the viewer displays the WSI stored on the server. The slide remains remote; the local browser accesses the viewer through the SSH tunnel.
 
-You can also pass a remote directory and choose slides in the browser:
+![SlideBridge remote slide viewer](docs/assets/readme_figure_viewslide.png)
 
-```cmd
-slidebridge remote-view user@server:/data/slides --recursive --max-slides 500 --remote-runner "conda run -n slidebridge slidebridge"
-```
+## Heatmaps, Annotations, And Patches
 
-With remote patch coordinates and annotations:
+The viewer supports multiple model heatmaps on the same slide. Each heatmap can be shown, hidden, opacity-adjusted, or removed. Patch locations and annotations help check whether model outputs, sampling coordinates, and manual or algorithmic annotations are aligned to the WSI.
 
-```powershell
-slidebridge remote-view user@server:/data/slides/case.svs `
-  --patches /data/features/case_coords.h5 `
-  --annotations /data/annotations/case.geojson `
-  --remote-runner "conda run -n slidebridge slidebridge"
-```
+![SlideBridge heatmap overlay](docs/assets/readme_figure_heatmap.png)
 
-Use `slidebridge remote-view --dry-run` to inspect the SSH tunnel and remote
-command before connecting. See [Remote WSI Viewing](docs/REMOTE_VIEWING.md).
+Public annotation inputs include QuPath GeoJSON, ASAP XML, and SlideBridge JSON. See:
 
-For repeated use, save a local remote profile once and reuse shorter commands:
+- [Annotation formats](docs/ANNOTATION_FORMATS.md)
+- [Coordinates](docs/COORDINATES.md)
+- [Heatmaps](docs/HEATMAPS.md)
 
-```powershell
-slidebridge remote-profile add lab `
-  --host server.example.org `
-  --user user `
-  --ssh-port 22 `
-  --remote-runner "conda run -n slidebridge slidebridge" `
-  --root /data/slides
+## Figure Designer
 
-slidebridge remote-view lab:case.svs
-slidebridge remote-view lab:cohort-a/ --recursive
-slidebridge remote-ls lab:
-```
+The Figure Designer lets users arrange a main panel and patch panels in the browser. Exported PNGs are not browser screenshots; the backend re-reads the slide and renders the figure from the level-0 coordinates stored in the figure spec.
 
-## Model Output Debugging
+![SlideBridge exported figure](docs/assets/readme_figure_example.png)
 
-Generate coordinates in an interoperable H5 format and inspect model/debug scores in the viewer:
+During design, set the current view as the main panel, then drag and resize A/main and B-G patch panels in the left preview canvas. The preview shows layout state only; the final export is rendered by the backend.
 
-```powershell
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.h5 --format h5 --count 200
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.h5 --port 7860 --open-browser
-```
+![SlideBridge figure layout designer](docs/assets/readme_figure_designer_1.png)
 
-## Attention / Score Heatmap
+Then select the slide region for each patch slot, choose raw or heatmap-overlaid display, and copy the JSON spec or export PNG.
 
-If the coordinate file contains `score` or `attention`, SlideBridge can render a model/debug score overlay:
+![SlideBridge figure patch selection](docs/assets/readme_figure_designer_2.png)
 
-```powershell
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
-slidebridge render-overlay outputs\demo_slide.png --patches outputs\demo_coords.csv --out outputs\demo_overlay.png
-slidebridge view outputs\demo_slide.png --patches outputs\demo_coords.csv --port 7860 --open-browser
-```
+See [Figure Designer docs](docs/FIGURES.md) for details.
 
-If scores are stored separately:
+## Command Line Usage
 
-```powershell
-slidebridge view C:\path\to\your\slide.svs --patches outputs\coords.h5 --heatmap outputs\attention.npy
-```
+This README focuses on the recommended web workflow. For `remote-view`, `view`, `render-view`, `render-figure`, `export-patches`, and annotation/patch/heatmap debugging commands, see the [CLI reference](docs/CLI.md).
 
-## Full-Slide Heatmap PNG/JPG
+## Important Notice
 
-If a model exports a whole-image PNG/JPG heatmap, use it as a full-slide overlay:
-
-```powershell
-slidebridge create-demo-heatmap --out outputs\demo_heatmap.png
-slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --port 7860 --open-browser
-slidebridge inspect-heatmap outputs\demo_heatmap.png --slide outputs\demo_slide.png
-```
-
-`--heatmap` also auto-detects image heatmaps:
-
-```powershell
-slidebridge render-overlay outputs\demo_slide.png --heatmap outputs\demo_heatmap.png --out outputs\demo_raster_heatmap.png
-```
-
-Raster heatmaps currently cover the full slide extent and are stretched to the
-level-0 coordinate space. They are model/debug visualizations, not diagnostic
-outputs.
-
-Multiple full-slide heatmaps can be loaded as independent layers:
-
-```powershell
-slidebridge view outputs\demo_slide.png `
-  --raster-heatmap-layer low=outputs\heatmap_low.png `
-  --raster-heatmap-layer high=outputs\heatmap_high.png `
-  --port 7860 --open-browser
-```
-
-Useful tuning options:
-
-```powershell
-slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --raster-heatmap-threshold 0.4 --raster-heatmap-colormap score
-slidebridge render-overlay outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.png --raster-heatmap-invert --out outputs\demo_raster_heatmap.png
-```
-
-## Static View Snapshots
-
-Use `render-view` to export a reproducible viewport snapshot without opening a
-browser:
-
-```powershell
-slidebridge render-view outputs\demo_slide.png `
-  --patches outputs\demo_coords.csv `
-  --annotations outputs\demo_annotations.geojson `
-  --raster-heatmap outputs\demo_heatmap.png `
-  --center-x 2048 --center-y 1536 `
-  --window-width 1200 --window-height 900 `
-  --out outputs\demo_view.png
-```
-
-The viewer information panel can also copy a `render-view` command for the
-current viewport or download the current viewport as a PNG.
-It can also copy a viewer URL that restores the selected slide, viewport, panel,
-overlay toggles, and overlay filters after refresh.
-
-## Publication Figure Export
-
-Use `render-figure` to export a main WSI viewport with optional inset patch,
-inset heatmap, title, panel label, and micron scale bar:
-
-```powershell
-slidebridge render-figure outputs\demo_slide.png `
-  --raster-heatmap outputs\demo_heatmap.png `
-  --center-x 2048 --center-y 1536 `
-  --window-width 1600 --window-height 1200 `
-  --inset-x 1800 --inset-y 1300 `
-  --inset-width 512 --inset-height 512 `
-  --title "Model output overview" `
-  --panel-label A `
-  --scalebar-um 500 `
-  --mpp 0.25 `
-  --out outputs\demo_figure.png
-```
-
-See [Figure Rendering](docs/FIGURES.md).
-
-## Annotation Debugging
-
-Use synthetic annotations to test the annotation workflow without patient data:
-
-```powershell
-slidebridge create-demo --out outputs\demo_slide.png
-slidebridge create-demo-annotations --out outputs\demo_annotations.geojson
-slidebridge inspect-annotations outputs\demo_annotations.geojson --slide outputs\demo_slide.png
-slidebridge render-overlay outputs\demo_slide.png --annotations outputs\demo_annotations.geojson --out outputs\demo_annotation_overlay.png
-slidebridge view outputs\demo_slide.png --annotations outputs\demo_annotations.geojson --port 7860 --open-browser
-```
-
-SlideBridge Core can load QuPath GeoJSON, ASAP XML, and SlideBridge JSON
-annotations. Annotation coordinates use level-0 image pixels.
-
-## Label Patches from Annotations
-
-Annotation-based patch labeling is a debugging and weak-labeling helper. It is
-not a clinical or gold-standard labeling workflow.
-
-```powershell
-slidebridge sample-patches outputs\demo_slide.png --out outputs\demo_coords.csv --count 200 --with-scores
-slidebridge label-patches outputs\demo_coords.csv --annotations outputs\demo_annotations.geojson --out outputs\demo_coords_labeled.csv
-```
-
-## Viewer Performance Options
-
-The viewer enables an in-process tile cache by default and limits concurrent
-tile generation to reduce server pressure during repeated zooming and panning:
-
-```powershell
-slidebridge view outputs\demo_slide.png --tile-cache-size 512 --tile-cache-mb 256 --tile-workers 4
-slidebridge remote-view user@server:/data/slides/case.svs --tile-cache-size 512 --tile-cache-mb 256 --tile-workers 4
-```
-
-Use `--tile-cache-size 0` to disable the server-side tile cache. The viewer info
-panel shows cache entries, memory use, hits, misses, evictions, generated tiles,
-cache-served tiles, and average/p95 tile generation time.
-
-## Export Patches
-
-```powershell
-slidebridge export-patches C:\path\to\your\slide.svs --patches outputs\coords.csv --out outputs\patches --limit 50
-```
-
-## Use Your Own WSI
-
-```bat
-set SLIDE=C:\path\to\your\slide.svs
-
-slidebridge inspect "%SLIDE%"
-slidebridge thumbnail "%SLIDE%" --out outputs\thumbnail.jpg --max-size 2048
-slidebridge doctor "%SLIDE%" --out outputs\qc_report.html
-slidebridge sample-patches "%SLIDE%" --out outputs\coords.csv --patch-size 512 --count 100
-slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-browser
-```
-
-## CLI Commands
-
-- `slidebridge inspect PATH`: inspect reader, dimensions, levels, MPP, objective, vendor, metadata, and warnings.
-- `slidebridge thumbnail PATH --out OUTPUT`: export an RGB thumbnail.
-- `slidebridge doctor PATH_OR_DIR --out REPORT.html --json-out REPORT.json`: generate HTML and optional JSON QC reports.
-- `slidebridge sample-patches PATH --out COORDS.csv`: create random patch coordinates for overlay testing.
-- `slidebridge inspect-patches PATCHES --slide PATH`: inspect coordinate files and optional slide bounds.
-- `slidebridge export-patches PATH --patches PATCHES --out DIR`: export patch images and a manifest.
-- `slidebridge render-overlay PATH --patches PATCHES --annotations ANNOTATIONS --out OUTPUT`: render a static overlay image.
-- `slidebridge render-figure PATH --out OUTPUT`: export a static figure with a main view, optional inset, heatmap, title, and scale bar.
-- `slidebridge create-demo --out outputs\demo_slide.png`: create a synthetic H&E-like demo image.
-- `slidebridge create-demo-heatmap --out outputs\demo_heatmap.png`: create a synthetic raster heatmap.
-- `slidebridge create-demo-annotations --out outputs\demo_annotations.geojson`: create synthetic demo annotations.
-- `slidebridge inspect-annotations ANNOTATIONS --slide PATH`: inspect annotation files and optional slide bounds.
-- `slidebridge convert-annotations INPUT --out OUTPUT`: convert public annotation formats.
-- `slidebridge label-patches PATCHES --annotations ANNOTATIONS --out OUTPUT`: assign annotation-derived patch labels.
-- `slidebridge remote-check REMOTE`: check remote SSH and SlideBridge availability.
-- `slidebridge remote-ls REMOTE_DIR`: list likely slide files on a remote server.
-- `slidebridge remote-inspect REMOTE_SLIDE`: inspect a remote slide over SSH.
-- `slidebridge remote-view REMOTE_SLIDE_OR_DIR`: view a remote slide or slide directory through an SSH localhost tunnel.
-- `slidebridge remote-profile add/list/show/remove`: manage reusable local SSH viewer profiles.
-- `slidebridge view PATH --patches COORDS.csv --heatmap SCORES.npy`: start the
-  local pan/zoom viewer with optional model/debug score and annotation overlays.
-- `slidebridge readers`: list registered readers and dependency availability.
-- `slidebridge env`: show Python, package, and reader dependency diagnostics.
-- `slidebridge version`: show version and runtime information.
-- `slidebridge --version`: print the package version.
-
-## Engineering Notes
-
-Known issues, fixes, and planned improvements are tracked in
-[Issues and Improvements](docs/ISSUES_AND_IMPROVEMENTS.md).
-
-## Coordinate Convention
-
-- `x` and `y` are level-0 pixel coordinates.
-- Patch `width` and `height` are in level-0 pixels unless otherwise stated.
-- `Slide.read_region(x, y, width, height, level=0)` uses level-0 `x/y` coordinates.
-- Viewer overlays are aligned to level-0 coordinate space.
-- Annotation overlays are also aligned to level-0 coordinate space.
-
-Patch CSV example:
-
-```csv
-x,y,width,height,score
-10000,20000,512,512,0.82
-```
-
-## Plugin Architecture
-
-The public core defines the reader interface and registry. Private readers
-should live in separate private packages and register a reader object with
-`slidebridge.core.registry.register_reader`.
-
-Minimal fake reader sketch:
-
-```python
-from slidebridge.core.registry import register_reader
-
-
-class FakeReader:
-    name = "fake"
-    priority = 1
-
-    def can_open(self, path):
-        return False
-
-    def open(self, path):
-        raise RuntimeError("FakeReader is only an example.")
-
-
-register_reader(FakeReader())
-```
-
-No proprietary reader is included in SlideBridge Core.
-
-## Roadmap
-
-v0.2.0:
-
-- interoperable patch coordinate loading
-- model/debug score heatmap overlay
-- patch image export
-- patch coordinate inspection
-
-v0.2.1:
-
-- annotation overlay
-- QuPath GeoJSON overlay
-- ASAP XML overlay
-- annotation conversion
-- patch labeling from annotations
-
-v0.2.2:
-
-- remote WSI viewing over SSH tunnel
-- remote-check, remote-ls, remote-inspect, and remote-view
-- dry-run remote command diagnostics
-- local and remote directory viewer mode
-
-v0.2.3:
-
-- PNG/JPG full-slide raster heatmap overlay
-- `--raster-heatmap` support for `view`, `remote-view`, and `render-overlay`
-- viewer tile/API cache hardening
-
-v0.2.4:
-
-- in-memory LRU tile cache
-- tile generation concurrency limit
-- viewer cache stats diagnostics
-
-v0.2.5:
-
-- byte-aware tile cache limit with `--tile-cache-mb`
-- tile performance metrics through `/api/performance`
-- viewer timing diagnostics for read/resize/JPEG/total tile generation
-
-v0.2.6:
-
-- reusable remote profiles for SSH viewer settings
-- profile-relative remote paths for shorter commands
-
-v0.2.7:
-
-- canvas overlay rendering
-- viewport culling for large patch and annotation overlays
-- overlay draw count and canvas tooltip
-
-v0.2.8:
-
-- heatmap inspection command
-- raster heatmap threshold / invert / colormap controls
-- slide-aspect synthetic heatmap generation
-
-v0.2.9:
-
-- viewer-side score threshold and top-k patch filters
-- annotation label filters
-- click-to-inspect overlay details and zoom-to-item
-
-v0.2.10:
-
-- static viewport snapshots with `render-view`
-- viewport-level patch / heatmap / annotation overlay export
-
-v0.2.11:
-
-- copy current viewer viewport as a reproducible `render-view` command
-- download current viewer viewport as a PNG
-
-v0.2.12:
-
-- shareable viewer URLs for selected slide, viewport, panel, and overlay filters
-- refresh-safe viewer state restoration
-
-v0.2.13:
-
-- restrained glassmorphism viewer styling
-- Playwright viewer visual and interaction regression tests
-
-v0.2.21:
-
-- viewer Figure Designer custom layout editing with draggable/resizable panels
-- add/delete up to 12 patch panels and export custom `2400x1800` PNG figures through `/api/render-figure`
-- legacy bottom `2x3` figure specs remain supported
-
-v0.2.20:
-
-- viewer Figure tab for main heatmap plus bottom `2x3` patch figure design
-- copy JSON specs and export fixed `2400x1800` PNG figures through `/api/render-figure`
-
-v0.2.19:
-
-- publication-style `render-figure` export
-- main viewport plus optional inset patch, inset heatmap, title, and scale bar
-
-v0.3:
-
-- plugin template
-
-## License
-
-Apache-2.0
+- Research and algorithm development only.
+- Not for clinical diagnosis.
+- This project does not include proprietary vendor SDKs.
+- This project does not implement proprietary vendor readers.
+- Vendor-specific readers should be integrated only through separately licensed private plugins.
+- This project is not affiliated with, endorsed by, or certified by any scanner vendor.

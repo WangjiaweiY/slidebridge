@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import re
 from io import BytesIO
+from threading import Event
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
 import slidebridge.render.view as render_view_module
 import slidebridge.server.app as server_app_module
+from slidebridge.annotations.demo import create_demo_annotations
 from slidebridge.server.app import create_app
 from slidebridge.utils.demo import create_demo_slide
 
@@ -76,6 +78,9 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert f"/static/viewer.js?v={cache_key}" in page.text
     assert f"/static/viewer_figure.js?v={cache_key}" in page.text
     assert "figure-tab" in page.text
+    assert "workspace-settings-modal" in page.text
+    assert "workspace-settings-open" in page.text
+    assert "workspaceBrowserTitle" in page.text
     viewer_js, viewer_css, viewer_figure_js = _viewer_static_text(client)
     viewer_assets = viewer_js + viewer_css + viewer_figure_js
     assert 'fetch(apiUrl("patches"), {cache: "no-store"})' in viewer_js
@@ -118,6 +123,10 @@ def test_server_info_patches_dzi_and_tile(tmp_path):
     assert "buildSnapshotDownloadUrl" in viewer_js
     assert "SlideBridgeViewer" in viewer_js
     assert "selectSquareRegion" in viewer_js
+    assert "openWorkspaceSettings" in viewer_js
+    assert "workspaceBrowserTitle" in viewer_js
+    assert "workspace-toolbar" in viewer_css
+    assert "modal-backdrop" in viewer_css
     assert 'fetch("/api/render-figure"' in viewer_figure_js
     keyed_dzi = client.get(f"/slides/0/{cache_key}/dzi.dzi")
     assert keyed_dzi.status_code == 200
@@ -581,6 +590,99 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     assert tile.headers["content-type"] == "image/jpeg"
 
 
+def test_server_workspace_files_directory_and_dynamic_layers(tmp_path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    hidden = second / ".hidden"
+    hidden.mkdir()
+    create_demo_slide(first / "old.png", width=128, height=96, seed=10)
+    create_demo_slide(second / "case_a.png", width=256, height=192, seed=11)
+    create_demo_slide(hidden / "hidden.png", width=64, height=64, seed=12)
+    heatmap = second / "case_heatmap.png"
+    Image.new("RGB", (64, 48), (180, 40, 80)).save(heatmap)
+    heatmap_alt = hidden / "case_heatmap_alt.png"
+    Image.new("RGB", (64, 48), (40, 180, 120)).save(heatmap_alt)
+    patches = second / "coords.csv"
+    patches.write_text("x,y,width,height,score\n10,20,32,32,0.7\n", encoding="utf-8")
+    annotations = create_demo_annotations(second / "annotations.geojson", width=256, height=192, seed=11)
+
+    app = create_app(first, reader="image", tile_size=128)
+    client = TestClient(app)
+
+    listed = client.get(f"/api/files?dir={second}")
+    assert listed.status_code == 200
+    names = {entry["name"] for entry in listed.json()["entries"]}
+    assert ".hidden" not in names
+    assert "case_a.png" in names
+    assert "case_heatmap.png" in names
+
+    listed_hidden = client.get(f"/api/files?dir={second}&show_hidden=true")
+    assert listed_hidden.status_code == 200
+    assert ".hidden" in {entry["name"] for entry in listed_hidden.json()["entries"]}
+
+    opened = client.post("/api/workspace/directory", json={"path": str(second), "recursive": False, "max_slides": 20})
+    assert opened.status_code == 200
+    payload = opened.json()
+    assert payload["root"] == str(second)
+    assert payload["count"] == 2
+    assert payload["snapshot_options"]["raster_heatmap"] is None
+
+    info = client.get("/api/info?slide_id=0")
+    assert info.status_code == 200
+    assert info.json()["library_root"] == str(second)
+
+    heatmap_response = client.post(
+        "/api/workspace/raster-heatmap-layers",
+        json={
+            "slide_id": 0,
+            "layers": [
+                {"name": "demo", "path": str(heatmap)},
+                {"name": "alt", "path": str(heatmap_alt)},
+            ],
+        },
+    )
+    assert heatmap_response.status_code == 200
+    heatmap_payload = heatmap_response.json()
+    assert heatmap_payload["available"] is True
+    assert heatmap_payload["count"] == 2
+    assert heatmap_payload["layers"][0]["name"] == "demo"
+    assert heatmap_payload["layers"][0]["path"] == str(heatmap)
+    assert heatmap_payload["layers"][1]["name"] == "alt"
+    assert heatmap_payload["layers"][1]["path"] == str(heatmap_alt)
+    hidden_directory_warning = "The same raster heatmap is applied to the selected slide in directory viewer mode."
+    assert hidden_directory_warning not in heatmap_payload["warnings"]
+    assert all(hidden_directory_warning not in layer["warnings"] for layer in heatmap_payload["layers"])
+    assert heatmap_payload["snapshot_options"]["raster_heatmap"] == str(heatmap)
+    assert len(heatmap_payload["snapshot_options"]["raster_heatmap_layers"]) == 2
+
+    patch_response = client.post("/api/workspace/patches", json={"slide_id": 0, "path": str(patches)})
+    assert patch_response.status_code == 200
+    assert patch_response.json()["count"] == 1
+    assert client.get("/api/patches?slide_id=0").json()["patches"][0]["score"] == 0.7
+
+    annotation_response = client.post("/api/workspace/annotations", json={"slide_id": 0, "path": str(annotations)})
+    assert annotation_response.status_code == 200
+    assert annotation_response.json()["count"] > 0
+    assert client.get("/api/annotations?slide_id=0").json()["count"] > 0
+
+
+def test_server_workspace_can_start_from_empty_directory(tmp_path):
+    app = create_app(tmp_path, reader="image")
+    client = TestClient(app)
+
+    page = client.get("/")
+    slides = client.get("/api/slides")
+    info = client.get("/api/info")
+
+    assert page.status_code == 200
+    assert "workspace-path" in page.text
+    assert slides.status_code == 200
+    assert slides.json()["count"] == 0
+    assert info.status_code == 404
+
+
 def test_server_remote_context_is_rendered(tmp_path):
     slide_path = create_demo_slide(tmp_path / "demo.png", width=256, height=256, seed=5)
     app = create_app(
@@ -602,3 +704,46 @@ def test_server_remote_context_is_rendered(tmp_path):
     assert "server" in response.text
     assert "2222" in response.text
     assert "/data/slides/demo.png" in response.text
+
+
+def test_server_session_control_requires_enabled_session(tmp_path):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=256, height=256, seed=21)
+    app = create_app(slide_path, reader="image")
+    client = TestClient(app)
+
+    response = client.post("/api/session/heartbeat", json={"token": "secret"})
+
+    assert response.status_code == 404
+
+
+def test_server_session_control_heartbeat_and_shutdown(tmp_path, monkeypatch):
+    slide_path = create_demo_slide(tmp_path / "demo.png", width=256, height=256, seed=22)
+    shutdown_requested = Event()
+    reasons = []
+
+    def fake_request_process_shutdown(reason: str) -> None:
+        reasons.append(reason)
+        shutdown_requested.set()
+
+    monkeypatch.setattr(server_app_module, "_request_process_shutdown", fake_request_process_shutdown)
+    app = create_app(
+        slide_path,
+        reader="image",
+        viewer_session_token="secret",
+        viewer_session_timeout=30.0,
+    )
+    client = TestClient(app)
+
+    bad = client.post("/api/session/heartbeat", json={"token": "wrong"})
+    good = client.post("/api/session/heartbeat", json={"token": "secret"})
+    status = client.post("/api/session/status", json={"token": "secret"})
+    shutdown = client.post("/api/session/shutdown", json={"token": "secret"})
+
+    assert bad.status_code == 403
+    assert good.status_code == 200
+    assert good.json()["timeout"] == 30.0
+    assert status.status_code == 200
+    assert status.json()["enabled"] is True
+    assert shutdown.status_code == 200
+    assert shutdown_requested.wait(1.0)
+    assert reasons == ["remote viewer session shutdown"]
