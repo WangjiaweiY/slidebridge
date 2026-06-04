@@ -10,7 +10,7 @@ SlideBridge Core is a WSI inspection, model-output debugging, and publication-fi
 
 Current version: `0.3.0`
 
-![SlideBridge remote WSI heatmap viewer](docs/assets/readme_remote_heatmap_viewer.png)
+![SlideBridge remote WSI heatmap viewer](docs/assets/readme_figure_heatmap.png)
 
 > Coordinates are level-0 pixel coordinates. SlideBridge is for research and algorithm debugging only; it is not for clinical diagnosis.
 
@@ -115,11 +115,21 @@ The launcher configures SSH and the remote Python/Conda runtime. It only handles
 
 SSH keys, `ssh-agent`, `~/.ssh/config` aliases, and password login are handled by your local `ssh` client. If the server requires a password, the prompt appears in the terminal that started `slidebridge app`.
 
-![SlideBridge remote viewer info panel](docs/assets/readme_remote_info_panel.png)
+![SlideBridge launcher](docs/assets/readme_figure_begin.png)
+
+After the viewer starts, open a remote directory from the browser. The directory browser supports direct path input, parent-folder navigation, refresh, file filtering, and optional hidden-file display.
+
+![SlideBridge remote directory browser](docs/assets/readme_figure_selectslide.png)
+
+Once a slide is selected, the viewer displays the WSI stored on the server. The slide remains remote; the local browser accesses the viewer through the SSH tunnel.
+
+![SlideBridge remote slide viewer](docs/assets/readme_figure_viewslide.png)
 
 ## Heatmaps, Annotations, And Patches
 
 The viewer supports multiple model heatmaps on the same slide. Each heatmap can be shown, hidden, opacity-adjusted, or removed. Patch locations and annotations help check whether model outputs, sampling coordinates, and manual or algorithmic annotations are aligned to the WSI.
+
+![SlideBridge heatmap overlay](docs/assets/readme_figure_heatmap.png)
 
 Public annotation inputs include QuPath GeoJSON, ASAP XML, and SlideBridge JSON. See:
 
@@ -131,7 +141,15 @@ Public annotation inputs include QuPath GeoJSON, ASAP XML, and SlideBridge JSON.
 
 The Figure Designer lets users arrange a main panel and patch panels in the browser. Exported PNGs are not browser screenshots; the backend re-reads the slide and renders the figure from the level-0 coordinates stored in the figure spec.
 
-![SlideBridge figure designer](docs/assets/readme_figure_designer.png)
+![SlideBridge exported figure](docs/assets/readme_figure_example.png)
+
+During design, set the current view as the main panel, then drag and resize A/main and B-G patch panels in the left preview canvas. The preview shows layout state only; the final export is rendered by the backend.
+
+![SlideBridge figure layout designer](docs/assets/readme_figure_designer_1.png)
+
+Then select the slide region for each patch slot, choose raw or heatmap-overlaid display, and copy the JSON spec or export PNG.
+
+![SlideBridge figure patch selection](docs/assets/readme_figure_designer_2.png)
 
 See [Figure Designer docs](docs/FIGURES.md) for details.
 
