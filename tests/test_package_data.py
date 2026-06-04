@@ -58,4 +58,4 @@ def test_viewer_index_returns_html(tmp_path):
     assert "/static/viewer.js" in response.text
     assert "/static/viewer_figure.js" in response.text
     assert "slidebridge-viewer-config" in response.text
-    assert slidebridge.__version__ == "0.2.21"
+    assert slidebridge.__version__ == "0.3.0"

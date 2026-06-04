@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SlideBridge App</title>
+  <link rel="stylesheet" href="/static/app.css?v=$static_cache_key">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <header class="brand">
+        <div class="brand-name">SLIDEBRIDGE</div>
+        <h1>Viewer Launcher</h1>
+        <p>Remote WSI, heatmaps, patches, annotations, and figure workflows.</p>
+      </header>
+
+      <section class="panel">
+        <div class="section-title">SSH connection</div>
+        <label>Profile
+          <select id="profile-select">
+            <option value="">manual</option>
+          </select>
+        </label>
+        <div class="field-grid">
+          <label>Host<input id="remote-host" autocomplete="off" placeholder="server.example.org"></label>
+          <label>User<input id="remote-user" autocomplete="off" placeholder="user"></label>
+          <label>Port<input id="ssh-port" type="number" min="1" max="65535" placeholder="22"></label>
+          <label>Remote runner<input id="remote-runner" value="slidebridge"></label>
+          <label>Identity file<input id="identity-file" placeholder="optional"></label>
+          <label>Remote workdir<input id="remote-workdir" placeholder="optional"></label>
+          <label>SSH options<textarea id="ssh-options" rows="2" placeholder="-J bastion"></textarea></label>
+        </div>
+        <div class="action-row">
+          <button id="test-connection" type="button">Test connection</button>
+          <button id="build-command" type="button">Build command</button>
+        </div>
+        <p class="hint">SSH key, ssh-agent, and config aliases are supported. Password prompts appear in the terminal that started this app.</p>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">Viewer inputs</div>
+        <label>Remote directory<input id="remote-dir" value="/data/slides"></label>
+        <div class="action-row">
+          <button id="browse-remote" type="button">Browse</button>
+          <button id="parent-dir" type="button">Parent</button>
+        </div>
+        <label>Slide path<input id="remote-path" placeholder="/data/slides/case.svs"></label>
+        <div class="field-grid">
+          <label>Local port<input id="local-port" type="number" min="1" max="65535" value="7860"></label>
+          <label>Remote port<input id="remote-port" type="number" min="1" max="65535" value="7860"></label>
+        </div>
+        <label>Patches<input id="patches-path" placeholder="/data/features/coords.h5"></label>
+        <label>Annotations<input id="annotations-path" placeholder="/data/annotations/case.geojson"></label>
+        <label>Annotation format
+          <select id="annotation-format">
+            <option value="">auto</option>
+            <option value="qupath-geojson">qupath-geojson</option>
+            <option value="asap-xml">asap-xml</option>
+            <option value="slidebridge-json">slidebridge-json</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">Heatmap layers</div>
+        <div id="heatmap-layers" class="layer-list"></div>
+        <button id="add-heatmap-layer" type="button">Add heatmap layer</button>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <nav class="topbar">
+        <div>
+          <strong>SlideBridge Core <span id="app-version"></span></strong>
+          <span id="status" class="status"></span>
+        </div>
+        <button id="launch-viewer" type="button" class="primary">Launch viewer</button>
+      </nav>
+
+      <section class="browser-pane">
+        <div class="pane-header">
+          <div>
+            <h2>Remote file browser</h2>
+            <p id="browser-path">No directory loaded</p>
+          </div>
+          <input id="file-filter" placeholder="Filter files">
+        </div>
+        <div class="file-table" id="file-table"></div>
+      </section>
+
+      <section class="details-grid">
+        <div class="panel">
+          <div class="section-title">Launch summary</div>
+          <dl class="summary">
+            <dt>Slide</dt><dd id="summary-slide">not selected</dd>
+            <dt>Heatmaps</dt><dd id="summary-heatmaps">none</dd>
+            <dt>Patches</dt><dd id="summary-patches">none</dd>
+            <dt>Annotations</dt><dd id="summary-annotations">none</dd>
+            <dt>Viewer URL</dt><dd id="summary-url">http://127.0.0.1:7860</dd>
+          </dl>
+        </div>
+        <div class="panel">
+          <div class="section-title">Equivalent command</div>
+          <textarea id="command-output" readonly rows="8"></textarea>
+          <div class="action-row">
+            <button id="copy-command" type="button">Copy command</button>
+            <a id="open-viewer" class="button-link" href="http://127.0.0.1:7860" target="_blank" rel="noreferrer">Open viewer</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">Viewer sessions</div>
+        <div id="session-list" class="session-list"></div>
+      </section>
+    </main>
+  </div>
+  <script id="slidebridge-app-config" type="application/json">$app_config_json</script>
+  <script src="/static/app.js?v=$static_cache_key"></script>
+</body>
+</html>

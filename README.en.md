@@ -18,15 +18,19 @@ Debug whole-slide images like a developer.
 
 SlideBridge Core helps computational pathology researchers and AI engineers inspect WSI metadata, browse remote slides, debug heatmaps/patches/annotations, and export reproducible paper or presentation figures. It is built for research and algorithm debugging, not clinical diagnosis.
 
-Current version: `0.2.21`
+Current version: `0.3.0`
 
 ## Core Highlights
 
 ### 1. View Remote WSI Locally
 
-`remote-view` runs the tile server on the remote machine and opens a local browser through an SSH tunnel. The slide stays on the server, which is useful for large cohorts and workstation/server workflows. It uses your local `ssh` client: SSH keys are recommended, but password authentication also works if the server allows it; enter the password in the terminal when SSH prompts for it.
+v0.3.0 adds `slidebridge app`, a local Web App launcher for filling SSH settings, browsing remote directories, choosing slides, adding heatmap/patch/annotation inputs, and starting viewer sessions from the browser. Under the hood it still uses `remote-view`: the tile server runs on the remote machine and the local browser connects through an SSH tunnel. The slide stays on the server, which is useful for large cohorts and workstation/server workflows. It uses your local `ssh` client: SSH keys are recommended, but password authentication also works if the server allows it; enter the password in the terminal when SSH prompts for it.
 
 ![SlideBridge remote viewer info panel](docs/assets/readme_remote_info_panel.png)
+
+```cmd
+slidebridge app
+```
 
 ```cmd
 slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
@@ -99,7 +103,7 @@ python -m slidebridge.cli view outputs\demo_slide.png --open-browser
 On Windows / Anaconda, you can also call the environment Python directly:
 
 ```cmd
-D:\Anaconda3\envs\slidebridge\python.exe -m slidebridge.cli version
+%CONDA_PREFIX%\python.exe -m slidebridge.cli version
 ```
 
 ### Development Install
@@ -166,8 +170,30 @@ slidebridge view outputs\demo_slide.png --raster-heatmap outputs\demo_heatmap.pn
 Remote WSI viewer:
 
 ```cmd
+slidebridge app
+```
+
+Or run the CLI directly:
+
+```cmd
 slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda run -n slidebridge slidebridge"
 ```
+
+## Web App Launcher
+
+`slidebridge app` starts a local Web App for configuring SSH, browsing remote directories, selecting WSI files, adding raster heatmap layers, entering patch/annotation paths, and launching viewer sessions. It is intended for routine workflows where writing long shell commands is awkward.
+
+```cmd
+slidebridge app
+```
+
+If the `slidebridge` command is unavailable, use:
+
+```cmd
+python -m slidebridge.cli app
+```
+
+The launcher uses your local `ssh` client. SSH keys, `ssh-agent`, `~/.ssh/config` aliases, and password authentication are handled by SSH itself; if the server asks for a password, the prompt appears in the terminal that started `slidebridge app`.
 
 ## Remote WSI Viewing over SSH
 
@@ -186,7 +212,7 @@ slidebridge remote-view user@server:/data/slides/case.svs --remote-runner "conda
 Non-22 port:
 
 ```cmd
-slidebridge remote-view user@server:/data/slides/case.svs --ssh-port 20022 --remote-runner "conda run -n slidebridge slidebridge"
+slidebridge remote-view user@server:/data/slides/case.svs --ssh-port 2222 --remote-runner "conda run -n slidebridge slidebridge"
 ```
 
 You can also pass a remote directory and choose slides in the browser:
@@ -383,6 +409,7 @@ slidebridge view "%SLIDE%" --patches outputs\coords.csv --port 7860 --open-brows
 
 ## CLI Commands
 
+- `slidebridge app`: start the local Web App launcher for remote viewer workflows.
 - `slidebridge inspect PATH`: inspect reader, dimensions, levels, MPP, objective, vendor, metadata, and warnings.
 - `slidebridge thumbnail PATH --out OUTPUT`: export an RGB thumbnail.
 - `slidebridge doctor PATH_OR_DIR --out REPORT.html --json-out REPORT.json`: generate HTML and optional JSON QC reports.
@@ -458,6 +485,12 @@ register_reader(FakeReader())
 No proprietary reader is included in SlideBridge Core.
 
 ## Roadmap
+
+v0.3.0:
+
+- local `slidebridge app` Web App launcher
+- browser form for SSH settings, remote directory browsing, WSI/heatmap/patch/annotation selection
+- equivalent `remote-view` command preview plus viewer session launch/stop
 
 v0.2.0:
 

@@ -83,6 +83,23 @@ def version_command() -> None:
     console.print(f"Executable: {sys.executable}")
 
 
+@app.command("app")
+def app_command(
+    host: str = typer.Option("127.0.0.1", "--host", help="Launcher bind host."),
+    port: int = typer.Option(7850, "--port", min=1, max=65535, help="Launcher bind port."),
+    open_browser: bool = typer.Option(True, "--open-browser/--no-open-browser", help="Open the launcher in a browser."),
+) -> None:
+    """Start the local SlideBridge Web App launcher."""
+
+    from slidebridge.app.server import create_launcher_app
+
+    url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{int(port)}"
+    console.print(f"Starting SlideBridge App: {url}")
+    if open_browser:
+        webbrowser.open(url)
+    uvicorn.run(create_launcher_app(), host=host, port=int(port), log_level="info")
+
+
 @app.command("env")
 def env_command() -> None:
     """Show dependency and runtime diagnostics."""

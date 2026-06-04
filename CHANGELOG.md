@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+Added:
+
+- local `slidebridge app` Web App launcher for starting remote WSI viewer sessions from the browser
+- browser-based SSH connection form, remote directory browser, slide selection, heatmap layer selection, patch path, and annotation path inputs
+- launcher APIs for remote connection checks, remote directory listing, command preview, session launch, session listing, and session stop
+- reusable remote profile loading in the launcher UI
+
+Changed:
+
+- package data now includes the launcher templates and static assets
+
 ## 0.2.21
 
 Added:
