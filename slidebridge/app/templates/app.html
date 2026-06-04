@@ -26,7 +26,16 @@
           <label><span data-i18n="host">主机</span><input id="remote-host" autocomplete="off" placeholder="server.example.org"></label>
           <label><span data-i18n="user">用户</span><input id="remote-user" autocomplete="off" placeholder="user"></label>
           <label><span data-i18n="sshPort">SSH 端口</span><input id="ssh-port" type="number" min="1" max="65535" placeholder="22"></label>
-          <label><span data-i18n="remoteRunner">远端 slidebridge 命令</span><input id="remote-runner" value="slidebridge"></label>
+          <label><span data-i18n="remoteRuntime">远端环境</span>
+            <select id="remote-runtime">
+              <option value="path" data-i18n="runtimePath">默认环境</option>
+              <option value="conda" data-i18n="runtimeConda">Conda 环境</option>
+              <option value="custom" data-i18n="runtimeCustom">自定义命令</option>
+            </select>
+          </label>
+          <label data-runtime-field="conda"><span data-i18n="condaCommand">Conda 路径</span><input id="conda-command" value="conda" data-i18n-placeholder="condaCommandPlaceholder" placeholder="conda 或 /path/to/conda"></label>
+          <label data-runtime-field="conda"><span data-i18n="condaEnv">Conda 环境名</span><input id="conda-env" value="slidebridge"></label>
+          <label data-runtime-field="custom"><span data-i18n="customRunner">自定义命令</span><input id="remote-runner" value="slidebridge"></label>
           <label><span data-i18n="identityFile">SSH key 文件</span><input id="identity-file" data-i18n-placeholder="optional" placeholder="可选"></label>
           <label><span data-i18n="remoteWorkdir">远端工作目录</span><input id="remote-workdir" data-i18n-placeholder="optional" placeholder="可选"></label>
           <label><span data-i18n="sshOptions">SSH 额外参数</span><textarea id="ssh-options" rows="2" placeholder="-J bastion"></textarea></label>

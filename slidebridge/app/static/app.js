@@ -22,7 +22,14 @@
       host: "主机",
       user: "用户",
       sshPort: "SSH 端口",
-      remoteRunner: "远端 slidebridge 命令",
+      remoteRuntime: "远端环境",
+      runtimePath: "默认环境",
+      runtimeConda: "Conda 环境",
+      runtimeCustom: "自定义命令",
+      condaCommand: "Conda 路径",
+      condaCommandPlaceholder: "conda 或 /path/to/conda",
+      condaEnv: "Conda 环境名",
+      customRunner: "自定义命令",
       identityFile: "SSH key 文件",
       remoteWorkdir: "远端工作目录",
       sshOptions: "SSH 额外参数",
@@ -94,7 +101,14 @@
       host: "Host",
       user: "User",
       sshPort: "SSH port",
-      remoteRunner: "Remote slidebridge command",
+      remoteRuntime: "Remote environment",
+      runtimePath: "Default environment",
+      runtimeConda: "Conda environment",
+      runtimeCustom: "Custom command",
+      condaCommand: "Conda path",
+      condaCommandPlaceholder: "conda or /path/to/conda",
+      condaEnv: "Conda environment",
+      customRunner: "Custom command",
       identityFile: "SSH key file",
       remoteWorkdir: "Remote workdir",
       sshOptions: "SSH options",
@@ -167,6 +181,7 @@
     renderProfiles();
     addHeatmapLayer("low", "");
     bindEvents();
+    updateRuntimeFields();
     applyLanguage();
     renderSummary();
     refreshSessions();
@@ -181,6 +196,9 @@
       host: document.getElementById("remote-host"),
       user: document.getElementById("remote-user"),
       sshPort: document.getElementById("ssh-port"),
+      remoteRuntime: document.getElementById("remote-runtime"),
+      condaCommand: document.getElementById("conda-command"),
+      condaEnv: document.getElementById("conda-env"),
       remoteRunner: document.getElementById("remote-runner"),
       remoteWorkdir: document.getElementById("remote-workdir"),
       identityFile: document.getElementById("identity-file"),
@@ -209,6 +227,7 @@
 
   function bindEvents() {
     els.languageSelect.addEventListener("change", changeLanguage);
+    els.remoteRuntime.addEventListener("change", onRuntimeChanged);
     els.profileSelect.addEventListener("change", applySelectedProfile);
     document.getElementById("test-connection").addEventListener("click", testConnection);
     document.getElementById("browse-remote").addEventListener("click", browseRemote);
@@ -225,6 +244,9 @@
       els.host,
       els.user,
       els.sshPort,
+      els.remoteRuntime,
+      els.condaCommand,
+      els.condaEnv,
       els.remoteRunner,
       els.remoteWorkdir,
       els.identityFile,
@@ -270,16 +292,41 @@
     renderSummary();
   }
 
+  function onRuntimeChanged() {
+    updateRuntimeFields();
+    onInputsChanged();
+  }
+
+  function updateRuntimeFields() {
+    const runtime = els.remoteRuntime.value || "path";
+    document.querySelectorAll("[data-runtime-field]").forEach((element) => {
+      element.classList.toggle("is-hidden", element.dataset.runtimeField !== runtime);
+    });
+  }
+
   function connectionPayload() {
     return {
       host: els.host.value.trim(),
       user: els.user.value.trim(),
       ssh_port: els.sshPort.value.trim(),
-      remote_runner: els.remoteRunner.value.trim() || "slidebridge",
+      remote_runner: buildRemoteRunner(),
       remote_workdir: els.remoteWorkdir.value.trim(),
       identity_file: els.identityFile.value.trim(),
       ssh_options: els.sshOptions.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
     };
+  }
+
+  function buildRemoteRunner() {
+    const runtime = els.remoteRuntime.value || "path";
+    if (runtime === "conda") {
+      const condaCommand = els.condaCommand.value.trim() || "conda";
+      const condaEnv = els.condaEnv.value.trim() || "slidebridge";
+      return `${condaCommand} run -n ${condaEnv} slidebridge`;
+    }
+    if (runtime === "custom") {
+      return els.remoteRunner.value.trim() || "slidebridge";
+    }
+    return "slidebridge";
   }
 
   function launchPayload() {
@@ -326,15 +373,43 @@
     els.host.value = profile.host || "";
     els.user.value = profile.user || "";
     els.sshPort.value = profile.ssh_port || "";
-    els.remoteRunner.value = profile.remote_runner || "slidebridge";
+    applyRemoteRunner(profile.remote_runner || "slidebridge");
     els.remoteWorkdir.value = profile.remote_workdir || "";
     els.identityFile.value = profile.identity_file || "";
     els.sshOptions.value = (profile.ssh_options || []).join("\n");
     els.remoteDir.value = profile.root || "";
     els.localPort.value = profile.local_port || "7860";
     els.remotePort.value = profile.remote_port || "7860";
+    updateRuntimeFields();
     onInputsChanged();
     setStatus(t("profileLoaded", {name: profileName}), "ok");
+  }
+
+  function applyRemoteRunner(remoteRunner) {
+    const parsed = parseRemoteRunner(remoteRunner);
+    els.remoteRuntime.value = parsed.runtime;
+    els.condaCommand.value = parsed.condaCommand || "conda";
+    els.condaEnv.value = parsed.condaEnv || "slidebridge";
+    els.remoteRunner.value = parsed.customRunner || "slidebridge";
+  }
+
+  function parseRemoteRunner(remoteRunner) {
+    const runner = String(remoteRunner || "").trim();
+    if (!runner || runner === "slidebridge") {
+      return {runtime: "path"};
+    }
+    const condaMatch = runner.match(/^(.*?)\s+run\s+-n\s+(\S+)\s+slidebridge$/);
+    if (condaMatch) {
+      return {
+        runtime: "conda",
+        condaCommand: condaMatch[1],
+        condaEnv: condaMatch[2]
+      };
+    }
+    return {
+      runtime: "custom",
+      customRunner: runner
+    };
   }
 
   async function testConnection() {

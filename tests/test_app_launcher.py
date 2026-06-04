@@ -22,6 +22,9 @@ def test_launcher_index_and_static_assets_are_available(monkeypatch, tmp_path):
     assert "/static/app.js" in response.text
     assert "profile-select" in response.text
     assert "language-select" in response.text
+    assert "remote-runtime" in response.text
+    assert "远端环境" in response.text
+    assert "远端 slidebridge 命令" not in response.text
 
     css = client.get("/static/app.css")
     js = client.get("/static/app.js")
@@ -32,6 +35,8 @@ def test_launcher_index_and_static_assets_are_available(monkeypatch, tmp_path):
     assert "renderProfiles" in js.text
     assert "applySelectedProfile" in js.text
     assert "changeLanguage" in js.text
+    assert "buildRemoteRunner" in js.text
+    assert 'remoteRuntime: "Remote environment"' in js.text
 
 
 def test_launcher_assets_are_packaged():
@@ -46,6 +51,7 @@ def test_launcher_assets_are_packaged():
     assert "slidebridge-app-config" in template.read_text(encoding="utf-8")
     assert "远端文件浏览器" in template.read_text(encoding="utf-8")
     assert "language-select" in template.read_text(encoding="utf-8")
+    assert "remote-runtime" in template.read_text(encoding="utf-8")
     assert "fetchJson" in js.read_text(encoding="utf-8")
     assert "Viewer Launcher" in js.read_text(encoding="utf-8")
 
