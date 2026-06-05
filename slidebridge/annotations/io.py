@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+import xml.etree.ElementTree as ET
 
+from slidebridge.annotations.aperio import load_aperio_xml
 from slidebridge.annotations.asap import load_asap_xml
 from slidebridge.annotations.qupath import load_qupath_geojson
 from slidebridge.annotations.table import AnnotationRecord, AnnotationTable
@@ -17,6 +19,8 @@ def load_annotation_table(path: str | Path, format: str | None = None) -> Annota
         return load_qupath_geojson(annotation_path)
     if fmt == "asap-xml":
         return load_asap_xml(annotation_path)
+    if fmt in {"aperio-xml", "imagescope-xml"}:
+        return load_aperio_xml(annotation_path)
     if fmt == "slidebridge-json":
         return _load_slidebridge_json(annotation_path)
     raise ValueError(f"Unsupported annotation format: {fmt}")
@@ -127,6 +131,8 @@ def _infer_format(path: Path, requested: str | None) -> str:
             return "slidebridge-json"
         return "geojson"
     if suffix == ".xml":
+        if _looks_like_aperio_xml(path):
+            return "aperio-xml"
         return "asap-xml"
     raise ValueError(f"Cannot infer annotation format from: {path}")
 
@@ -140,3 +146,11 @@ def _infer_output_format(path: Path, requested: str | None) -> str:
     if name.endswith(".json"):
         return "slidebridge-json"
     raise ValueError("Cannot infer output annotation format. Use --output-format.")
+
+
+def _looks_like_aperio_xml(path: Path) -> bool:
+    try:
+        root = ET.parse(path).getroot()
+    except ET.ParseError:
+        return False
+    return bool(root.findall(".//Region/Vertices/Vertex"))
