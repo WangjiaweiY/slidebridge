@@ -8,7 +8,7 @@
 
 SlideBridge Core is a WSI inspection, model-output debugging, and publication-figure design toolkit for computational pathology and pathology AI. Its main entry point is a browser workflow for remote slide viewing, heatmap/annotation/patch debugging, and reproducible figure export.
 
-Current version: `0.3.0`
+Current version: `0.3.1`
 
 ![SlideBridge remote WSI heatmap viewer](docs/assets/readme_figure_heatmap.png)
 
@@ -28,10 +28,30 @@ SlideBridge needs a **local installation** to start the Web App and create the S
 
 ### Local Install
 
-Install from GitHub into the current Python/Conda environment:
+For a fresh Conda environment, create the environment first:
+
+```powershell
+conda create -n slidebridge python=3.11 -y
+conda activate slidebridge
+pip install git+https://github.com/WangjiaweiY/slidebridge.git
+```
+
+You can also install into the current Python/Conda environment:
 
 ```powershell
 pip install git+https://github.com/WangjiaweiY/slidebridge.git
+```
+
+If the machine cannot reliably access GitHub, download the wheel from [GitHub Releases](https://github.com/WangjiaweiY/slidebridge/releases), then install it locally or upload it to the server and install it there:
+
+```bash
+pip install slidebridge_core-0.3.1-py3-none-any.whl
+```
+
+This installs the Python dependencies needed by the Web App, including FastAPI, Uvicorn, Pillow, NumPy, Pandas, OpenSlide Python binding, and TiffSlide. On Windows, `openslide-bin` is installed as well. On Linux/macOS, if this environment needs to read WSI files directly and does not already have a usable OpenSlide or other WSI reader runtime, the OpenSlide shared library is usually also required. Conda users can install it with:
+
+```bash
+conda install -c conda-forge openslide -y
 ```
 
 Development install:
@@ -67,7 +87,16 @@ For remote WSI viewing, install SlideBridge on the server too. A common setup is
 ```bash
 conda create -n slidebridge python=3.11 -y
 conda activate slidebridge
+conda install -c conda-forge openslide -y
 pip install git+https://github.com/WangjiaweiY/slidebridge.git
+```
+
+The remote environment needs to do two things: run `python -m slidebridge.cli`, and read WSI files stored on the server. On Linux servers, `openslide-python` is only the Python binding. If the remote environment already has a usable OpenSlide or other WSI reader runtime, you can skip `conda install -c conda-forge openslide -y`. Without a usable reader runtime, the launcher may open, but selecting `.svs` and similar slide files can fail with reader or shared-library errors.
+
+If the server cannot reliably access GitHub, download the release wheel locally, upload it to the server, and install it there:
+
+```bash
+pip install slidebridge_core-0.3.1-py3-none-any.whl
 ```
 
 If the remote shell cannot find `conda`, that is fine. In the Web App launcher, enter the remote environment path, for example:
@@ -84,7 +113,7 @@ SlideBridge will use:
 
 ## Start The Web App
 
-The recommended v0.3.0 entry point is the Web App:
+The recommended v0.3.1 entry point is the Web App:
 
 ```cmd
 slidebridge app

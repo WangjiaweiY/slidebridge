@@ -564,6 +564,8 @@ def test_server_directory_viewer_lists_and_serves_multiple_slides(tmp_path):
     assert "top-k-input" in page.text
     assert "annotation-label-filter" in page.text
     assert "overlay-detail" in page.text
+    assert "data-layer-status" in page.text
+    assert "aperio-xml" in page.text
     assert "data-i18n=\"slideMetadata\"" in page.text
     viewer_js, viewer_css, _ = _viewer_static_text(client)
     assert "zoomToImageScale" in viewer_js

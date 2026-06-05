@@ -48,6 +48,9 @@
         dataLayerLoaded: "Data layer loaded.",
         dataLayerRemoved: "Heatmap layer removed.",
         dataLayerCleared: "Data layer cleared.",
+        annotationsLoading: "Loading annotations...",
+        annotationsLoaded: "{count} annotations loaded.",
+        annotationsLoadedEmpty: "Annotation file loaded, but 0 annotations were parsed. Check the format and coordinates.",
         pathRequired: "Path is required.",
         slideNotReady: "Select a slide first.",
         loadDataLayers: "Load data layers",
@@ -205,6 +208,9 @@
         dataLayerLoaded: "数据层已加载。",
         dataLayerRemoved: "热图层已移除。",
         dataLayerCleared: "数据层已清空。",
+        annotationsLoading: "正在加载标注...",
+        annotationsLoaded: "已加载 {count} 个标注。",
+        annotationsLoadedEmpty: "标注文件已读取，但解析到 0 个标注。请检查格式和坐标。",
         pathRequired: "请填写路径。",
         slideNotReady: "请先选择切片。",
         loadDataLayers: "加载数据层",
@@ -1548,6 +1554,7 @@
       }
 
       async function loadWorkspaceAnnotations(path, format) {
+        setWorkspaceStatus(path ? t("annotationsLoading") : "", "");
         try {
           const payload = await postJson("/api/workspace/annotations", {
             slide_id: selectedSlideId ?? 0,
@@ -1563,7 +1570,13 @@
             document.getElementById("workspace-annotations-path").value = "";
             document.getElementById("workspace-annotation-format").value = "";
           }
-          setWorkspaceStatus(path ? t("dataLayerLoaded") : t("dataLayerCleared"), "ok");
+          if (!path) {
+            setWorkspaceStatus(t("dataLayerCleared"), "ok");
+          } else if ((payload.count || 0) > 0) {
+            setWorkspaceStatus(t("annotationsLoaded", {count: payload.count || 0}), "ok");
+          } else {
+            setWorkspaceStatus(t("annotationsLoadedEmpty"), "error");
+          }
         } catch (error) {
           setWorkspaceStatus(error.message, "error");
         }
@@ -1575,12 +1588,14 @@
       }
 
       function setWorkspaceStatus(message, stateName) {
-        const status = document.getElementById("workspace-status");
-        if (!status) {
-          return;
-        }
-        status.textContent = message || "";
-        status.dataset.state = stateName || "";
+        ["workspace-status", "data-layer-status"].forEach(function (id) {
+          const status = document.getElementById(id);
+          if (!status) {
+            return;
+          }
+          status.textContent = message || "";
+          status.dataset.state = stateName || "";
+        });
       }
 
       function updateSlideCounts(count) {

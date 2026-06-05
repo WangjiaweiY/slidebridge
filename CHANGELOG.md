@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.1
+
+Added:
+
+- Aperio/ImageScope XML annotation parsing, including automatic `.xml` detection alongside ASAP XML
+
+Changed:
+
+- README install notes now cover fresh environments, optional OpenSlide runtime setup, and release-wheel installation when GitHub clone access is unstable
+- viewer annotation format selection now exposes `aperio-xml`
+
+Fixed:
+
+- loading Aperio/ImageScope XML annotations from the viewer no longer silently parses as zero ASAP annotations
+- annotation loading now reports loading state, parsed annotation counts, empty parsed files, and parser errors in the Overlays panel
+
 ## 0.3.0
 
 Added:

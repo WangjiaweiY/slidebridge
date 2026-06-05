@@ -167,7 +167,7 @@ def test_remote_runtime_test_api_reports_slidebridge_result(monkeypatch, tmp_pat
     def fake_run_ssh_command(command, timeout=None):
         assert "/home/user/miniconda3/envs/slidebridge/bin/python" in command[-1]
         assert "-m slidebridge.cli version" in command[-1]
-        return RemoteCommandResult(command=command, returncode=0, stdout="SlideBridge Core version: 0.3.0\n", stderr="")
+        return RemoteCommandResult(command=command, returncode=0, stdout="SlideBridge Core version: 0.3.1\n", stderr="")
 
     monkeypatch.setattr("slidebridge.app.remote.run_ssh_command", fake_run_ssh_command)
     client = TestClient(create_launcher_app())
@@ -180,7 +180,7 @@ def test_remote_runtime_test_api_reports_slidebridge_result(monkeypatch, tmp_pat
     assert response.status_code == 200
     payload = response.json()
     assert payload["ok"] is True
-    assert "0.3.0" in payload["stdout"]
+    assert "0.3.1" in payload["stdout"]
 
 
 def test_session_launch_list_and_stop(monkeypatch, tmp_path):
